@@ -96,7 +96,7 @@ func (s *Store) GetClient(ctx context.Context, clientID string) (*Client, error)
 	var metadata []byte
 
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, email, webhook_url_patterns, max_events_per_day, 
+		SELECT id, name, email, webhook_url_patterns, max_events_per_day,
 		       is_active, metadata, created_at, updated_at
 		FROM clients
 		WHERE id = $1
@@ -179,7 +179,7 @@ func (s *Store) RevokeAPIKey(ctx context.Context, keyID string) error {
 // ListAPIKeys lists all API keys for a client (without revealing the actual keys).
 func (s *Store) ListAPIKeys(ctx context.Context, clientID string) ([]APIKey, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, client_id, key_hash, key_prefix, name, scopes, rate_limit, 
+		SELECT id, client_id, key_hash, key_prefix, name, scopes, rate_limit,
 		       is_active, expires_at, created_at, updated_at, last_used_at
 		FROM api_keys
 		WHERE client_id = $1
@@ -214,16 +214,23 @@ func hashAPIKey(apiKey string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// generateAPIKey generates a new random API key.
+// generateAPIKey generates a new cryptographically secure random API key.
+// Format: rly_<64 hex characters> (32 bytes of entropy = 256 bits)
 func generateAPIKey() string {
-	// Generate 32 random bytes for a 64-character hex string
-	// In production, use crypto/rand
 	return "rly_" + generateRandomHex(32)
 }
 
-// generateRandomHex generates a random hex string of the specified byte length.
+// generateRandomHex generates a cryptographically secure random hex string.
+// Uses crypto/rand which reads from the OS's cryptographic random source.
+// Panics if the system's secure random number generator fails (extremely rare).
 func generateRandomHex(byteLen int) string {
 	b := make([]byte, byteLen)
-	_, _ = rand.Read(b)
+	n, err := rand.Read(b)
+	if err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
+	if n != byteLen {
+		panic("crypto/rand: insufficient random bytes")
+	}
 	return hex.EncodeToString(b)
 }
