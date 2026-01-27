@@ -13,10 +13,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/relay/internal/auth"
-	"github.com/relay/internal/dedup"
-	"github.com/relay/internal/event"
-	"github.com/relay/internal/queue"
+	"github.com/stiffinWanjohi/relay/internal/auth"
+	"github.com/stiffinWanjohi/relay/internal/dedup"
+	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
 // mockAuthValidator implements auth.APIKeyValidator for testing

@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/relay/internal/observability"
+	"github.com/stiffinWanjohi/relay/internal/observability"
 )
 
 func init() {

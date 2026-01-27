@@ -12,9 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/relay/internal/event"
-	"github.com/relay/internal/observability"
-	"github.com/relay/internal/queue"
+	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/observability"
+	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
 func TestDefaultProcessorConfig(t *testing.T) {

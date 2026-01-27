@@ -3,7 +3,7 @@ package graphql
 import (
 	"encoding/json"
 
-	"github.com/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/domain"
 )
 
 // Helper functions for converting between domain and GraphQL types

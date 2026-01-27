@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/domain"
 )
 
 // skipIfNoDatabase skips the test if PostgreSQL is not available

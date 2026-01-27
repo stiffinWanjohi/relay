@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/domain"
 )
 
 // Store provides persistence for events and delivery attempts.

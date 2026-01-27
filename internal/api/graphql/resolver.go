@@ -1,9 +1,9 @@
 package graphql
 
 import (
-	"github.com/relay/internal/dedup"
-	"github.com/relay/internal/event"
-	"github.com/relay/internal/queue"
+	"github.com/stiffinWanjohi/relay/internal/dedup"
+	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
 // Resolver is the root resolver.

@@ -1,4 +1,4 @@
-module github.com/relay
+module github.com/stiffinWanjohi/relay
 
 go 1.25
 

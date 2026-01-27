@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/relay/internal/domain"
-	"github.com/relay/pkg/backoff"
+	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/pkg/backoff"
 )
 
 // RetryPolicy defines retry behavior.

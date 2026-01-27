@@ -11,15 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/relay/internal/api"
-	"github.com/relay/internal/auth"
-	"github.com/relay/internal/config"
-	"github.com/relay/internal/dedup"
-	"github.com/relay/internal/event"
-	"github.com/relay/internal/observability"
-	_ "github.com/relay/internal/observability/otel" // Register OTel provider
-	"github.com/relay/internal/outbox"
-	"github.com/relay/internal/queue"
+	"github.com/stiffinWanjohi/relay/internal/api"
+	"github.com/stiffinWanjohi/relay/internal/auth"
+	"github.com/stiffinWanjohi/relay/internal/config"
+	"github.com/stiffinWanjohi/relay/internal/dedup"
+	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/observability"
+	_ "github.com/stiffinWanjohi/relay/internal/observability/otel" // Register OTel provider
+	"github.com/stiffinWanjohi/relay/internal/outbox"
+	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
 func main() {

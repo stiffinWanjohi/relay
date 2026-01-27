@@ -13,7 +13,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/relay/internal/observability"
+	"github.com/stiffinWanjohi/relay/internal/observability"
 )
 
 // TracingConfig holds configuration for the OTel tracing provider.

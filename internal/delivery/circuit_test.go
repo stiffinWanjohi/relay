@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/relay/internal/domain"
-	"github.com/relay/internal/observability"
+	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/observability"
 )
 
 func TestCircuitState_String(t *testing.T) {

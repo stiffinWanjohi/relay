@@ -8,10 +8,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/relay/internal/dedup"
-	"github.com/relay/internal/domain"
-	"github.com/relay/internal/event"
-	"github.com/relay/internal/queue"
+	"github.com/stiffinWanjohi/relay/internal/dedup"
+	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
 // Handler provides REST API handlers.

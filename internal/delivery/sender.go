@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/relay/internal/domain"
-	"github.com/relay/pkg/signature"
+	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/pkg/signature"
 )
 
 const (

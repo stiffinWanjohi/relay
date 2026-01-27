@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/relay/internal/domain"
-	"github.com/relay/internal/event"
-	"github.com/relay/internal/observability"
-	"github.com/relay/internal/queue"
+	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/observability"
+	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
 const (

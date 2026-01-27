@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/domain"
 )
 
 func BenchmarkRetryPolicyNextDelay(b *testing.B) {

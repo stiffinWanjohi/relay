@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/relay/internal/domain"
-	"github.com/relay/internal/observability"
+	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/observability"
 )
 
 func setupTestQueue(t *testing.T) (*Queue, *miniredis.Miniredis, *redis.Client) {

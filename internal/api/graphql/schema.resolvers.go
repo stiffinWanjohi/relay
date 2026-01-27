@@ -13,9 +13,9 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
-	"github.com/relay/internal/auth"
-	"github.com/relay/internal/config"
-	"github.com/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/auth"
+	"github.com/stiffinWanjohi/relay/internal/config"
+	"github.com/stiffinWanjohi/relay/internal/domain"
 )
 
 // Stats is the resolver for the stats field.

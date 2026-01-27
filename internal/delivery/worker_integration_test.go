@@ -15,9 +15,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/relay/internal/domain"
-	"github.com/relay/internal/event"
-	"github.com/relay/internal/queue"
+	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
 // Skip integration tests if no database is available

@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/domain"
 )
 
 func BenchmarkExtractHost_Valid(b *testing.B) {

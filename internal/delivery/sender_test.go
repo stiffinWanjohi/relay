@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/relay/internal/domain"
-	"github.com/relay/pkg/signature"
+	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/pkg/signature"
 )
 
 func TestNewSender(t *testing.T) {

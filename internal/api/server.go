@@ -11,12 +11,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/relay/internal/api/graphql"
-	"github.com/relay/internal/api/rest"
-	"github.com/relay/internal/auth"
-	"github.com/relay/internal/dedup"
-	"github.com/relay/internal/event"
-	"github.com/relay/internal/queue"
+	"github.com/stiffinWanjohi/relay/internal/api/graphql"
+	"github.com/stiffinWanjohi/relay/internal/api/rest"
+	"github.com/stiffinWanjohi/relay/internal/auth"
+	"github.com/stiffinWanjohi/relay/internal/dedup"
+	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
 // ServerConfig holds server configuration.

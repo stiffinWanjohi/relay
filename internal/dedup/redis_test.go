@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/domain"
 )
 
 func setupTestChecker(t *testing.T) (*Checker, *miniredis.Miniredis) {
