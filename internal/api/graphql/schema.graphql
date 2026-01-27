@@ -1,0 +1,84 @@
+scalar JSON
+scalar DateTime
+
+type Query {
+  event(id: ID!): Event
+  events(status: EventStatus, first: Int, after: String): EventConnection!
+  queueStats: QueueStats!
+}
+
+type Mutation {
+  createEvent(input: CreateEventInput!, idempotencyKey: String!): Event!
+  replayEvent(id: ID!): Event!
+}
+
+type Event {
+  id: ID!
+  idempotencyKey: String!
+  destination: String!
+  payload: JSON!
+  headers: JSON
+  status: EventStatus!
+  attempts: Int!
+  maxAttempts: Int!
+  nextAttemptAt: DateTime
+  deliveredAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  deliveryAttempts: [DeliveryAttempt!]!
+}
+
+type DeliveryAttempt {
+  id: ID!
+  eventId: ID!
+  statusCode: Int
+  responseBody: String
+  error: String
+  durationMs: Int!
+  attemptNumber: Int!
+  attemptedAt: DateTime!
+}
+
+type EventConnection {
+  edges: [EventEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type EventEdge {
+  node: Event!
+  cursor: String!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+type QueueStats {
+  queued: Int!
+  delivering: Int!
+  delivered: Int!
+  failed: Int!
+  dead: Int!
+  pending: Int!
+  processing: Int!
+  delayed: Int!
+}
+
+enum EventStatus {
+  QUEUED
+  DELIVERING
+  DELIVERED
+  FAILED
+  DEAD
+}
+
+input CreateEventInput {
+  destination: String!
+  payload: JSON!
+  headers: JSON
+  maxAttempts: Int
+}

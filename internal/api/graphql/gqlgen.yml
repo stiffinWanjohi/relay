@@ -1,0 +1,33 @@
+schema:
+  - schema.graphql
+
+exec:
+  filename: exec.go
+  package: graphql
+
+model:
+  filename: models_gen.go
+  package: graphql
+
+resolver:
+  layout: follow-schema
+  dir: .
+  package: graphql
+  filename_template: "{name}.resolvers.go"
+
+omit_slice_element_pointers: true
+
+models:
+  ID:
+    model:
+      - github.com/99designs/gqlgen/graphql.ID
+  DateTime:
+    model:
+      - github.com/99designs/gqlgen/graphql.Time
+  JSON:
+    model:
+      - github.com/99designs/gqlgen/graphql.Map
+  Event:
+    fields:
+      deliveryAttempts:
+        resolver: true
