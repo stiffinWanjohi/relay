@@ -16,6 +16,30 @@ import (
 	"github.com/relay/internal/observability"
 )
 
+func init() {
+	// Register the OTel metrics provider
+	observability.RegisterMetricsProvider("otel", newMetricsProviderFromConfig)
+	observability.RegisterMetricsProvider("otlp", newMetricsProviderFromConfig)
+}
+
+// newMetricsProviderFromConfig is the factory function for the registry.
+func newMetricsProviderFromConfig(ctx context.Context, cfg observability.MetricsConfig) (observability.MetricsProvider, error) {
+	exportInterval := 15 * time.Second
+	if interval, ok := cfg.Options["export_interval"]; ok {
+		if parsed, err := time.ParseDuration(interval); err == nil {
+			exportInterval = parsed
+		}
+	}
+
+	return NewMetricsProvider(ctx, MetricsConfig{
+		ServiceName:    cfg.ServiceName,
+		ServiceVersion: cfg.ServiceVersion,
+		Environment:    cfg.Environment,
+		OTLPEndpoint:   cfg.Endpoint,
+		ExportInterval: exportInterval,
+	})
+}
+
 // MetricsConfig holds configuration for the OTel metrics provider.
 type MetricsConfig struct {
 	ServiceName    string

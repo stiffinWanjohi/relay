@@ -1,8 +1,11 @@
 package delivery
 
 import (
+	"math"
+	"math/rand"
 	"time"
 
+	"github.com/relay/internal/domain"
 	"github.com/relay/pkg/backoff"
 )
 
@@ -43,6 +46,37 @@ func (p *RetryPolicy) NextRetryTime(attempts int) time.Time {
 // MaxAttempts returns the maximum number of retry attempts.
 func (p *RetryPolicy) MaxAttempts() int {
 	return p.calculator.MaxAttempts()
+}
+
+// NextRetryDelayForEndpoint calculates the retry delay using endpoint-specific configuration.
+// If endpoint is nil, falls back to the default global policy.
+func (p *RetryPolicy) NextRetryDelayForEndpoint(attempts int, endpoint *domain.Endpoint) time.Duration {
+	if endpoint == nil {
+		return p.NextRetryDelay(attempts)
+	}
+
+	// Custom backoff: initial * (mult ^ (attempts-1))
+	// attempts is 1-indexed after increment
+	delay := float64(endpoint.RetryBackoffMs) * math.Pow(endpoint.RetryBackoffMult, float64(attempts-1))
+
+	// Cap at max delay
+	if delay > float64(endpoint.RetryBackoffMax) {
+		delay = float64(endpoint.RetryBackoffMax)
+	}
+
+	// Add jitter (10%) to prevent thundering herd
+	jitter := delay * 0.1 * rand.Float64()
+	delayWithJitter := delay + jitter
+
+	return time.Duration(delayWithJitter) * time.Millisecond
+}
+
+// ShouldRetryForEndpoint determines if an event should be retried using endpoint-specific config.
+func (p *RetryPolicy) ShouldRetryForEndpoint(attempts int, endpoint *domain.Endpoint) bool {
+	if endpoint == nil {
+		return p.ShouldRetry(attempts, p.MaxAttempts())
+	}
+	return attempts < endpoint.MaxRetries
 }
 
 // IsRetryableStatusCode determines if an HTTP status code should trigger a retry.

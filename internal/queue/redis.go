@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/relay/internal/domain"
+	"github.com/relay/internal/observability"
 )
 
 const (
@@ -33,6 +34,7 @@ const (
 type Message struct {
 	ID        string    `json:"id"`
 	EventID   uuid.UUID `json:"event_id"`
+	ClientID  string    `json:"client_id,omitempty"` // For per-client queuing
 	EnqueueAt time.Time `json:"enqueue_at"`
 }
 
@@ -41,6 +43,7 @@ type Queue struct {
 	client            *redis.Client
 	visibilityTimeout time.Duration
 	blockingTimeout   time.Duration
+	metrics           *observability.Metrics
 }
 
 // NewQueue creates a new Redis-backed queue.
@@ -52,12 +55,23 @@ func NewQueue(client *redis.Client) *Queue {
 	}
 }
 
+// WithMetrics sets a metrics provider for the queue.
+func (q *Queue) WithMetrics(metrics *observability.Metrics) *Queue {
+	return &Queue{
+		client:            q.client,
+		visibilityTimeout: q.visibilityTimeout,
+		blockingTimeout:   q.blockingTimeout,
+		metrics:           metrics,
+	}
+}
+
 // WithVisibilityTimeout sets a custom visibility timeout.
 func (q *Queue) WithVisibilityTimeout(timeout time.Duration) *Queue {
 	return &Queue{
 		client:            q.client,
 		visibilityTimeout: timeout,
 		blockingTimeout:   q.blockingTimeout,
+		metrics:           q.metrics,
 	}
 }
 
@@ -67,6 +81,7 @@ func (q *Queue) WithBlockingTimeout(timeout time.Duration) *Queue {
 		client:            q.client,
 		visibilityTimeout: q.visibilityTimeout,
 		blockingTimeout:   timeout,
+		metrics:           q.metrics,
 	}
 }
 
@@ -83,7 +98,15 @@ func (q *Queue) Enqueue(ctx context.Context, eventID uuid.UUID) error {
 		return err
 	}
 
-	return q.client.LPush(ctx, mainQueueKey, data).Err()
+	if err := q.client.LPush(ctx, mainQueueKey, data).Err(); err != nil {
+		return err
+	}
+
+	if q.metrics != nil {
+		q.metrics.QueueEnqueued(ctx)
+	}
+
+	return nil
 }
 
 // EnqueueDelayed adds an event to the queue for delayed processing.
@@ -138,6 +161,10 @@ func (q *Queue) Dequeue(ctx context.Context) (*Message, error) {
 		var msg Message
 		if err := json.Unmarshal([]byte(result), &msg); err != nil {
 			return nil, err
+		}
+
+		if q.metrics != nil {
+			q.metrics.QueueDequeued(ctx)
 		}
 
 		return &msg, nil
@@ -286,4 +313,99 @@ type Stats struct {
 
 func formatFloat(f float64) string {
 	return strconv.FormatFloat(f, 'f', 0, 64)
+}
+
+// Per-client queue support for fair scheduling
+
+const (
+	clientQueuePrefix  = "relay:queue:client:"
+	activeClientsKey   = "relay:queue:active_clients"
+)
+
+// EnqueueForClient adds an event to a client-specific queue.
+// This enables fair scheduling across multiple tenants.
+func (q *Queue) EnqueueForClient(ctx context.Context, clientID string, eventID uuid.UUID) error {
+	msg := Message{
+		ID:        uuid.New().String(),
+		EventID:   eventID,
+		ClientID:  clientID,
+		EnqueueAt: time.Now().UTC(),
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	pipe := q.client.Pipeline()
+	pipe.LPush(ctx, clientQueueKey(clientID), data)
+	pipe.SAdd(ctx, activeClientsKey, clientID) // Track active clients
+	if _, err := pipe.Exec(ctx); err != nil {
+		return err
+	}
+
+	if q.metrics != nil {
+		q.metrics.QueueEnqueued(ctx)
+	}
+
+	return nil
+}
+
+// DequeueFromClient retrieves a message from a specific client's queue.
+func (q *Queue) DequeueFromClient(ctx context.Context, clientID string) (*Message, error) {
+	result, err := q.client.BRPopLPush(ctx, clientQueueKey(clientID), processingQueueKey, q.blockingTimeout).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, domain.ErrQueueEmpty
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var msg Message
+	if err := json.Unmarshal([]byte(result), &msg); err != nil {
+		return nil, err
+	}
+
+	// Check if client queue is now empty
+	length, _ := q.client.LLen(ctx, clientQueueKey(clientID)).Result()
+	if length == 0 {
+		// Remove from active clients set
+		q.client.SRem(ctx, activeClientsKey, clientID)
+	}
+
+	if q.metrics != nil {
+		q.metrics.QueueDequeued(ctx)
+	}
+
+	return &msg, nil
+}
+
+// GetActiveClients returns a list of clients with pending events.
+func (q *Queue) GetActiveClients(ctx context.Context) ([]string, error) {
+	return q.client.SMembers(ctx, activeClientsKey).Result()
+}
+
+// GetClientQueueLength returns the number of pending events for a client.
+func (q *Queue) GetClientQueueLength(ctx context.Context, clientID string) (int64, error) {
+	return q.client.LLen(ctx, clientQueueKey(clientID)).Result()
+}
+
+// ClientStats returns queue statistics per client.
+func (q *Queue) ClientStats(ctx context.Context) (map[string]int64, error) {
+	clients, err := q.GetActiveClients(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := make(map[string]int64)
+	for _, clientID := range clients {
+		length, _ := q.GetClientQueueLength(ctx, clientID)
+		stats[clientID] = length
+	}
+
+	return stats, nil
+}
+
+func clientQueueKey(clientID string) string {
+	return clientQueuePrefix + clientID
 }

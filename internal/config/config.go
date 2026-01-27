@@ -38,6 +38,16 @@ type Config struct {
 	Worker   WorkerConfig
 	Outbox   OutboxConfig
 	Auth     AuthConfig
+	Metrics  MetricsConfig
+}
+
+// MetricsConfig holds metrics/observability configuration.
+type MetricsConfig struct {
+	Provider       string // Provider name: "otel", "prometheus", "datadog", or "" for noop
+	Endpoint       string // Provider-specific endpoint
+	ServiceName    string
+	ServiceVersion string
+	Environment    string
 }
 
 // DatabaseConfig holds database configuration.
@@ -90,15 +100,15 @@ type AuthConfig struct {
 
 // Validation errors.
 var (
-	ErrSigningKeyRequired   = errors.New("SIGNING_KEY environment variable is required")
-	ErrSigningKeyTooShort   = fmt.Errorf("SIGNING_KEY must be at least %d characters", MinSigningKeyLength)
-	ErrDatabaseURLRequired  = errors.New("DATABASE_URL environment variable is required")
-	ErrRedisURLRequired     = errors.New("REDIS_URL environment variable is required")
-	ErrInvalidURL           = errors.New("invalid URL format")
-	ErrInvalidURLScheme     = errors.New("URL scheme must be http or https")
-	ErrURLTooLong           = fmt.Errorf("URL exceeds maximum length of %d characters", MaxURLLength)
-	ErrPayloadTooLarge      = fmt.Errorf("payload exceeds maximum size of %d bytes", MaxPayloadSize)
-	ErrInternalURLBlocked   = errors.New("internal/private URLs are not allowed")
+	ErrSigningKeyRequired    = errors.New("SIGNING_KEY environment variable is required")
+	ErrSigningKeyTooShort    = fmt.Errorf("SIGNING_KEY must be at least %d characters", MinSigningKeyLength)
+	ErrDatabaseURLRequired   = errors.New("DATABASE_URL environment variable is required")
+	ErrRedisURLRequired      = errors.New("REDIS_URL environment variable is required")
+	ErrInvalidURL            = errors.New("invalid URL format")
+	ErrInvalidURLScheme      = errors.New("URL scheme must be http or https")
+	ErrURLTooLong            = fmt.Errorf("URL exceeds maximum length of %d characters", MaxURLLength)
+	ErrPayloadTooLarge       = fmt.Errorf("payload exceeds maximum size of %d bytes", MaxPayloadSize)
+	ErrInternalURLBlocked    = errors.New("internal/private URLs are not allowed")
 	ErrInvalidIdempotencyKey = errors.New("idempotency key is required and must be non-empty")
 )
 
@@ -152,6 +162,14 @@ func LoadConfig() (*Config, error) {
 	// Auth config
 	cfg.Auth.Enabled = getEnvBool("AUTH_ENABLED", true)
 	cfg.Auth.EnablePlayground = getEnvBool("ENABLE_PLAYGROUND", false)
+
+	// Metrics config
+	// METRICS_PROVIDER: "otel", "otlp", "prometheus", "datadog", or "" for disabled
+	cfg.Metrics.Provider = getEnv("METRICS_PROVIDER", "")
+	cfg.Metrics.Endpoint = getEnv("METRICS_ENDPOINT", "")
+	cfg.Metrics.ServiceName = getEnv("SERVICE_NAME", "relay")
+	cfg.Metrics.ServiceVersion = getEnv("SERVICE_VERSION", "1.0.0")
+	cfg.Metrics.Environment = getEnv("ENVIRONMENT", "development")
 
 	return cfg, nil
 }

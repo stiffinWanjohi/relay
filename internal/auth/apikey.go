@@ -26,9 +26,9 @@ const (
 
 // Errors for authentication.
 var (
-	ErrMissingAPIKey   = errors.New("missing API key")
-	ErrInvalidAPIKey   = errors.New("invalid API key")
-	ErrUnauthorized    = errors.New("unauthorized")
+	ErrMissingAPIKey = errors.New("missing API key")
+	ErrInvalidAPIKey = errors.New("invalid API key")
+	ErrUnauthorized  = errors.New("unauthorized")
 )
 
 // APIKeyValidator validates API keys and returns the associated client ID.

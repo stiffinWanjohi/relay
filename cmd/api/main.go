@@ -16,6 +16,8 @@ import (
 	"github.com/relay/internal/config"
 	"github.com/relay/internal/dedup"
 	"github.com/relay/internal/event"
+	"github.com/relay/internal/observability"
+	_ "github.com/relay/internal/observability/otel" // Register OTel provider
 	"github.com/relay/internal/outbox"
 	"github.com/relay/internal/queue"
 )
@@ -75,9 +77,29 @@ func main() {
 	}
 	logger.Info("connected to redis", "pool_size", cfg.Redis.PoolSize)
 
+	// Initialize metrics provider dynamically
+	metricsProvider, err := observability.NewMetricsProviderByName(ctx, cfg.Metrics.Provider, observability.MetricsConfig{
+		ServiceName:    cfg.Metrics.ServiceName,
+		ServiceVersion: cfg.Metrics.ServiceVersion,
+		Environment:    cfg.Metrics.Environment,
+		Endpoint:       cfg.Metrics.Endpoint,
+	})
+	if err != nil {
+		logger.Error("failed to initialize metrics provider", "provider", cfg.Metrics.Provider, "error", err)
+		os.Exit(1)
+	}
+	defer metricsProvider.Close(ctx)
+
+	if cfg.Metrics.Provider != "" {
+		logger.Info("metrics enabled", "provider", cfg.Metrics.Provider, "endpoint", cfg.Metrics.Endpoint)
+	} else {
+		logger.Info("metrics disabled (set METRICS_PROVIDER to enable)")
+	}
+	metrics := observability.NewMetrics(metricsProvider, cfg.Metrics.ServiceName)
+
 	// Initialize components
 	store := event.NewStore(pool)
-	q := queue.NewQueue(redisClient)
+	q := queue.NewQueue(redisClient).WithMetrics(metrics)
 	dedupChecker := dedup.NewChecker(redisClient)
 
 	// Initialize auth store
@@ -89,7 +111,7 @@ func main() {
 		BatchSize:       cfg.Outbox.BatchSize,
 		CleanupInterval: cfg.Outbox.CleanupInterval,
 		RetentionPeriod: cfg.Outbox.RetentionPeriod,
-	}, logger)
+	}, logger).WithMetrics(metrics)
 	outboxProcessor.Start(ctx)
 
 	// Create server

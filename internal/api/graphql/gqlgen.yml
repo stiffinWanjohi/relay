@@ -31,3 +31,11 @@ models:
     fields:
       deliveryAttempts:
         resolver: true
+      endpoint:
+        resolver: true
+  Endpoint:
+    fields:
+      stats:
+        resolver: true
+      recentEvents:
+        resolver: true

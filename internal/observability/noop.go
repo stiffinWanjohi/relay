@@ -45,9 +45,9 @@ type noopSpan struct{}
 
 var _ Span = (*noopSpan)(nil)
 
-func (n *noopSpan) End()                                         {}
-func (n *noopSpan) SetAttribute(key string, value any)           {}
+func (n *noopSpan) End()                                            {}
+func (n *noopSpan) SetAttribute(key string, value any)              {}
 func (n *noopSpan) SetStatus(status SpanStatus, description string) {}
-func (n *noopSpan) RecordError(err error)                        {}
+func (n *noopSpan) RecordError(err error)                           {}
 func (n *noopSpan) AddEvent(name string, attributes map[string]any) {}
-func (n *noopSpan) SpanContext() SpanContext                     { return SpanContext{} }
+func (n *noopSpan) SpanContext() SpanContext                        { return SpanContext{} }

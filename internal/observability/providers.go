@@ -1,45 +1,109 @@
 package observability
 
-// ProviderRegistry allows registering and retrieving providers by name.
-// Use this to support multiple observability backends that can be selected
-// via configuration.
-type ProviderRegistry struct {
-	metricsProviders map[string]func() (MetricsProvider, error)
-	tracingProviders map[string]func() (TracingProvider, error)
+import (
+	"context"
+	"fmt"
+	"sync"
+)
+
+// MetricsConfig is a generic configuration passed to metrics provider factories.
+type MetricsConfig struct {
+	ServiceName    string
+	ServiceVersion string
+	Environment    string
+	Endpoint       string            // Provider-specific endpoint (OTLP, StatsD, etc.)
+	Options        map[string]string // Additional provider-specific options
 }
 
-// NewProviderRegistry creates a new provider registry.
-func NewProviderRegistry() *ProviderRegistry {
-	return &ProviderRegistry{
-		metricsProviders: make(map[string]func() (MetricsProvider, error)),
-		tracingProviders: make(map[string]func() (TracingProvider, error)),
-	}
+// MetricsProviderFactory creates a MetricsProvider from configuration.
+type MetricsProviderFactory func(ctx context.Context, cfg MetricsConfig) (MetricsProvider, error)
+
+// TracingProviderFactory creates a TracingProvider from configuration.
+type TracingProviderFactory func(ctx context.Context, cfg MetricsConfig) (TracingProvider, error)
+
+// Global registry for provider factories
+var (
+	registryMu       sync.RWMutex
+	metricsFactories = make(map[string]MetricsProviderFactory)
+	tracingFactories = make(map[string]TracingProviderFactory)
+)
+
+// RegisterMetricsProvider registers a metrics provider factory globally.
+// Call this in init() functions of provider packages.
+// Example:
+//
+//	func init() {
+//	    observability.RegisterMetricsProvider("prometheus", NewPrometheusProvider)
+//	    observability.RegisterMetricsProvider("datadog", NewDatadogProvider)
+//	}
+func RegisterMetricsProvider(name string, factory MetricsProviderFactory) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	metricsFactories[name] = factory
 }
 
-// RegisterMetricsProvider registers a metrics provider factory.
-func (r *ProviderRegistry) RegisterMetricsProvider(name string, factory func() (MetricsProvider, error)) {
-	r.metricsProviders[name] = factory
+// RegisterTracingProvider registers a tracing provider factory globally.
+func RegisterTracingProvider(name string, factory TracingProviderFactory) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	tracingFactories[name] = factory
 }
 
-// RegisterTracingProvider registers a tracing provider factory.
-func (r *ProviderRegistry) RegisterTracingProvider(name string, factory func() (TracingProvider, error)) {
-	r.tracingProviders[name] = factory
-}
-
-// GetMetricsProvider returns a metrics provider by name.
-func (r *ProviderRegistry) GetMetricsProvider(name string) (MetricsProvider, error) {
-	factory, ok := r.metricsProviders[name]
-	if !ok {
+// NewMetricsProvider creates a metrics provider by name.
+// Returns NoopMetricsProvider if the provider is not found or name is empty.
+func NewMetricsProviderByName(ctx context.Context, name string, cfg MetricsConfig) (MetricsProvider, error) {
+	if name == "" || name == "noop" {
 		return &NoopMetricsProvider{}, nil
 	}
-	return factory()
+
+	registryMu.RLock()
+	factory, ok := metricsFactories[name]
+	registryMu.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("unknown metrics provider: %s (available: %v)", name, ListMetricsProviders())
+	}
+
+	return factory(ctx, cfg)
 }
 
-// GetTracingProvider returns a tracing provider by name.
-func (r *ProviderRegistry) GetTracingProvider(name string) (TracingProvider, error) {
-	factory, ok := r.tracingProviders[name]
-	if !ok {
+// NewTracingProviderByName creates a tracing provider by name.
+func NewTracingProviderByName(ctx context.Context, name string, cfg MetricsConfig) (TracingProvider, error) {
+	if name == "" || name == "noop" {
 		return &NoopTracingProvider{}, nil
 	}
-	return factory()
+
+	registryMu.RLock()
+	factory, ok := tracingFactories[name]
+	registryMu.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("unknown tracing provider: %s", name)
+	}
+
+	return factory(ctx, cfg)
+}
+
+// ListMetricsProviders returns a list of registered metrics provider names.
+func ListMetricsProviders() []string {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+
+	names := make([]string, 0, len(metricsFactories))
+	for name := range metricsFactories {
+		names = append(names, name)
+	}
+	return names
+}
+
+// ListTracingProviders returns a list of registered tracing provider names.
+func ListTracingProviders() []string {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+
+	names := make([]string, 0, len(tracingFactories))
+	for name := range tracingFactories {
+		names = append(names, name)
+	}
+	return names
 }

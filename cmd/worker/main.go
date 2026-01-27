@@ -15,6 +15,8 @@ import (
 	"github.com/relay/internal/config"
 	"github.com/relay/internal/delivery"
 	"github.com/relay/internal/event"
+	"github.com/relay/internal/observability"
+	_ "github.com/relay/internal/observability/otel" // Register OTel provider
 	"github.com/relay/internal/queue"
 )
 
@@ -73,9 +75,30 @@ func main() {
 	}
 	logger.Info("connected to redis", "pool_size", cfg.Redis.PoolSize)
 
+	// Initialize metrics provider dynamically
+	metricsProvider, err := observability.NewMetricsProviderByName(ctx, cfg.Metrics.Provider, observability.MetricsConfig{
+		ServiceName:    cfg.Metrics.ServiceName,
+		ServiceVersion: cfg.Metrics.ServiceVersion,
+		Environment:    cfg.Metrics.Environment,
+		Endpoint:       cfg.Metrics.Endpoint,
+	})
+	if err != nil {
+		logger.Error("failed to initialize metrics provider", "provider", cfg.Metrics.Provider, "error", err)
+		os.Exit(1)
+	}
+	defer metricsProvider.Close(ctx)
+
+	if cfg.Metrics.Provider != "" {
+		logger.Info("metrics enabled", "provider", cfg.Metrics.Provider, "endpoint", cfg.Metrics.Endpoint)
+	} else {
+		logger.Info("metrics disabled (set METRICS_PROVIDER to enable)")
+	}
+	metrics := observability.NewMetrics(metricsProvider, cfg.Metrics.ServiceName)
+
 	// Initialize components
 	store := event.NewStore(pool)
-	q := queue.NewQueue(redisClient)
+	q := queue.NewQueue(redisClient).WithMetrics(metrics)
+	rateLimiter := delivery.NewRateLimiter(redisClient)
 
 	// Create worker configuration
 	workerConfig := delivery.WorkerConfig{
@@ -83,6 +106,8 @@ func main() {
 		VisibilityTime: cfg.Worker.VisibilityTimeout,
 		SigningKey:     cfg.Worker.SigningKey,
 		CircuitConfig:  delivery.DefaultCircuitConfig(),
+		Metrics:        metrics,
+		RateLimiter:    rateLimiter,
 	}
 
 	// Create and start worker

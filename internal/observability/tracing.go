@@ -184,15 +184,15 @@ func (t *Tracer) Shutdown(ctx context.Context) error {
 
 // Common span names for webhook delivery operations.
 const (
-	SpanHTTPRequest      = "http.request"
-	SpanEventCreate      = "event.create"
-	SpanEventDelivery    = "event.delivery"
-	SpanQueueEnqueue     = "queue.enqueue"
-	SpanQueueDequeue     = "queue.dequeue"
-	SpanDBQuery          = "db.query"
-	SpanRedisCommand     = "redis.command"
-	SpanOutboxProcess    = "outbox.process"
-	SpanCircuitBreaker   = "circuit_breaker.check"
+	SpanHTTPRequest    = "http.request"
+	SpanEventCreate    = "event.create"
+	SpanEventDelivery  = "event.delivery"
+	SpanQueueEnqueue   = "queue.enqueue"
+	SpanQueueDequeue   = "queue.dequeue"
+	SpanDBQuery        = "db.query"
+	SpanRedisCommand   = "redis.command"
+	SpanOutboxProcess  = "outbox.process"
+	SpanCircuitBreaker = "circuit_breaker.check"
 )
 
 // Common attribute keys.

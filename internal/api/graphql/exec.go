@@ -39,6 +39,7 @@ type Config struct {
 }
 
 type ResolverRoot interface {
+	Endpoint() EndpointResolver
 	Event() EventResolver
 	Mutation() MutationResolver
 	Query() QueryResolver
@@ -59,12 +60,58 @@ type ComplexityRoot struct {
 		StatusCode    func(childComplexity int) int
 	}
 
+	Endpoint struct {
+		CircuitResetMs   func(childComplexity int) int
+		CircuitThreshold func(childComplexity int) int
+		ClientID         func(childComplexity int) int
+		CreatedAt        func(childComplexity int) int
+		CustomHeaders    func(childComplexity int) int
+		Description      func(childComplexity int) int
+		EventTypes       func(childComplexity int) int
+		ID               func(childComplexity int) int
+		MaxRetries       func(childComplexity int) int
+		RateLimitPerSec  func(childComplexity int) int
+		RecentEvents     func(childComplexity int, first *int) int
+		RetryBackoffMax  func(childComplexity int) int
+		RetryBackoffMs   func(childComplexity int) int
+		RetryBackoffMult func(childComplexity int) int
+		Stats            func(childComplexity int) int
+		Status           func(childComplexity int) int
+		TimeoutMs        func(childComplexity int) int
+		URL              func(childComplexity int) int
+		UpdatedAt        func(childComplexity int) int
+	}
+
+	EndpointConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	EndpointEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
+	}
+
+	EndpointStats struct {
+		AvgLatencyMs func(childComplexity int) int
+		Delivered    func(childComplexity int) int
+		Failed       func(childComplexity int) int
+		Pending      func(childComplexity int) int
+		SuccessRate  func(childComplexity int) int
+		TotalEvents  func(childComplexity int) int
+	}
+
 	Event struct {
 		Attempts         func(childComplexity int) int
+		ClientID         func(childComplexity int) int
 		CreatedAt        func(childComplexity int) int
 		DeliveredAt      func(childComplexity int) int
 		DeliveryAttempts func(childComplexity int) int
 		Destination      func(childComplexity int) int
+		Endpoint         func(childComplexity int) int
+		EndpointID       func(childComplexity int) int
+		EventType        func(childComplexity int) int
 		Headers          func(childComplexity int) int
 		ID               func(childComplexity int) int
 		IdempotencyKey   func(childComplexity int) int
@@ -87,8 +134,14 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		CreateEvent func(childComplexity int, input CreateEventInput, idempotencyKey string) int
-		ReplayEvent func(childComplexity int, id string) int
+		CreateEndpoint func(childComplexity int, input CreateEndpointInput) int
+		CreateEvent    func(childComplexity int, input CreateEventInput, idempotencyKey string) int
+		DeleteEndpoint func(childComplexity int, id string) int
+		PauseEndpoint  func(childComplexity int, id string) int
+		ReplayEvent    func(childComplexity int, id string) int
+		ResumeEndpoint func(childComplexity int, id string) int
+		SendEvent      func(childComplexity int, input SendEventInput, idempotencyKey string) int
+		UpdateEndpoint func(childComplexity int, id string, input UpdateEndpointInput) int
 	}
 
 	PageInfo struct {
@@ -99,6 +152,8 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
+		Endpoint   func(childComplexity int, id string) int
+		Endpoints  func(childComplexity int, status *EndpointStatus, first *int, after *string) int
 		Event      func(childComplexity int, id string) int
 		Events     func(childComplexity int, status *EventStatus, first *int, after *string) int
 		QueueStats func(childComplexity int) int
@@ -116,17 +171,30 @@ type ComplexityRoot struct {
 	}
 }
 
+type EndpointResolver interface {
+	Stats(ctx context.Context, obj *Endpoint) (*EndpointStats, error)
+	RecentEvents(ctx context.Context, obj *Endpoint, first *int) ([]Event, error)
+}
 type EventResolver interface {
 	DeliveryAttempts(ctx context.Context, obj *Event) ([]DeliveryAttempt, error)
+	Endpoint(ctx context.Context, obj *Event) (*Endpoint, error)
 }
 type MutationResolver interface {
 	CreateEvent(ctx context.Context, input CreateEventInput, idempotencyKey string) (*Event, error)
+	SendEvent(ctx context.Context, input SendEventInput, idempotencyKey string) ([]Event, error)
 	ReplayEvent(ctx context.Context, id string) (*Event, error)
+	CreateEndpoint(ctx context.Context, input CreateEndpointInput) (*Endpoint, error)
+	UpdateEndpoint(ctx context.Context, id string, input UpdateEndpointInput) (*Endpoint, error)
+	DeleteEndpoint(ctx context.Context, id string) (bool, error)
+	PauseEndpoint(ctx context.Context, id string) (*Endpoint, error)
+	ResumeEndpoint(ctx context.Context, id string) (*Endpoint, error)
 }
 type QueryResolver interface {
 	Event(ctx context.Context, id string) (*Event, error)
 	Events(ctx context.Context, status *EventStatus, first *int, after *string) (*EventConnection, error)
 	QueueStats(ctx context.Context) (*QueueStats, error)
+	Endpoint(ctx context.Context, id string) (*Endpoint, error)
+	Endpoints(ctx context.Context, status *EndpointStatus, first *int, after *string) (*EndpointConnection, error)
 }
 
 type executableSchema struct {
@@ -197,12 +265,207 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.DeliveryAttempt.StatusCode(childComplexity), true
 
+	case "Endpoint.circuitResetMs":
+		if e.complexity.Endpoint.CircuitResetMs == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.CircuitResetMs(childComplexity), true
+	case "Endpoint.circuitThreshold":
+		if e.complexity.Endpoint.CircuitThreshold == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.CircuitThreshold(childComplexity), true
+	case "Endpoint.clientId":
+		if e.complexity.Endpoint.ClientID == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.ClientID(childComplexity), true
+	case "Endpoint.createdAt":
+		if e.complexity.Endpoint.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.CreatedAt(childComplexity), true
+	case "Endpoint.customHeaders":
+		if e.complexity.Endpoint.CustomHeaders == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.CustomHeaders(childComplexity), true
+	case "Endpoint.description":
+		if e.complexity.Endpoint.Description == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.Description(childComplexity), true
+	case "Endpoint.eventTypes":
+		if e.complexity.Endpoint.EventTypes == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.EventTypes(childComplexity), true
+	case "Endpoint.id":
+		if e.complexity.Endpoint.ID == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.ID(childComplexity), true
+	case "Endpoint.maxRetries":
+		if e.complexity.Endpoint.MaxRetries == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.MaxRetries(childComplexity), true
+	case "Endpoint.rateLimitPerSec":
+		if e.complexity.Endpoint.RateLimitPerSec == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.RateLimitPerSec(childComplexity), true
+	case "Endpoint.recentEvents":
+		if e.complexity.Endpoint.RecentEvents == nil {
+			break
+		}
+
+		args, err := ec.field_Endpoint_recentEvents_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Endpoint.RecentEvents(childComplexity, args["first"].(*int)), true
+	case "Endpoint.retryBackoffMax":
+		if e.complexity.Endpoint.RetryBackoffMax == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.RetryBackoffMax(childComplexity), true
+	case "Endpoint.retryBackoffMs":
+		if e.complexity.Endpoint.RetryBackoffMs == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.RetryBackoffMs(childComplexity), true
+	case "Endpoint.retryBackoffMult":
+		if e.complexity.Endpoint.RetryBackoffMult == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.RetryBackoffMult(childComplexity), true
+	case "Endpoint.stats":
+		if e.complexity.Endpoint.Stats == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.Stats(childComplexity), true
+	case "Endpoint.status":
+		if e.complexity.Endpoint.Status == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.Status(childComplexity), true
+	case "Endpoint.timeoutMs":
+		if e.complexity.Endpoint.TimeoutMs == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.TimeoutMs(childComplexity), true
+	case "Endpoint.url":
+		if e.complexity.Endpoint.URL == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.URL(childComplexity), true
+	case "Endpoint.updatedAt":
+		if e.complexity.Endpoint.UpdatedAt == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.UpdatedAt(childComplexity), true
+
+	case "EndpointConnection.edges":
+		if e.complexity.EndpointConnection.Edges == nil {
+			break
+		}
+
+		return e.complexity.EndpointConnection.Edges(childComplexity), true
+	case "EndpointConnection.pageInfo":
+		if e.complexity.EndpointConnection.PageInfo == nil {
+			break
+		}
+
+		return e.complexity.EndpointConnection.PageInfo(childComplexity), true
+	case "EndpointConnection.totalCount":
+		if e.complexity.EndpointConnection.TotalCount == nil {
+			break
+		}
+
+		return e.complexity.EndpointConnection.TotalCount(childComplexity), true
+
+	case "EndpointEdge.cursor":
+		if e.complexity.EndpointEdge.Cursor == nil {
+			break
+		}
+
+		return e.complexity.EndpointEdge.Cursor(childComplexity), true
+	case "EndpointEdge.node":
+		if e.complexity.EndpointEdge.Node == nil {
+			break
+		}
+
+		return e.complexity.EndpointEdge.Node(childComplexity), true
+
+	case "EndpointStats.avgLatencyMs":
+		if e.complexity.EndpointStats.AvgLatencyMs == nil {
+			break
+		}
+
+		return e.complexity.EndpointStats.AvgLatencyMs(childComplexity), true
+	case "EndpointStats.delivered":
+		if e.complexity.EndpointStats.Delivered == nil {
+			break
+		}
+
+		return e.complexity.EndpointStats.Delivered(childComplexity), true
+	case "EndpointStats.failed":
+		if e.complexity.EndpointStats.Failed == nil {
+			break
+		}
+
+		return e.complexity.EndpointStats.Failed(childComplexity), true
+	case "EndpointStats.pending":
+		if e.complexity.EndpointStats.Pending == nil {
+			break
+		}
+
+		return e.complexity.EndpointStats.Pending(childComplexity), true
+	case "EndpointStats.successRate":
+		if e.complexity.EndpointStats.SuccessRate == nil {
+			break
+		}
+
+		return e.complexity.EndpointStats.SuccessRate(childComplexity), true
+	case "EndpointStats.totalEvents":
+		if e.complexity.EndpointStats.TotalEvents == nil {
+			break
+		}
+
+		return e.complexity.EndpointStats.TotalEvents(childComplexity), true
+
 	case "Event.attempts":
 		if e.complexity.Event.Attempts == nil {
 			break
 		}
 
 		return e.complexity.Event.Attempts(childComplexity), true
+	case "Event.clientId":
+		if e.complexity.Event.ClientID == nil {
+			break
+		}
+
+		return e.complexity.Event.ClientID(childComplexity), true
 	case "Event.createdAt":
 		if e.complexity.Event.CreatedAt == nil {
 			break
@@ -227,6 +490,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Event.Destination(childComplexity), true
+	case "Event.endpoint":
+		if e.complexity.Event.Endpoint == nil {
+			break
+		}
+
+		return e.complexity.Event.Endpoint(childComplexity), true
+	case "Event.endpointId":
+		if e.complexity.Event.EndpointID == nil {
+			break
+		}
+
+		return e.complexity.Event.EndpointID(childComplexity), true
+	case "Event.eventType":
+		if e.complexity.Event.EventType == nil {
+			break
+		}
+
+		return e.complexity.Event.EventType(childComplexity), true
 	case "Event.headers":
 		if e.complexity.Event.Headers == nil {
 			break
@@ -308,6 +589,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.EventEdge.Node(childComplexity), true
 
+	case "Mutation.createEndpoint":
+		if e.complexity.Mutation.CreateEndpoint == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createEndpoint_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.CreateEndpoint(childComplexity, args["input"].(CreateEndpointInput)), true
 	case "Mutation.createEvent":
 		if e.complexity.Mutation.CreateEvent == nil {
 			break
@@ -319,6 +611,28 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.CreateEvent(childComplexity, args["input"].(CreateEventInput), args["idempotencyKey"].(string)), true
+	case "Mutation.deleteEndpoint":
+		if e.complexity.Mutation.DeleteEndpoint == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_deleteEndpoint_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.DeleteEndpoint(childComplexity, args["id"].(string)), true
+	case "Mutation.pauseEndpoint":
+		if e.complexity.Mutation.PauseEndpoint == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_pauseEndpoint_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.PauseEndpoint(childComplexity, args["id"].(string)), true
 	case "Mutation.replayEvent":
 		if e.complexity.Mutation.ReplayEvent == nil {
 			break
@@ -330,6 +644,39 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.ReplayEvent(childComplexity, args["id"].(string)), true
+	case "Mutation.resumeEndpoint":
+		if e.complexity.Mutation.ResumeEndpoint == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_resumeEndpoint_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ResumeEndpoint(childComplexity, args["id"].(string)), true
+	case "Mutation.sendEvent":
+		if e.complexity.Mutation.SendEvent == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_sendEvent_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.SendEvent(childComplexity, args["input"].(SendEventInput), args["idempotencyKey"].(string)), true
+	case "Mutation.updateEndpoint":
+		if e.complexity.Mutation.UpdateEndpoint == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_updateEndpoint_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.UpdateEndpoint(childComplexity, args["id"].(string), args["input"].(UpdateEndpointInput)), true
 
 	case "PageInfo.endCursor":
 		if e.complexity.PageInfo.EndCursor == nil {
@@ -356,6 +703,28 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.PageInfo.StartCursor(childComplexity), true
 
+	case "Query.endpoint":
+		if e.complexity.Query.Endpoint == nil {
+			break
+		}
+
+		args, err := ec.field_Query_endpoint_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.Endpoint(childComplexity, args["id"].(string)), true
+	case "Query.endpoints":
+		if e.complexity.Query.Endpoints == nil {
+			break
+		}
+
+		args, err := ec.field_Query_endpoints_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.Endpoints(childComplexity, args["status"].(*EndpointStatus), args["first"].(*int), args["after"].(*string)), true
 	case "Query.event":
 		if e.complexity.Query.Event == nil {
 			break
@@ -442,7 +811,10 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := executionContext{opCtx, e, 0, 0, make(chan graphql.DeferredResult)}
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
+		ec.unmarshalInputCreateEndpointInput,
 		ec.unmarshalInputCreateEventInput,
+		ec.unmarshalInputSendEventInput,
+		ec.unmarshalInputUpdateEndpointInput,
 	)
 	first := true
 
@@ -559,6 +931,28 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 
 // region    ***************************** args.gotpl *****************************
 
+func (ec *executionContext) field_Endpoint_recentEvents_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "first", ec.unmarshalOInt2ᚖint)
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_createEndpoint_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNCreateEndpointInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEndpointInput)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_createEvent_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -575,6 +969,28 @@ func (ec *executionContext) field_Mutation_createEvent_args(ctx context.Context,
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_deleteEndpoint_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_pauseEndpoint_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_replayEvent_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -586,6 +1002,49 @@ func (ec *executionContext) field_Mutation_replayEvent_args(ctx context.Context,
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_resumeEndpoint_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_sendEvent_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNSendEventInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐSendEventInput)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "idempotencyKey", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["idempotencyKey"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_updateEndpoint_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNUpdateEndpointInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐUpdateEndpointInput)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg1
+	return args, nil
+}
+
 func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -594,6 +1053,38 @@ func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs
 		return nil, err
 	}
 	args["name"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_endpoint_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_endpoints_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "status", ec.unmarshalOEndpointStatus2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus)
+	if err != nil {
+		return nil, err
+	}
+	args["status"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "first", ec.unmarshalOInt2ᚖint)
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "after", ec.unmarshalOString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg2
 	return args, nil
 }
 
@@ -913,6 +1404,994 @@ func (ec *executionContext) fieldContext_DeliveryAttempt_attemptedAt(_ context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _Endpoint_id(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_clientId(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_clientId,
+		func(ctx context.Context) (any, error) {
+			return obj.ClientID, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_clientId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_url(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_url,
+		func(ctx context.Context) (any, error) {
+			return obj.URL, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_url(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_description(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_description,
+		func(ctx context.Context) (any, error) {
+			return obj.Description, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_description(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_eventTypes(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_eventTypes,
+		func(ctx context.Context) (any, error) {
+			return obj.EventTypes, nil
+		},
+		nil,
+		ec.marshalNString2ᚕstringᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_eventTypes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_status(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_status,
+		func(ctx context.Context) (any, error) {
+			return obj.Status, nil
+		},
+		nil,
+		ec.marshalNEndpointStatus2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type EndpointStatus does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_maxRetries(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_maxRetries,
+		func(ctx context.Context) (any, error) {
+			return obj.MaxRetries, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_maxRetries(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_retryBackoffMs(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_retryBackoffMs,
+		func(ctx context.Context) (any, error) {
+			return obj.RetryBackoffMs, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_retryBackoffMs(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_retryBackoffMax(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_retryBackoffMax,
+		func(ctx context.Context) (any, error) {
+			return obj.RetryBackoffMax, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_retryBackoffMax(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_retryBackoffMult(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_retryBackoffMult,
+		func(ctx context.Context) (any, error) {
+			return obj.RetryBackoffMult, nil
+		},
+		nil,
+		ec.marshalNFloat2float64,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_retryBackoffMult(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Float does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_timeoutMs(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_timeoutMs,
+		func(ctx context.Context) (any, error) {
+			return obj.TimeoutMs, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_timeoutMs(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_rateLimitPerSec(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_rateLimitPerSec,
+		func(ctx context.Context) (any, error) {
+			return obj.RateLimitPerSec, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_rateLimitPerSec(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_circuitThreshold(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_circuitThreshold,
+		func(ctx context.Context) (any, error) {
+			return obj.CircuitThreshold, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_circuitThreshold(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_circuitResetMs(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_circuitResetMs,
+		func(ctx context.Context) (any, error) {
+			return obj.CircuitResetMs, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_circuitResetMs(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_customHeaders(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_customHeaders,
+		func(ctx context.Context) (any, error) {
+			return obj.CustomHeaders, nil
+		},
+		nil,
+		ec.marshalOJSON2map,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_customHeaders(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type JSON does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_createdAt(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_createdAt,
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		ec.marshalNDateTime2timeᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type DateTime does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_updatedAt(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_updatedAt,
+		func(ctx context.Context) (any, error) {
+			return obj.UpdatedAt, nil
+		},
+		nil,
+		ec.marshalNDateTime2timeᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_updatedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type DateTime does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_stats(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_stats,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Endpoint().Stats(ctx, obj)
+		},
+		nil,
+		ec.marshalNEndpointStats2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStats,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_stats(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "totalEvents":
+				return ec.fieldContext_EndpointStats_totalEvents(ctx, field)
+			case "delivered":
+				return ec.fieldContext_EndpointStats_delivered(ctx, field)
+			case "failed":
+				return ec.fieldContext_EndpointStats_failed(ctx, field)
+			case "pending":
+				return ec.fieldContext_EndpointStats_pending(ctx, field)
+			case "successRate":
+				return ec.fieldContext_EndpointStats_successRate(ctx, field)
+			case "avgLatencyMs":
+				return ec.fieldContext_EndpointStats_avgLatencyMs(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EndpointStats", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_recentEvents(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_recentEvents,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Endpoint().RecentEvents(ctx, obj, fc.Args["first"].(*int))
+		},
+		nil,
+		ec.marshalNEvent2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_recentEvents(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Event_id(ctx, field)
+			case "idempotencyKey":
+				return ec.fieldContext_Event_idempotencyKey(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Event_clientId(ctx, field)
+			case "eventType":
+				return ec.fieldContext_Event_eventType(ctx, field)
+			case "endpointId":
+				return ec.fieldContext_Event_endpointId(ctx, field)
+			case "destination":
+				return ec.fieldContext_Event_destination(ctx, field)
+			case "payload":
+				return ec.fieldContext_Event_payload(ctx, field)
+			case "headers":
+				return ec.fieldContext_Event_headers(ctx, field)
+			case "status":
+				return ec.fieldContext_Event_status(ctx, field)
+			case "attempts":
+				return ec.fieldContext_Event_attempts(ctx, field)
+			case "maxAttempts":
+				return ec.fieldContext_Event_maxAttempts(ctx, field)
+			case "nextAttemptAt":
+				return ec.fieldContext_Event_nextAttemptAt(ctx, field)
+			case "deliveredAt":
+				return ec.fieldContext_Event_deliveredAt(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Event_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Event_updatedAt(ctx, field)
+			case "deliveryAttempts":
+				return ec.fieldContext_Event_deliveryAttempts(ctx, field)
+			case "endpoint":
+				return ec.fieldContext_Event_endpoint(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Event", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Endpoint_recentEvents_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointConnection_edges(ctx context.Context, field graphql.CollectedField, obj *EndpointConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointConnection_edges,
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		ec.marshalNEndpointEdge2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdgeᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "node":
+				return ec.fieldContext_EndpointEdge_node(ctx, field)
+			case "cursor":
+				return ec.fieldContext_EndpointEdge_cursor(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EndpointEdge", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *EndpointConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointConnection_pageInfo,
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		ec.marshalNPageInfo2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐPageInfo,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "hasNextPage":
+				return ec.fieldContext_PageInfo_hasNextPage(ctx, field)
+			case "hasPreviousPage":
+				return ec.fieldContext_PageInfo_hasPreviousPage(ctx, field)
+			case "startCursor":
+				return ec.fieldContext_PageInfo_startCursor(ctx, field)
+			case "endCursor":
+				return ec.fieldContext_PageInfo_endCursor(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PageInfo", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *EndpointConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointConnection_totalCount,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointEdge_node(ctx context.Context, field graphql.CollectedField, obj *EndpointEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointEdge_node,
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Endpoint_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Endpoint_clientId(ctx, field)
+			case "url":
+				return ec.fieldContext_Endpoint_url(ctx, field)
+			case "description":
+				return ec.fieldContext_Endpoint_description(ctx, field)
+			case "eventTypes":
+				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
+			case "status":
+				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "maxRetries":
+				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
+			case "retryBackoffMs":
+				return ec.fieldContext_Endpoint_retryBackoffMs(ctx, field)
+			case "retryBackoffMax":
+				return ec.fieldContext_Endpoint_retryBackoffMax(ctx, field)
+			case "retryBackoffMult":
+				return ec.fieldContext_Endpoint_retryBackoffMult(ctx, field)
+			case "timeoutMs":
+				return ec.fieldContext_Endpoint_timeoutMs(ctx, field)
+			case "rateLimitPerSec":
+				return ec.fieldContext_Endpoint_rateLimitPerSec(ctx, field)
+			case "circuitThreshold":
+				return ec.fieldContext_Endpoint_circuitThreshold(ctx, field)
+			case "circuitResetMs":
+				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
+			case "customHeaders":
+				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Endpoint_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Endpoint_updatedAt(ctx, field)
+			case "stats":
+				return ec.fieldContext_Endpoint_stats(ctx, field)
+			case "recentEvents":
+				return ec.fieldContext_Endpoint_recentEvents(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Endpoint", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *EndpointEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointEdge_cursor,
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointStats_totalEvents(ctx context.Context, field graphql.CollectedField, obj *EndpointStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointStats_totalEvents,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalEvents, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointStats_totalEvents(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointStats_delivered(ctx context.Context, field graphql.CollectedField, obj *EndpointStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointStats_delivered,
+		func(ctx context.Context) (any, error) {
+			return obj.Delivered, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointStats_delivered(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointStats_failed(ctx context.Context, field graphql.CollectedField, obj *EndpointStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointStats_failed,
+		func(ctx context.Context) (any, error) {
+			return obj.Failed, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointStats_failed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointStats_pending(ctx context.Context, field graphql.CollectedField, obj *EndpointStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointStats_pending,
+		func(ctx context.Context) (any, error) {
+			return obj.Pending, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointStats_pending(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointStats_successRate(ctx context.Context, field graphql.CollectedField, obj *EndpointStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointStats_successRate,
+		func(ctx context.Context) (any, error) {
+			return obj.SuccessRate, nil
+		},
+		nil,
+		ec.marshalNFloat2float64,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointStats_successRate(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Float does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointStats_avgLatencyMs(ctx context.Context, field graphql.CollectedField, obj *EndpointStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointStats_avgLatencyMs,
+		func(ctx context.Context) (any, error) {
+			return obj.AvgLatencyMs, nil
+		},
+		nil,
+		ec.marshalNFloat2float64,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointStats_avgLatencyMs(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Float does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Event_id(ctx context.Context, field graphql.CollectedField, obj *Event) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -966,6 +2445,93 @@ func (ec *executionContext) fieldContext_Event_idempotencyKey(_ context.Context,
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Event_clientId(ctx context.Context, field graphql.CollectedField, obj *Event) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Event_clientId,
+		func(ctx context.Context) (any, error) {
+			return obj.ClientID, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Event_clientId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Event",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Event_eventType(ctx context.Context, field graphql.CollectedField, obj *Event) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Event_eventType,
+		func(ctx context.Context) (any, error) {
+			return obj.EventType, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Event_eventType(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Event",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Event_endpointId(ctx context.Context, field graphql.CollectedField, obj *Event) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Event_endpointId,
+		func(ctx context.Context) (any, error) {
+			return obj.EndpointID, nil
+		},
+		nil,
+		ec.marshalOID2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Event_endpointId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Event",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
 		},
 	}
 	return fc, nil
@@ -1308,6 +2874,75 @@ func (ec *executionContext) fieldContext_Event_deliveryAttempts(_ context.Contex
 	return fc, nil
 }
 
+func (ec *executionContext) _Event_endpoint(ctx context.Context, field graphql.CollectedField, obj *Event) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Event_endpoint,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Event().Endpoint(ctx, obj)
+		},
+		nil,
+		ec.marshalOEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Event_endpoint(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Event",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Endpoint_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Endpoint_clientId(ctx, field)
+			case "url":
+				return ec.fieldContext_Endpoint_url(ctx, field)
+			case "description":
+				return ec.fieldContext_Endpoint_description(ctx, field)
+			case "eventTypes":
+				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
+			case "status":
+				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "maxRetries":
+				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
+			case "retryBackoffMs":
+				return ec.fieldContext_Endpoint_retryBackoffMs(ctx, field)
+			case "retryBackoffMax":
+				return ec.fieldContext_Endpoint_retryBackoffMax(ctx, field)
+			case "retryBackoffMult":
+				return ec.fieldContext_Endpoint_retryBackoffMult(ctx, field)
+			case "timeoutMs":
+				return ec.fieldContext_Endpoint_timeoutMs(ctx, field)
+			case "rateLimitPerSec":
+				return ec.fieldContext_Endpoint_rateLimitPerSec(ctx, field)
+			case "circuitThreshold":
+				return ec.fieldContext_Endpoint_circuitThreshold(ctx, field)
+			case "circuitResetMs":
+				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
+			case "customHeaders":
+				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Endpoint_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Endpoint_updatedAt(ctx, field)
+			case "stats":
+				return ec.fieldContext_Endpoint_stats(ctx, field)
+			case "recentEvents":
+				return ec.fieldContext_Endpoint_recentEvents(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Endpoint", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _EventConnection_edges(ctx context.Context, field graphql.CollectedField, obj *EventConnection) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1439,6 +3074,12 @@ func (ec *executionContext) fieldContext_EventEdge_node(_ context.Context, field
 				return ec.fieldContext_Event_id(ctx, field)
 			case "idempotencyKey":
 				return ec.fieldContext_Event_idempotencyKey(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Event_clientId(ctx, field)
+			case "eventType":
+				return ec.fieldContext_Event_eventType(ctx, field)
+			case "endpointId":
+				return ec.fieldContext_Event_endpointId(ctx, field)
 			case "destination":
 				return ec.fieldContext_Event_destination(ctx, field)
 			case "payload":
@@ -1461,6 +3102,8 @@ func (ec *executionContext) fieldContext_EventEdge_node(_ context.Context, field
 				return ec.fieldContext_Event_updatedAt(ctx, field)
 			case "deliveryAttempts":
 				return ec.fieldContext_Event_deliveryAttempts(ctx, field)
+			case "endpoint":
+				return ec.fieldContext_Event_endpoint(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Event", field.Name)
 		},
@@ -1526,6 +3169,12 @@ func (ec *executionContext) fieldContext_Mutation_createEvent(ctx context.Contex
 				return ec.fieldContext_Event_id(ctx, field)
 			case "idempotencyKey":
 				return ec.fieldContext_Event_idempotencyKey(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Event_clientId(ctx, field)
+			case "eventType":
+				return ec.fieldContext_Event_eventType(ctx, field)
+			case "endpointId":
+				return ec.fieldContext_Event_endpointId(ctx, field)
 			case "destination":
 				return ec.fieldContext_Event_destination(ctx, field)
 			case "payload":
@@ -1548,6 +3197,8 @@ func (ec *executionContext) fieldContext_Mutation_createEvent(ctx context.Contex
 				return ec.fieldContext_Event_updatedAt(ctx, field)
 			case "deliveryAttempts":
 				return ec.fieldContext_Event_deliveryAttempts(ctx, field)
+			case "endpoint":
+				return ec.fieldContext_Event_endpoint(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Event", field.Name)
 		},
@@ -1560,6 +3211,83 @@ func (ec *executionContext) fieldContext_Mutation_createEvent(ctx context.Contex
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_createEvent_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_sendEvent(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_sendEvent,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().SendEvent(ctx, fc.Args["input"].(SendEventInput), fc.Args["idempotencyKey"].(string))
+		},
+		nil,
+		ec.marshalNEvent2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_sendEvent(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Event_id(ctx, field)
+			case "idempotencyKey":
+				return ec.fieldContext_Event_idempotencyKey(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Event_clientId(ctx, field)
+			case "eventType":
+				return ec.fieldContext_Event_eventType(ctx, field)
+			case "endpointId":
+				return ec.fieldContext_Event_endpointId(ctx, field)
+			case "destination":
+				return ec.fieldContext_Event_destination(ctx, field)
+			case "payload":
+				return ec.fieldContext_Event_payload(ctx, field)
+			case "headers":
+				return ec.fieldContext_Event_headers(ctx, field)
+			case "status":
+				return ec.fieldContext_Event_status(ctx, field)
+			case "attempts":
+				return ec.fieldContext_Event_attempts(ctx, field)
+			case "maxAttempts":
+				return ec.fieldContext_Event_maxAttempts(ctx, field)
+			case "nextAttemptAt":
+				return ec.fieldContext_Event_nextAttemptAt(ctx, field)
+			case "deliveredAt":
+				return ec.fieldContext_Event_deliveredAt(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Event_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Event_updatedAt(ctx, field)
+			case "deliveryAttempts":
+				return ec.fieldContext_Event_deliveryAttempts(ctx, field)
+			case "endpoint":
+				return ec.fieldContext_Event_endpoint(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Event", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_sendEvent_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -1595,6 +3323,12 @@ func (ec *executionContext) fieldContext_Mutation_replayEvent(ctx context.Contex
 				return ec.fieldContext_Event_id(ctx, field)
 			case "idempotencyKey":
 				return ec.fieldContext_Event_idempotencyKey(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Event_clientId(ctx, field)
+			case "eventType":
+				return ec.fieldContext_Event_eventType(ctx, field)
+			case "endpointId":
+				return ec.fieldContext_Event_endpointId(ctx, field)
 			case "destination":
 				return ec.fieldContext_Event_destination(ctx, field)
 			case "payload":
@@ -1617,6 +3351,8 @@ func (ec *executionContext) fieldContext_Mutation_replayEvent(ctx context.Contex
 				return ec.fieldContext_Event_updatedAt(ctx, field)
 			case "deliveryAttempts":
 				return ec.fieldContext_Event_deliveryAttempts(ctx, field)
+			case "endpoint":
+				return ec.fieldContext_Event_endpoint(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Event", field.Name)
 		},
@@ -1629,6 +3365,371 @@ func (ec *executionContext) fieldContext_Mutation_replayEvent(ctx context.Contex
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_replayEvent_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createEndpoint(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_createEndpoint,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().CreateEndpoint(ctx, fc.Args["input"].(CreateEndpointInput))
+		},
+		nil,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_createEndpoint(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Endpoint_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Endpoint_clientId(ctx, field)
+			case "url":
+				return ec.fieldContext_Endpoint_url(ctx, field)
+			case "description":
+				return ec.fieldContext_Endpoint_description(ctx, field)
+			case "eventTypes":
+				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
+			case "status":
+				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "maxRetries":
+				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
+			case "retryBackoffMs":
+				return ec.fieldContext_Endpoint_retryBackoffMs(ctx, field)
+			case "retryBackoffMax":
+				return ec.fieldContext_Endpoint_retryBackoffMax(ctx, field)
+			case "retryBackoffMult":
+				return ec.fieldContext_Endpoint_retryBackoffMult(ctx, field)
+			case "timeoutMs":
+				return ec.fieldContext_Endpoint_timeoutMs(ctx, field)
+			case "rateLimitPerSec":
+				return ec.fieldContext_Endpoint_rateLimitPerSec(ctx, field)
+			case "circuitThreshold":
+				return ec.fieldContext_Endpoint_circuitThreshold(ctx, field)
+			case "circuitResetMs":
+				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
+			case "customHeaders":
+				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Endpoint_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Endpoint_updatedAt(ctx, field)
+			case "stats":
+				return ec.fieldContext_Endpoint_stats(ctx, field)
+			case "recentEvents":
+				return ec.fieldContext_Endpoint_recentEvents(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Endpoint", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createEndpoint_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_updateEndpoint(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_updateEndpoint,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().UpdateEndpoint(ctx, fc.Args["id"].(string), fc.Args["input"].(UpdateEndpointInput))
+		},
+		nil,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_updateEndpoint(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Endpoint_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Endpoint_clientId(ctx, field)
+			case "url":
+				return ec.fieldContext_Endpoint_url(ctx, field)
+			case "description":
+				return ec.fieldContext_Endpoint_description(ctx, field)
+			case "eventTypes":
+				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
+			case "status":
+				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "maxRetries":
+				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
+			case "retryBackoffMs":
+				return ec.fieldContext_Endpoint_retryBackoffMs(ctx, field)
+			case "retryBackoffMax":
+				return ec.fieldContext_Endpoint_retryBackoffMax(ctx, field)
+			case "retryBackoffMult":
+				return ec.fieldContext_Endpoint_retryBackoffMult(ctx, field)
+			case "timeoutMs":
+				return ec.fieldContext_Endpoint_timeoutMs(ctx, field)
+			case "rateLimitPerSec":
+				return ec.fieldContext_Endpoint_rateLimitPerSec(ctx, field)
+			case "circuitThreshold":
+				return ec.fieldContext_Endpoint_circuitThreshold(ctx, field)
+			case "circuitResetMs":
+				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
+			case "customHeaders":
+				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Endpoint_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Endpoint_updatedAt(ctx, field)
+			case "stats":
+				return ec.fieldContext_Endpoint_stats(ctx, field)
+			case "recentEvents":
+				return ec.fieldContext_Endpoint_recentEvents(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Endpoint", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_updateEndpoint_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_deleteEndpoint(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_deleteEndpoint,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().DeleteEndpoint(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_deleteEndpoint(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_deleteEndpoint_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_pauseEndpoint(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_pauseEndpoint,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().PauseEndpoint(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_pauseEndpoint(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Endpoint_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Endpoint_clientId(ctx, field)
+			case "url":
+				return ec.fieldContext_Endpoint_url(ctx, field)
+			case "description":
+				return ec.fieldContext_Endpoint_description(ctx, field)
+			case "eventTypes":
+				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
+			case "status":
+				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "maxRetries":
+				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
+			case "retryBackoffMs":
+				return ec.fieldContext_Endpoint_retryBackoffMs(ctx, field)
+			case "retryBackoffMax":
+				return ec.fieldContext_Endpoint_retryBackoffMax(ctx, field)
+			case "retryBackoffMult":
+				return ec.fieldContext_Endpoint_retryBackoffMult(ctx, field)
+			case "timeoutMs":
+				return ec.fieldContext_Endpoint_timeoutMs(ctx, field)
+			case "rateLimitPerSec":
+				return ec.fieldContext_Endpoint_rateLimitPerSec(ctx, field)
+			case "circuitThreshold":
+				return ec.fieldContext_Endpoint_circuitThreshold(ctx, field)
+			case "circuitResetMs":
+				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
+			case "customHeaders":
+				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Endpoint_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Endpoint_updatedAt(ctx, field)
+			case "stats":
+				return ec.fieldContext_Endpoint_stats(ctx, field)
+			case "recentEvents":
+				return ec.fieldContext_Endpoint_recentEvents(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Endpoint", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_pauseEndpoint_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_resumeEndpoint(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_resumeEndpoint,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().ResumeEndpoint(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_resumeEndpoint(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Endpoint_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Endpoint_clientId(ctx, field)
+			case "url":
+				return ec.fieldContext_Endpoint_url(ctx, field)
+			case "description":
+				return ec.fieldContext_Endpoint_description(ctx, field)
+			case "eventTypes":
+				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
+			case "status":
+				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "maxRetries":
+				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
+			case "retryBackoffMs":
+				return ec.fieldContext_Endpoint_retryBackoffMs(ctx, field)
+			case "retryBackoffMax":
+				return ec.fieldContext_Endpoint_retryBackoffMax(ctx, field)
+			case "retryBackoffMult":
+				return ec.fieldContext_Endpoint_retryBackoffMult(ctx, field)
+			case "timeoutMs":
+				return ec.fieldContext_Endpoint_timeoutMs(ctx, field)
+			case "rateLimitPerSec":
+				return ec.fieldContext_Endpoint_rateLimitPerSec(ctx, field)
+			case "circuitThreshold":
+				return ec.fieldContext_Endpoint_circuitThreshold(ctx, field)
+			case "circuitResetMs":
+				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
+			case "customHeaders":
+				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Endpoint_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Endpoint_updatedAt(ctx, field)
+			case "stats":
+				return ec.fieldContext_Endpoint_stats(ctx, field)
+			case "recentEvents":
+				return ec.fieldContext_Endpoint_recentEvents(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Endpoint", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_resumeEndpoint_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -1780,6 +3881,12 @@ func (ec *executionContext) fieldContext_Query_event(ctx context.Context, field 
 				return ec.fieldContext_Event_id(ctx, field)
 			case "idempotencyKey":
 				return ec.fieldContext_Event_idempotencyKey(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Event_clientId(ctx, field)
+			case "eventType":
+				return ec.fieldContext_Event_eventType(ctx, field)
+			case "endpointId":
+				return ec.fieldContext_Event_endpointId(ctx, field)
 			case "destination":
 				return ec.fieldContext_Event_destination(ctx, field)
 			case "payload":
@@ -1802,6 +3909,8 @@ func (ec *executionContext) fieldContext_Query_event(ctx context.Context, field 
 				return ec.fieldContext_Event_updatedAt(ctx, field)
 			case "deliveryAttempts":
 				return ec.fieldContext_Event_deliveryAttempts(ctx, field)
+			case "endpoint":
+				return ec.fieldContext_Event_endpoint(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Event", field.Name)
 		},
@@ -1912,6 +4021,136 @@ func (ec *executionContext) fieldContext_Query_queueStats(_ context.Context, fie
 			}
 			return nil, fmt.Errorf("no field named %q was found under type QueueStats", field.Name)
 		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_endpoint(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_endpoint,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().Endpoint(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalOEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_endpoint(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Endpoint_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Endpoint_clientId(ctx, field)
+			case "url":
+				return ec.fieldContext_Endpoint_url(ctx, field)
+			case "description":
+				return ec.fieldContext_Endpoint_description(ctx, field)
+			case "eventTypes":
+				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
+			case "status":
+				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "maxRetries":
+				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
+			case "retryBackoffMs":
+				return ec.fieldContext_Endpoint_retryBackoffMs(ctx, field)
+			case "retryBackoffMax":
+				return ec.fieldContext_Endpoint_retryBackoffMax(ctx, field)
+			case "retryBackoffMult":
+				return ec.fieldContext_Endpoint_retryBackoffMult(ctx, field)
+			case "timeoutMs":
+				return ec.fieldContext_Endpoint_timeoutMs(ctx, field)
+			case "rateLimitPerSec":
+				return ec.fieldContext_Endpoint_rateLimitPerSec(ctx, field)
+			case "circuitThreshold":
+				return ec.fieldContext_Endpoint_circuitThreshold(ctx, field)
+			case "circuitResetMs":
+				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
+			case "customHeaders":
+				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Endpoint_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Endpoint_updatedAt(ctx, field)
+			case "stats":
+				return ec.fieldContext_Endpoint_stats(ctx, field)
+			case "recentEvents":
+				return ec.fieldContext_Endpoint_recentEvents(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Endpoint", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_endpoint_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_endpoints(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_endpoints,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().Endpoints(ctx, fc.Args["status"].(*EndpointStatus), fc.Args["first"].(*int), fc.Args["after"].(*string))
+		},
+		nil,
+		ec.marshalNEndpointConnection2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointConnection,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_endpoints(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "edges":
+				return ec.fieldContext_EndpointConnection_edges(ctx, field)
+			case "pageInfo":
+				return ec.fieldContext_EndpointConnection_pageInfo(ctx, field)
+			case "totalCount":
+				return ec.fieldContext_EndpointConnection_totalCount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EndpointConnection", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_endpoints_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
 	}
 	return fc, nil
 }
@@ -3702,6 +5941,110 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
+func (ec *executionContext) unmarshalInputCreateEndpointInput(ctx context.Context, obj any) (CreateEndpointInput, error) {
+	var it CreateEndpointInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"url", "description", "eventTypes", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "url":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("url"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.URL = data
+		case "description":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("description"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Description = data
+		case "eventTypes":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("eventTypes"))
+			data, err := ec.unmarshalNString2ᚕstringᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.EventTypes = data
+		case "maxRetries":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("maxRetries"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.MaxRetries = data
+		case "retryBackoffMs":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("retryBackoffMs"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.RetryBackoffMs = data
+		case "retryBackoffMax":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("retryBackoffMax"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.RetryBackoffMax = data
+		case "retryBackoffMult":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("retryBackoffMult"))
+			data, err := ec.unmarshalOFloat2ᚖfloat64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.RetryBackoffMult = data
+		case "timeoutMs":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("timeoutMs"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.TimeoutMs = data
+		case "rateLimitPerSec":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("rateLimitPerSec"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.RateLimitPerSec = data
+		case "circuitThreshold":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("circuitThreshold"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CircuitThreshold = data
+		case "circuitResetMs":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("circuitResetMs"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CircuitResetMs = data
+		case "customHeaders":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("customHeaders"))
+			data, err := ec.unmarshalOJSON2map(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CustomHeaders = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputCreateEventInput(ctx context.Context, obj any) (CreateEventInput, error) {
 	var it CreateEventInput
 	asMap := map[string]any{}
@@ -3744,6 +6087,158 @@ func (ec *executionContext) unmarshalInputCreateEventInput(ctx context.Context, 
 				return it, err
 			}
 			it.MaxAttempts = data
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputSendEventInput(ctx context.Context, obj any) (SendEventInput, error) {
+	var it SendEventInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"eventType", "payload", "headers"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "eventType":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("eventType"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.EventType = data
+		case "payload":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("payload"))
+			data, err := ec.unmarshalNJSON2map(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Payload = data
+		case "headers":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("headers"))
+			data, err := ec.unmarshalOJSON2map(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Headers = data
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputUpdateEndpointInput(ctx context.Context, obj any) (UpdateEndpointInput, error) {
+	var it UpdateEndpointInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"url", "description", "eventTypes", "status", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "url":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("url"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.URL = data
+		case "description":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("description"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Description = data
+		case "eventTypes":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("eventTypes"))
+			data, err := ec.unmarshalOString2ᚕstringᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.EventTypes = data
+		case "status":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("status"))
+			data, err := ec.unmarshalOEndpointStatus2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Status = data
+		case "maxRetries":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("maxRetries"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.MaxRetries = data
+		case "retryBackoffMs":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("retryBackoffMs"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.RetryBackoffMs = data
+		case "retryBackoffMax":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("retryBackoffMax"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.RetryBackoffMax = data
+		case "retryBackoffMult":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("retryBackoffMult"))
+			data, err := ec.unmarshalOFloat2ᚖfloat64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.RetryBackoffMult = data
+		case "timeoutMs":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("timeoutMs"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.TimeoutMs = data
+		case "rateLimitPerSec":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("rateLimitPerSec"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.RateLimitPerSec = data
+		case "circuitThreshold":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("circuitThreshold"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CircuitThreshold = data
+		case "circuitResetMs":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("circuitResetMs"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CircuitResetMs = data
+		case "customHeaders":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("customHeaders"))
+			data, err := ec.unmarshalOJSON2map(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CustomHeaders = data
 		}
 	}
 
@@ -3823,6 +6318,348 @@ func (ec *executionContext) _DeliveryAttempt(ctx context.Context, sel ast.Select
 	return out
 }
 
+var endpointImplementors = []string{"Endpoint"}
+
+func (ec *executionContext) _Endpoint(ctx context.Context, sel ast.SelectionSet, obj *Endpoint) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, endpointImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Endpoint")
+		case "id":
+			out.Values[i] = ec._Endpoint_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "clientId":
+			out.Values[i] = ec._Endpoint_clientId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "url":
+			out.Values[i] = ec._Endpoint_url(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "description":
+			out.Values[i] = ec._Endpoint_description(ctx, field, obj)
+		case "eventTypes":
+			out.Values[i] = ec._Endpoint_eventTypes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "status":
+			out.Values[i] = ec._Endpoint_status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "maxRetries":
+			out.Values[i] = ec._Endpoint_maxRetries(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "retryBackoffMs":
+			out.Values[i] = ec._Endpoint_retryBackoffMs(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "retryBackoffMax":
+			out.Values[i] = ec._Endpoint_retryBackoffMax(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "retryBackoffMult":
+			out.Values[i] = ec._Endpoint_retryBackoffMult(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "timeoutMs":
+			out.Values[i] = ec._Endpoint_timeoutMs(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "rateLimitPerSec":
+			out.Values[i] = ec._Endpoint_rateLimitPerSec(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "circuitThreshold":
+			out.Values[i] = ec._Endpoint_circuitThreshold(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "circuitResetMs":
+			out.Values[i] = ec._Endpoint_circuitResetMs(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "customHeaders":
+			out.Values[i] = ec._Endpoint_customHeaders(ctx, field, obj)
+		case "createdAt":
+			out.Values[i] = ec._Endpoint_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "updatedAt":
+			out.Values[i] = ec._Endpoint_updatedAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "stats":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Endpoint_stats(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "recentEvents":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Endpoint_recentEvents(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var endpointConnectionImplementors = []string{"EndpointConnection"}
+
+func (ec *executionContext) _EndpointConnection(ctx context.Context, sel ast.SelectionSet, obj *EndpointConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, endpointConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("EndpointConnection")
+		case "edges":
+			out.Values[i] = ec._EndpointConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._EndpointConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._EndpointConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var endpointEdgeImplementors = []string{"EndpointEdge"}
+
+func (ec *executionContext) _EndpointEdge(ctx context.Context, sel ast.SelectionSet, obj *EndpointEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, endpointEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("EndpointEdge")
+		case "node":
+			out.Values[i] = ec._EndpointEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "cursor":
+			out.Values[i] = ec._EndpointEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var endpointStatsImplementors = []string{"EndpointStats"}
+
+func (ec *executionContext) _EndpointStats(ctx context.Context, sel ast.SelectionSet, obj *EndpointStats) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, endpointStatsImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("EndpointStats")
+		case "totalEvents":
+			out.Values[i] = ec._EndpointStats_totalEvents(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "delivered":
+			out.Values[i] = ec._EndpointStats_delivered(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "failed":
+			out.Values[i] = ec._EndpointStats_failed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pending":
+			out.Values[i] = ec._EndpointStats_pending(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "successRate":
+			out.Values[i] = ec._EndpointStats_successRate(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "avgLatencyMs":
+			out.Values[i] = ec._EndpointStats_avgLatencyMs(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var eventImplementors = []string{"Event"}
 
 func (ec *executionContext) _Event(ctx context.Context, sel ast.SelectionSet, obj *Event) graphql.Marshaler {
@@ -3844,6 +6681,12 @@ func (ec *executionContext) _Event(ctx context.Context, sel ast.SelectionSet, ob
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "clientId":
+			out.Values[i] = ec._Event_clientId(ctx, field, obj)
+		case "eventType":
+			out.Values[i] = ec._Event_eventType(ctx, field, obj)
+		case "endpointId":
+			out.Values[i] = ec._Event_endpointId(ctx, field, obj)
 		case "destination":
 			out.Values[i] = ec._Event_destination(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -3898,6 +6741,39 @@ func (ec *executionContext) _Event(ctx context.Context, sel ast.SelectionSet, ob
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "endpoint":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Event_endpoint(ctx, field, obj)
 				return res
 			}
 
@@ -4063,9 +6939,51 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "sendEvent":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_sendEvent(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "replayEvent":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_replayEvent(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createEndpoint":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createEndpoint(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "updateEndpoint":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_updateEndpoint(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "deleteEndpoint":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_deleteEndpoint(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pauseEndpoint":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_pauseEndpoint(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "resumeEndpoint":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_resumeEndpoint(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -4211,6 +7129,47 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_queueStats(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "endpoint":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_endpoint(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "endpoints":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_endpoints(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -4679,6 +7638,11 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
+func (ec *executionContext) unmarshalNCreateEndpointInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEndpointInput(ctx context.Context, v any) (CreateEndpointInput, error) {
+	res, err := ec.unmarshalInputCreateEndpointInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNCreateEventInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEventInput(ctx context.Context, v any) (CreateEventInput, error) {
 	res, err := ec.unmarshalInputCreateEventInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -4748,8 +7712,152 @@ func (ec *executionContext) marshalNDeliveryAttempt2ᚕgithubᚗcomᚋrelayᚋin
 	return ret
 }
 
+func (ec *executionContext) marshalNEndpoint2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint(ctx context.Context, sel ast.SelectionSet, v Endpoint) graphql.Marshaler {
+	return ec._Endpoint(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint(ctx context.Context, sel ast.SelectionSet, v *Endpoint) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Endpoint(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNEndpointConnection2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointConnection(ctx context.Context, sel ast.SelectionSet, v EndpointConnection) graphql.Marshaler {
+	return ec._EndpointConnection(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNEndpointConnection2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointConnection(ctx context.Context, sel ast.SelectionSet, v *EndpointConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._EndpointConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNEndpointEdge2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdge(ctx context.Context, sel ast.SelectionSet, v EndpointEdge) graphql.Marshaler {
+	return ec._EndpointEdge(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNEndpointEdge2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []EndpointEdge) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNEndpointEdge2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdge(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNEndpointStats2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStats(ctx context.Context, sel ast.SelectionSet, v EndpointStats) graphql.Marshaler {
+	return ec._EndpointStats(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNEndpointStats2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStats(ctx context.Context, sel ast.SelectionSet, v *EndpointStats) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._EndpointStats(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNEndpointStatus2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, v any) (EndpointStatus, error) {
+	var res EndpointStatus
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNEndpointStatus2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, sel ast.SelectionSet, v EndpointStatus) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalNEvent2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx context.Context, sel ast.SelectionSet, v Event) graphql.Marshaler {
 	return ec._Event(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNEvent2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventᚄ(ctx context.Context, sel ast.SelectionSet, v []Event) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNEvent2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) marshalNEvent2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx context.Context, sel ast.SelectionSet, v *Event) graphql.Marshaler {
@@ -4834,6 +7942,22 @@ func (ec *executionContext) marshalNEventStatus2githubᚗcomᚋrelayᚋinternal�
 	return v
 }
 
+func (ec *executionContext) unmarshalNFloat2float64(ctx context.Context, v any) (float64, error) {
+	res, err := graphql.UnmarshalFloatContext(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNFloat2float64(ctx context.Context, sel ast.SelectionSet, v float64) graphql.Marshaler {
+	_ = sel
+	res := graphql.MarshalFloatContext(v)
+	if res == graphql.Null {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+	}
+	return graphql.WrapContextMarshaler(ctx, res)
+}
+
 func (ec *executionContext) unmarshalNID2string(ctx context.Context, v any) (string, error) {
 	res, err := graphql.UnmarshalID(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -4912,6 +8036,11 @@ func (ec *executionContext) marshalNQueueStats2ᚖgithubᚗcomᚋrelayᚋinterna
 	return ec._QueueStats(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNSendEventInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐSendEventInput(ctx context.Context, v any) (SendEventInput, error) {
+	res, err := ec.unmarshalInputSendEventInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v any) (string, error) {
 	res, err := graphql.UnmarshalString(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -4926,6 +8055,41 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNString2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNString2string(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) unmarshalNUpdateEndpointInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐUpdateEndpointInput(ctx context.Context, v any) (UpdateEndpointInput, error) {
+	res, err := ec.unmarshalInputUpdateEndpointInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalN__Directive2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐDirective(ctx context.Context, sel ast.SelectionSet, v introspection.Directive) graphql.Marshaler {
@@ -5229,6 +8393,29 @@ func (ec *executionContext) marshalODateTime2ᚖtimeᚐTime(ctx context.Context,
 	return res
 }
 
+func (ec *executionContext) marshalOEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint(ctx context.Context, sel ast.SelectionSet, v *Endpoint) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Endpoint(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOEndpointStatus2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, v any) (*EndpointStatus, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(EndpointStatus)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOEndpointStatus2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, sel ast.SelectionSet, v *EndpointStatus) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
 func (ec *executionContext) marshalOEvent2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx context.Context, sel ast.SelectionSet, v *Event) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
@@ -5250,6 +8437,41 @@ func (ec *executionContext) marshalOEventStatus2ᚖgithubᚗcomᚋrelayᚋintern
 		return graphql.Null
 	}
 	return v
+}
+
+func (ec *executionContext) unmarshalOFloat2ᚖfloat64(ctx context.Context, v any) (*float64, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalFloatContext(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOFloat2ᚖfloat64(ctx context.Context, sel ast.SelectionSet, v *float64) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	res := graphql.MarshalFloatContext(*v)
+	return graphql.WrapContextMarshaler(ctx, res)
+}
+
+func (ec *executionContext) unmarshalOID2ᚖstring(ctx context.Context, v any) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalID(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOID2ᚖstring(ctx context.Context, sel ast.SelectionSet, v *string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	_ = ctx
+	res := graphql.MarshalID(*v)
+	return res
 }
 
 func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v any) (*int, error) {
@@ -5286,6 +8508,42 @@ func (ec *executionContext) marshalOJSON2map(ctx context.Context, sel ast.Select
 	_ = ctx
 	res := graphql.MarshalMap(v)
 	return res
+}
+
+func (ec *executionContext) unmarshalOString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNString2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalOString2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNString2string(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalOString2ᚖstring(ctx context.Context, v any) (*string, error) {

@@ -71,15 +71,20 @@ func (s *Sender) WithTimeout(timeout time.Duration) *Sender {
 	}
 }
 
-// Send delivers a webhook event to its destination.
+// Send delivers a webhook event to its destination using the default timeout.
 func (s *Sender) Send(ctx context.Context, event domain.Event) domain.DeliveryResult {
+	return s.SendWithTimeout(ctx, event, defaultTimeout)
+}
+
+// SendWithTimeout delivers a webhook event with a custom timeout.
+func (s *Sender) SendWithTimeout(ctx context.Context, event domain.Event, timeout time.Duration) domain.DeliveryResult {
 	start := time.Now()
 
 	// Ensure we have a deadline for the request
-	// If context doesn't have a deadline, create one with default timeout
+	// If context doesn't have a deadline, create one with the specified timeout
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, defaultTimeout)
+		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
 

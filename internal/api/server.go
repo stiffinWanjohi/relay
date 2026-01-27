@@ -20,7 +20,7 @@ import (
 
 // ServerConfig holds server configuration.
 type ServerConfig struct {
-	EnableAuth     bool
+	EnableAuth       bool
 	EnablePlayground bool
 }
 

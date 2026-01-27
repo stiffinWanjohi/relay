@@ -22,7 +22,10 @@ const (
 type Event struct {
 	ID             uuid.UUID
 	IdempotencyKey string
-	Destination    string
+	ClientID       string     // Tenant identifier
+	EventType      string     // Event type for routing (e.g., "order.created")
+	EndpointID     *uuid.UUID // Target endpoint (nil for legacy direct destination)
+	Destination    string     // Webhook URL (populated from endpoint or direct)
 	Payload        json.RawMessage
 	Headers        map[string]string
 	Status         EventStatus
@@ -34,7 +37,7 @@ type Event struct {
 	UpdatedAt      time.Time
 }
 
-// NewEvent creates a new event with default values.
+// NewEvent creates a new event with default values (legacy direct destination mode).
 func NewEvent(idempotencyKey, destination string, payload json.RawMessage, headers map[string]string) Event {
 	now := time.Now().UTC()
 	return Event{
@@ -52,6 +55,38 @@ func NewEvent(idempotencyKey, destination string, payload json.RawMessage, heade
 	}
 }
 
+// NewEventForEndpoint creates a new event targeting a specific endpoint.
+func NewEventForEndpoint(clientID, eventType, idempotencyKey string, endpoint Endpoint, payload json.RawMessage, headers map[string]string) Event {
+	now := time.Now().UTC()
+	endpointID := endpoint.ID
+
+	// Merge custom headers from endpoint with event headers
+	mergedHeaders := make(map[string]string)
+	for k, v := range endpoint.CustomHeaders {
+		mergedHeaders[k] = v
+	}
+	for k, v := range headers {
+		mergedHeaders[k] = v // Event headers override endpoint headers
+	}
+
+	return Event{
+		ID:             uuid.New(),
+		IdempotencyKey: idempotencyKey,
+		ClientID:       clientID,
+		EventType:      eventType,
+		EndpointID:     &endpointID,
+		Destination:    endpoint.URL,
+		Payload:        payload,
+		Headers:        mergedHeaders,
+		Status:         EventStatusQueued,
+		Attempts:       0,
+		MaxAttempts:    endpoint.MaxRetries,
+		NextAttemptAt:  &now,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+}
+
 // ShouldRetry returns true if the event should be retried.
 func (e Event) ShouldRetry() bool {
 	return e.Attempts < e.MaxAttempts && e.Status != EventStatusDead
@@ -62,6 +97,9 @@ func (e Event) MarkDelivering() Event {
 	return Event{
 		ID:             e.ID,
 		IdempotencyKey: e.IdempotencyKey,
+		ClientID:       e.ClientID,
+		EventType:      e.EventType,
+		EndpointID:     e.EndpointID,
 		Destination:    e.Destination,
 		Payload:        e.Payload,
 		Headers:        e.Headers,
@@ -81,6 +119,9 @@ func (e Event) MarkDelivered() Event {
 	return Event{
 		ID:             e.ID,
 		IdempotencyKey: e.IdempotencyKey,
+		ClientID:       e.ClientID,
+		EventType:      e.EventType,
+		EndpointID:     e.EndpointID,
 		Destination:    e.Destination,
 		Payload:        e.Payload,
 		Headers:        e.Headers,
@@ -99,6 +140,9 @@ func (e Event) MarkFailed(nextAttemptAt time.Time) Event {
 	return Event{
 		ID:             e.ID,
 		IdempotencyKey: e.IdempotencyKey,
+		ClientID:       e.ClientID,
+		EventType:      e.EventType,
+		EndpointID:     e.EndpointID,
 		Destination:    e.Destination,
 		Payload:        e.Payload,
 		Headers:        e.Headers,
@@ -117,6 +161,9 @@ func (e Event) MarkDead() Event {
 	return Event{
 		ID:             e.ID,
 		IdempotencyKey: e.IdempotencyKey,
+		ClientID:       e.ClientID,
+		EventType:      e.EventType,
+		EndpointID:     e.EndpointID,
 		Destination:    e.Destination,
 		Payload:        e.Payload,
 		Headers:        e.Headers,
@@ -135,6 +182,9 @@ func (e Event) IncrementAttempts() Event {
 	return Event{
 		ID:             e.ID,
 		IdempotencyKey: e.IdempotencyKey,
+		ClientID:       e.ClientID,
+		EventType:      e.EventType,
+		EndpointID:     e.EndpointID,
 		Destination:    e.Destination,
 		Payload:        e.Payload,
 		Headers:        e.Headers,
@@ -159,6 +209,9 @@ func (e Event) Replay() Event {
 	return Event{
 		ID:             e.ID,
 		IdempotencyKey: e.IdempotencyKey,
+		ClientID:       e.ClientID,
+		EventType:      e.EventType,
+		EndpointID:     e.EndpointID,
 		Destination:    e.Destination,
 		Payload:        e.Payload,
 		Headers:        e.Headers,

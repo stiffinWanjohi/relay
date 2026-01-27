@@ -1,8 +1,12 @@
 package delivery
 
 import (
+	"context"
 	"sync"
 	"time"
+
+	"github.com/relay/internal/domain"
+	"github.com/relay/internal/observability"
 )
 
 // CircuitState represents the state of a circuit breaker.
@@ -46,6 +50,26 @@ func DefaultCircuitConfig() CircuitConfig {
 	}
 }
 
+// CircuitConfigFromEndpoint creates a circuit config from endpoint settings.
+// Returns the default config if the endpoint's values are not set.
+func CircuitConfigFromEndpoint(endpoint *domain.Endpoint, defaultConfig CircuitConfig) CircuitConfig {
+	if endpoint == nil {
+		return defaultConfig
+	}
+
+	config := defaultConfig
+
+	if endpoint.CircuitThreshold > 0 {
+		config.FailureThreshold = endpoint.CircuitThreshold
+	}
+
+	if endpoint.CircuitResetMs > 0 {
+		config.OpenDuration = time.Duration(endpoint.CircuitResetMs) * time.Millisecond
+	}
+
+	return config
+}
+
 // circuit represents a single circuit breaker instance.
 type circuit struct {
 	state             CircuitState
@@ -58,11 +82,12 @@ type circuit struct {
 
 // CircuitBreaker manages circuit breakers per destination.
 type CircuitBreaker struct {
-	config       CircuitConfig
-	circuits     map[string]*circuit
-	mu           sync.Mutex // Use single Mutex to avoid race condition between RLock and Lock
-	ttl          time.Duration
-	cleanupStop  chan struct{}
+	config      CircuitConfig
+	circuits    map[string]*circuit
+	mu          sync.Mutex // Use single Mutex to avoid race condition between RLock and Lock
+	ttl         time.Duration
+	cleanupStop chan struct{}
+	metrics     *observability.Metrics
 }
 
 const (
@@ -81,6 +106,12 @@ func NewCircuitBreaker(config CircuitConfig) *CircuitBreaker {
 		cleanupStop: make(chan struct{}),
 	}
 	go cb.cleanupLoop()
+	return cb
+}
+
+// WithMetrics sets a metrics provider for the circuit breaker.
+func (cb *CircuitBreaker) WithMetrics(metrics *observability.Metrics) *CircuitBreaker {
+	cb.metrics = metrics
 	return cb
 }
 
@@ -157,6 +188,7 @@ func (cb *CircuitBreaker) RecordSuccess(destination string) {
 
 	c.lastAccess = time.Now()
 	c.consecutiveErrors = 0
+	previousState := c.state
 
 	switch c.state {
 	case CircuitHalfOpen:
@@ -169,6 +201,11 @@ func (cb *CircuitBreaker) RecordSuccess(destination string) {
 		}
 	case CircuitClosed:
 		c.failures = 0
+	}
+
+	// Record metrics if state changed (recovered from half-open to closed)
+	if cb.metrics != nil && previousState != c.state {
+		cb.metrics.CircuitBreakerStateChange(context.Background(), destination, c.state.String())
 	}
 }
 
@@ -190,6 +227,7 @@ func (cb *CircuitBreaker) RecordFailure(destination string) {
 
 	c.lastAccess = now
 	c.consecutiveErrors++
+	previousState := c.state
 
 	switch c.state {
 	case CircuitClosed:
@@ -203,6 +241,12 @@ func (cb *CircuitBreaker) RecordFailure(destination string) {
 		c.state = CircuitOpen
 		c.successes = 0
 		c.lastStateChange = now
+	}
+
+	// Record metrics if state changed to open (circuit tripped)
+	if cb.metrics != nil && previousState != CircuitOpen && c.state == CircuitOpen {
+		cb.metrics.CircuitBreakerTrip(context.Background(), destination)
+		cb.metrics.CircuitBreakerStateChange(context.Background(), destination, c.state.String())
 	}
 }
 

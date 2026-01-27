@@ -58,9 +58,9 @@ func ParseTimestamp(s string) (int64, error) {
 
 // Verifier verifies webhook signatures.
 type Verifier struct {
-	signer       *Signer
-	maxAge       int64 // Maximum age in seconds
-	allowedSkew  int64 // Allowed clock skew in seconds
+	signer      *Signer
+	maxAge      int64 // Maximum age in seconds
+	allowedSkew int64 // Allowed clock skew in seconds
 }
 
 // NewVerifier creates a new signature verifier.

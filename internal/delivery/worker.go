@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/url"
 	"sync"
 	"time"
 
 	"github.com/relay/internal/domain"
 	"github.com/relay/internal/event"
+	"github.com/relay/internal/observability"
 	"github.com/relay/internal/queue"
 )
 
@@ -28,7 +30,9 @@ type Worker struct {
 	sender         *Sender
 	circuit        *CircuitBreaker
 	retry          *RetryPolicy
+	rateLimiter    *RateLimiter
 	logger         *slog.Logger
+	metrics        *observability.Metrics
 	stopCh         chan struct{}
 	wg             sync.WaitGroup
 	concurrency    int
@@ -41,6 +45,8 @@ type WorkerConfig struct {
 	VisibilityTime time.Duration
 	SigningKey     string
 	CircuitConfig  CircuitConfig
+	Metrics        *observability.Metrics
+	RateLimiter    *RateLimiter
 }
 
 // DefaultWorkerConfig returns the default worker configuration.
@@ -60,7 +66,9 @@ func NewWorker(q *queue.Queue, store *event.Store, config WorkerConfig, logger *
 		sender:         NewSender(config.SigningKey),
 		circuit:        NewCircuitBreaker(config.CircuitConfig),
 		retry:          NewRetryPolicy(),
+		rateLimiter:    config.RateLimiter,
 		logger:         logger,
+		metrics:        config.Metrics,
 		stopCh:         make(chan struct{}),
 		concurrency:    config.Concurrency,
 		visibilityTime: config.VisibilityTime,
@@ -164,8 +172,35 @@ func (w *Worker) processOne(ctx context.Context, logger *slog.Logger) error {
 		return w.queue.Ack(ctx, msg)
 	}
 
+	// Load endpoint configuration if available
+	var endpoint *domain.Endpoint
+	if evt.EndpointID != nil {
+		ep, err := w.store.GetEndpointByID(ctx, *evt.EndpointID)
+		if err == nil {
+			endpoint = &ep
+			logger = logger.With("endpoint_id", endpoint.ID)
+		} else if !errors.Is(err, domain.ErrEndpointNotFound) {
+			logger.Warn("failed to load endpoint config, using defaults", "error", err)
+		}
+	}
+
+	// Determine circuit breaker key (use endpoint ID if available, otherwise destination URL)
+	circuitKey := evt.Destination
+	if endpoint != nil {
+		circuitKey = endpoint.ID.String()
+	}
+
+	// Check rate limit (per-endpoint)
+	if w.rateLimiter != nil && endpoint != nil && endpoint.RateLimitPerSec > 0 {
+		if !w.rateLimiter.Allow(ctx, endpoint.ID.String(), endpoint.RateLimitPerSec) {
+			logger.Debug("rate limited, delaying", "limit", endpoint.RateLimitPerSec)
+			// Short delay for rate limiting - try again soon
+			return w.queue.Nack(ctx, msg, 100*time.Millisecond)
+		}
+	}
+
 	// Check circuit breaker
-	if w.circuit.IsOpen(evt.Destination) {
+	if w.circuit.IsOpen(circuitKey) {
 		logger.Debug("circuit open, delaying")
 		return w.queue.Nack(ctx, msg, circuitOpenDelay)
 	}
@@ -176,8 +211,14 @@ func (w *Worker) processOne(ctx context.Context, logger *slog.Logger) error {
 		logger.Error("failed to update event status", "error", err)
 	}
 
-	// Attempt delivery
-	result := w.sender.Send(ctx, evt)
+	// Determine timeout (use endpoint config if available)
+	timeout := defaultTimeout
+	if endpoint != nil && endpoint.TimeoutMs > 0 {
+		timeout = endpoint.GetTimeoutDuration()
+	}
+
+	// Attempt delivery with endpoint-specific timeout
+	result := w.sender.SendWithTimeout(ctx, evt, timeout)
 
 	// Create delivery attempt record
 	attempt := domain.NewDeliveryAttempt(evt.ID, evt.Attempts)
@@ -196,14 +237,15 @@ func (w *Worker) processOne(ctx context.Context, logger *slog.Logger) error {
 		logger.Error("failed to create delivery attempt", "error", err)
 	}
 
-	// Handle result
+	// Handle result with endpoint config for retry decisions
+	deliveryDuration := time.Duration(result.DurationMs) * time.Millisecond
 	if result.Success {
-		return w.handleSuccess(ctx, msg, evt, logger)
+		return w.handleSuccess(ctx, msg, evt, circuitKey, deliveryDuration, logger)
 	}
-	return w.handleFailure(ctx, msg, evt, result, logger)
+	return w.handleFailure(ctx, msg, evt, endpoint, circuitKey, result, logger)
 }
 
-func (w *Worker) handleSuccess(ctx context.Context, msg *queue.Message, evt domain.Event, logger *slog.Logger) error {
+func (w *Worker) handleSuccess(ctx context.Context, msg *queue.Message, evt domain.Event, circuitKey string, duration time.Duration, logger *slog.Logger) error {
 	logger.Info("delivery successful", "attempts", evt.Attempts)
 
 	// Mark as delivered
@@ -212,29 +254,49 @@ func (w *Worker) handleSuccess(ctx context.Context, msg *queue.Message, evt doma
 		logger.Error("failed to update event status", "error", err)
 	}
 
-	// Record success for circuit breaker
-	w.circuit.RecordSuccess(evt.Destination)
+	// Record success for circuit breaker (using endpoint-based key)
+	w.circuit.RecordSuccess(circuitKey)
+
+	// Record metrics
+	if w.metrics != nil {
+		destHost := extractHost(evt.Destination)
+		w.metrics.EventDelivered(ctx, evt.ClientID, destHost, duration)
+	}
 
 	// Ack the message
 	return w.queue.Ack(ctx, msg)
 }
 
-func (w *Worker) handleFailure(ctx context.Context, msg *queue.Message, evt domain.Event, result domain.DeliveryResult, logger *slog.Logger) error {
+func (w *Worker) handleFailure(ctx context.Context, msg *queue.Message, evt domain.Event, endpoint *domain.Endpoint, circuitKey string, result domain.DeliveryResult, logger *slog.Logger) error {
 	logger.Warn("delivery failed",
 		"attempts", evt.Attempts,
 		"status_code", result.StatusCode,
 		"error", result.Error,
 	)
 
-	// Record failure for circuit breaker
-	w.circuit.RecordFailure(evt.Destination)
+	// Record failure for circuit breaker (using endpoint-based key)
+	w.circuit.RecordFailure(circuitKey)
 
-	// Check if we should retry
-	if evt.ShouldRetry() && w.retry.ShouldRetry(evt.Attempts, evt.MaxAttempts) {
-		delay := w.retry.NextRetryDelay(evt.Attempts)
+	// Record failure metric
+	if w.metrics != nil {
+		reason := classifyFailureReason(result)
+		w.metrics.EventFailed(ctx, evt.ClientID, reason)
+	}
+
+	// Check if we should retry using endpoint-specific configuration
+	shouldRetry := evt.ShouldRetry() && w.retry.ShouldRetryForEndpoint(evt.Attempts, endpoint)
+
+	if shouldRetry {
+		// Calculate delay using endpoint-specific backoff
+		delay := w.retry.NextRetryDelayForEndpoint(evt.Attempts, endpoint)
 		nextAttempt := time.Now().UTC().Add(delay)
 
 		logger.Info("scheduling retry", "delay", delay, "next_attempt_at", nextAttempt)
+
+		// Record retry metric
+		if w.metrics != nil {
+			w.metrics.EventRetry(ctx, evt.ClientID, evt.Attempts)
+		}
 
 		evt = evt.MarkFailed(nextAttempt)
 		if _, err := w.store.Update(ctx, evt); err != nil {
@@ -259,4 +321,54 @@ func (w *Worker) handleFailure(ctx context.Context, msg *queue.Message, evt doma
 // CircuitStats returns the current circuit breaker statistics.
 func (w *Worker) CircuitStats() CircuitStats {
 	return w.circuit.Stats()
+}
+
+// extractHost extracts the host from a URL for metrics tagging.
+func extractHost(destination string) string {
+	u, err := url.Parse(destination)
+	if err != nil {
+		return "unknown"
+	}
+	return u.Host
+}
+
+// classifyFailureReason classifies the delivery failure for metrics.
+func classifyFailureReason(result domain.DeliveryResult) string {
+	if result.Error != nil {
+		errStr := result.Error.Error()
+		switch {
+		case contains(errStr, "timeout"):
+			return "timeout"
+		case contains(errStr, "connection refused"):
+			return "connection_refused"
+		case contains(errStr, "no such host"):
+			return "dns_error"
+		case contains(errStr, "TLS"):
+			return "tls_error"
+		default:
+			return "network_error"
+		}
+	}
+
+	switch {
+	case result.StatusCode >= 500:
+		return "server_error"
+	case result.StatusCode >= 400:
+		return "client_error"
+	default:
+		return "unknown"
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr))
+}
+
+func containsAt(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

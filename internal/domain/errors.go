@@ -10,6 +10,21 @@ var (
 	// ErrDuplicateEvent is returned when an event with the same idempotency key exists.
 	ErrDuplicateEvent = errors.New("duplicate event: idempotency key already exists")
 
+	// ErrEndpointNotFound is returned when an endpoint cannot be found.
+	ErrEndpointNotFound = errors.New("endpoint not found")
+
+	// ErrNoSubscribedEndpoints is returned when no endpoints subscribe to an event type.
+	ErrNoSubscribedEndpoints = errors.New("no endpoints subscribed to event type")
+
+	// ErrEndpointDisabled is returned when attempting to deliver to a disabled endpoint.
+	ErrEndpointDisabled = errors.New("endpoint is disabled")
+
+	// ErrEndpointPaused is returned when attempting to deliver to a paused endpoint.
+	ErrEndpointPaused = errors.New("endpoint is paused")
+
+	// ErrRateLimited is returned when the rate limit is exceeded for an endpoint.
+	ErrRateLimited = errors.New("rate limit exceeded")
+
 	// ErrInvalidEventStatus is returned when an event status transition is invalid.
 	ErrInvalidEventStatus = errors.New("invalid event status transition")
 

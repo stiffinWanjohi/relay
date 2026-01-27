@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/relay/internal/event"
+	"github.com/relay/internal/observability"
 	"github.com/relay/internal/queue"
 )
 
@@ -53,6 +54,7 @@ type Processor struct {
 	queue    *queue.Queue
 	config   ProcessorConfig
 	logger   *slog.Logger
+	metrics  *observability.Metrics
 	workerID string
 	stopCh   chan struct{}
 	wg       sync.WaitGroup
@@ -68,6 +70,12 @@ func NewProcessor(store *event.Store, q *queue.Queue, config ProcessorConfig, lo
 		workerID: uuid.New().String(),
 		stopCh:   make(chan struct{}),
 	}
+}
+
+// WithMetrics sets a metrics provider for the processor.
+func (p *Processor) WithMetrics(metrics *observability.Metrics) *Processor {
+	p.metrics = metrics
+	return p
 }
 
 // Start begins processing outbox entries.
@@ -151,6 +159,11 @@ func (p *Processor) processBatch(ctx context.Context) error {
 		return nil
 	}
 
+	// Record pending count metric
+	if p.metrics != nil {
+		p.metrics.OutboxPending(ctx, int64(len(entries)))
+	}
+
 	p.logger.Debug("processing outbox entries", "count", len(entries), "worker_id", p.workerID)
 
 	for _, entry := range entries {
@@ -162,6 +175,7 @@ func (p *Processor) processBatch(ctx context.Context) error {
 		default:
 		}
 
+		start := time.Now()
 		if err := p.processEntry(ctx, entry); err != nil {
 			p.logger.Error("failed to process outbox entry",
 				"outbox_id", entry.ID,
@@ -175,6 +189,10 @@ func (p *Processor) processBatch(ctx context.Context) error {
 					"error", markErr,
 				)
 			}
+			// Record failure metric
+			if p.metrics != nil {
+				p.metrics.OutboxFailed(ctx)
+			}
 			continue
 		}
 
@@ -184,6 +202,11 @@ func (p *Processor) processBatch(ctx context.Context) error {
 				"outbox_id", entry.ID,
 				"error", err,
 			)
+		}
+
+		// Record success metric
+		if p.metrics != nil {
+			p.metrics.OutboxProcessed(ctx, time.Since(start))
 		}
 	}
 

@@ -10,6 +10,21 @@ import (
 	"time"
 )
 
+type CreateEndpointInput struct {
+	URL              string         `json:"url"`
+	Description      *string        `json:"description,omitempty"`
+	EventTypes       []string       `json:"eventTypes"`
+	MaxRetries       *int           `json:"maxRetries,omitempty"`
+	RetryBackoffMs   *int           `json:"retryBackoffMs,omitempty"`
+	RetryBackoffMax  *int           `json:"retryBackoffMax,omitempty"`
+	RetryBackoffMult *float64       `json:"retryBackoffMult,omitempty"`
+	TimeoutMs        *int           `json:"timeoutMs,omitempty"`
+	RateLimitPerSec  *int           `json:"rateLimitPerSec,omitempty"`
+	CircuitThreshold *int           `json:"circuitThreshold,omitempty"`
+	CircuitResetMs   *int           `json:"circuitResetMs,omitempty"`
+	CustomHeaders    map[string]any `json:"customHeaders,omitempty"`
+}
+
 type CreateEventInput struct {
 	Destination string         `json:"destination"`
 	Payload     map[string]any `json:"payload"`
@@ -28,9 +43,54 @@ type DeliveryAttempt struct {
 	AttemptedAt   time.Time `json:"attemptedAt"`
 }
 
+type Endpoint struct {
+	ID               string         `json:"id"`
+	ClientID         string         `json:"clientId"`
+	URL              string         `json:"url"`
+	Description      *string        `json:"description,omitempty"`
+	EventTypes       []string       `json:"eventTypes"`
+	Status           EndpointStatus `json:"status"`
+	MaxRetries       int            `json:"maxRetries"`
+	RetryBackoffMs   int            `json:"retryBackoffMs"`
+	RetryBackoffMax  int            `json:"retryBackoffMax"`
+	RetryBackoffMult float64        `json:"retryBackoffMult"`
+	TimeoutMs        int            `json:"timeoutMs"`
+	RateLimitPerSec  int            `json:"rateLimitPerSec"`
+	CircuitThreshold int            `json:"circuitThreshold"`
+	CircuitResetMs   int            `json:"circuitResetMs"`
+	CustomHeaders    map[string]any `json:"customHeaders,omitempty"`
+	CreatedAt        time.Time      `json:"createdAt"`
+	UpdatedAt        time.Time      `json:"updatedAt"`
+	Stats            *EndpointStats `json:"stats"`
+	RecentEvents     []Event        `json:"recentEvents"`
+}
+
+type EndpointConnection struct {
+	Edges      []EndpointEdge `json:"edges"`
+	PageInfo   *PageInfo      `json:"pageInfo"`
+	TotalCount int            `json:"totalCount"`
+}
+
+type EndpointEdge struct {
+	Node   *Endpoint `json:"node"`
+	Cursor string    `json:"cursor"`
+}
+
+type EndpointStats struct {
+	TotalEvents  int     `json:"totalEvents"`
+	Delivered    int     `json:"delivered"`
+	Failed       int     `json:"failed"`
+	Pending      int     `json:"pending"`
+	SuccessRate  float64 `json:"successRate"`
+	AvgLatencyMs float64 `json:"avgLatencyMs"`
+}
+
 type Event struct {
 	ID               string            `json:"id"`
 	IdempotencyKey   string            `json:"idempotencyKey"`
+	ClientID         *string           `json:"clientId,omitempty"`
+	EventType        *string           `json:"eventType,omitempty"`
+	EndpointID       *string           `json:"endpointId,omitempty"`
 	Destination      string            `json:"destination"`
 	Payload          map[string]any    `json:"payload"`
 	Headers          map[string]any    `json:"headers,omitempty"`
@@ -42,6 +102,7 @@ type Event struct {
 	CreatedAt        time.Time         `json:"createdAt"`
 	UpdatedAt        time.Time         `json:"updatedAt"`
 	DeliveryAttempts []DeliveryAttempt `json:"deliveryAttempts"`
+	Endpoint         *Endpoint         `json:"endpoint,omitempty"`
 }
 
 type EventConnection struct {
@@ -77,6 +138,85 @@ type QueueStats struct {
 	Pending    int `json:"pending"`
 	Processing int `json:"processing"`
 	Delayed    int `json:"delayed"`
+}
+
+type SendEventInput struct {
+	EventType string         `json:"eventType"`
+	Payload   map[string]any `json:"payload"`
+	Headers   map[string]any `json:"headers,omitempty"`
+}
+
+type UpdateEndpointInput struct {
+	URL              *string         `json:"url,omitempty"`
+	Description      *string         `json:"description,omitempty"`
+	EventTypes       []string        `json:"eventTypes,omitempty"`
+	Status           *EndpointStatus `json:"status,omitempty"`
+	MaxRetries       *int            `json:"maxRetries,omitempty"`
+	RetryBackoffMs   *int            `json:"retryBackoffMs,omitempty"`
+	RetryBackoffMax  *int            `json:"retryBackoffMax,omitempty"`
+	RetryBackoffMult *float64        `json:"retryBackoffMult,omitempty"`
+	TimeoutMs        *int            `json:"timeoutMs,omitempty"`
+	RateLimitPerSec  *int            `json:"rateLimitPerSec,omitempty"`
+	CircuitThreshold *int            `json:"circuitThreshold,omitempty"`
+	CircuitResetMs   *int            `json:"circuitResetMs,omitempty"`
+	CustomHeaders    map[string]any  `json:"customHeaders,omitempty"`
+}
+
+type EndpointStatus string
+
+const (
+	EndpointStatusActive   EndpointStatus = "ACTIVE"
+	EndpointStatusPaused   EndpointStatus = "PAUSED"
+	EndpointStatusDisabled EndpointStatus = "DISABLED"
+)
+
+var AllEndpointStatus = []EndpointStatus{
+	EndpointStatusActive,
+	EndpointStatusPaused,
+	EndpointStatusDisabled,
+}
+
+func (e EndpointStatus) IsValid() bool {
+	switch e {
+	case EndpointStatusActive, EndpointStatusPaused, EndpointStatusDisabled:
+		return true
+	}
+	return false
+}
+
+func (e EndpointStatus) String() string {
+	return string(e)
+}
+
+func (e *EndpointStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = EndpointStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid EndpointStatus", str)
+	}
+	return nil
+}
+
+func (e EndpointStatus) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *EndpointStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e EndpointStatus) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }
 
 type EventStatus string
