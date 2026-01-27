@@ -5,12 +5,14 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/relay/internal/config"
 	"github.com/relay/internal/delivery"
 	"github.com/relay/internal/event"
 	"github.com/relay/internal/queue"
@@ -21,15 +23,26 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 
-	// Load configuration from environment
-	databaseURL := getEnv("DATABASE_URL", "postgres://relay:relay@localhost:5432/relay?sslmode=disable")
-	redisURL := getEnv("REDIS_URL", "localhost:6379")
-	signingKey := getEnv("SIGNING_KEY", "default-signing-key-change-me-in-production")
-	concurrency := getEnvInt("CONCURRENCY", 10)
+	// Load configuration
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logger.Error("failed to load configuration", "error", err)
+		os.Exit(1)
+	}
 
-	// Connect to PostgreSQL
+	// Connect to PostgreSQL with connection pool settings
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, databaseURL)
+	poolConfig, err := pgxpool.ParseConfig(cfg.Database.URL)
+	if err != nil {
+		logger.Error("failed to parse database URL", "error", err)
+		os.Exit(1)
+	}
+	poolConfig.MaxConns = cfg.Database.MaxConns
+	poolConfig.MinConns = cfg.Database.MinConns
+	poolConfig.MaxConnLifetime = cfg.Database.MaxConnLifetime
+	poolConfig.MaxConnIdleTime = cfg.Database.MaxConnIdleTime
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		logger.Error("failed to connect to database", "error", err)
 		os.Exit(1)
@@ -40,11 +53,17 @@ func main() {
 		logger.Error("failed to ping database", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("connected to database")
+	logger.Info("connected to database",
+		"max_conns", cfg.Database.MaxConns,
+		"min_conns", cfg.Database.MinConns,
+	)
 
-	// Connect to Redis
+	// Connect to Redis with proper configuration
 	redisClient := redis.NewClient(&redis.Options{
-		Addr: redisURL,
+		Addr:         cfg.Redis.URL,
+		PoolSize:     cfg.Redis.PoolSize,
+		ReadTimeout:  cfg.Redis.ReadTimeout,
+		WriteTimeout: cfg.Redis.WriteTimeout,
 	})
 	defer redisClient.Close()
 
@@ -52,32 +71,37 @@ func main() {
 		logger.Error("failed to connect to redis", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("connected to redis")
+	logger.Info("connected to redis", "pool_size", cfg.Redis.PoolSize)
 
 	// Initialize components
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
 
 	// Create worker configuration
-	config := delivery.WorkerConfig{
-		Concurrency:    concurrency,
-		VisibilityTime: 30 * time.Second,
-		SigningKey:     signingKey,
+	workerConfig := delivery.WorkerConfig{
+		Concurrency:    cfg.Worker.Concurrency,
+		VisibilityTime: cfg.Worker.VisibilityTimeout,
+		SigningKey:     cfg.Worker.SigningKey,
 		CircuitConfig:  delivery.DefaultCircuitConfig(),
 	}
 
 	// Create and start worker
-	worker := delivery.NewWorker(q, store, config, logger)
+	worker := delivery.NewWorker(q, store, workerConfig, logger)
 
 	// Create cancellable context
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// WaitGroup for graceful shutdown
+	var wg sync.WaitGroup
+
 	// Start worker
 	worker.Start(ctx)
 
 	// Start stale message recovery goroutine
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 
@@ -96,7 +120,7 @@ func main() {
 		}
 	}()
 
-	logger.Info("worker started", "concurrency", concurrency)
+	logger.Info("worker started", "concurrency", cfg.Worker.Concurrency)
 
 	// Wait for shutdown signal
 	quit := make(chan os.Signal, 1)
@@ -105,34 +129,21 @@ func main() {
 
 	logger.Info("shutting down worker")
 
-	// Stop worker
+	// Stop worker and cancel context
 	worker.Stop()
 	cancel()
 
-	// Give workers time to finish current tasks
-	time.Sleep(2 * time.Second)
+	// Wait for goroutines with timeout
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 
-	logger.Info("worker stopped")
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+	select {
+	case <-done:
+		logger.Info("worker stopped gracefully")
+	case <-time.After(cfg.Worker.ShutdownTimeout):
+		logger.Warn("worker shutdown timed out")
 	}
-	return defaultValue
-}
-
-func getEnvInt(key string, defaultValue int) int {
-	if value := os.Getenv(key); value != "" {
-		var result int
-		for _, c := range value {
-			if c >= '0' && c <= '9' {
-				result = result*10 + int(c-'0')
-			}
-		}
-		if result > 0 {
-			return result
-		}
-	}
-	return defaultValue
 }

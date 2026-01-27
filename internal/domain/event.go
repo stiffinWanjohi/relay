@@ -152,3 +152,22 @@ func (e Event) IncrementAttempts() Event {
 func (e Event) IsTerminal() bool {
 	return e.Status == EventStatusDelivered || e.Status == EventStatusDead
 }
+
+// Replay resets the event for redelivery (only valid for dead or failed events).
+func (e Event) Replay() Event {
+	now := time.Now().UTC()
+	return Event{
+		ID:             e.ID,
+		IdempotencyKey: e.IdempotencyKey,
+		Destination:    e.Destination,
+		Payload:        e.Payload,
+		Headers:        e.Headers,
+		Status:         EventStatusQueued,
+		Attempts:       0,
+		MaxAttempts:    e.MaxAttempts,
+		NextAttemptAt:  &now,
+		DeliveredAt:    nil,
+		CreatedAt:      e.CreatedAt,
+		UpdatedAt:      now,
+	}
+}

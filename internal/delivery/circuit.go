@@ -59,7 +59,7 @@ type circuit struct {
 type CircuitBreaker struct {
 	config   CircuitConfig
 	circuits map[string]*circuit
-	mu       sync.RWMutex
+	mu       sync.Mutex // Use single Mutex to avoid race condition between RLock and Lock
 }
 
 // NewCircuitBreaker creates a new circuit breaker manager.
@@ -71,17 +71,15 @@ func NewCircuitBreaker(config CircuitConfig) *CircuitBreaker {
 }
 
 // IsOpen checks if the circuit is open for a destination.
+// Returns true if the circuit is open and requests should be blocked.
 func (cb *CircuitBreaker) IsOpen(destination string) bool {
-	cb.mu.RLock()
-	c, exists := cb.circuits[destination]
-	cb.mu.RUnlock()
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
 
+	c, exists := cb.circuits[destination]
 	if !exists {
 		return false
 	}
-
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
 
 	// Check if we should transition from open to half-open
 	if c.state == CircuitOpen {
@@ -89,9 +87,9 @@ func (cb *CircuitBreaker) IsOpen(destination string) bool {
 			c.state = CircuitHalfOpen
 			c.successes = 0
 			c.lastStateChange = time.Now()
-			return false
+			return false // Allow request through in half-open state
 		}
-		return true
+		return true // Circuit is open, block request
 	}
 
 	return false
@@ -156,12 +154,19 @@ func (cb *CircuitBreaker) RecordFailure(destination string) {
 
 // GetState returns the current state of a circuit.
 func (cb *CircuitBreaker) GetState(destination string) CircuitState {
-	cb.mu.RLock()
-	defer cb.mu.RUnlock()
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
 
 	c, exists := cb.circuits[destination]
 	if !exists {
 		return CircuitClosed
+	}
+
+	// Also check for state transition here for consistency
+	if c.state == CircuitOpen && time.Since(c.lastStateChange) >= cb.config.OpenDuration {
+		c.state = CircuitHalfOpen
+		c.successes = 0
+		c.lastStateChange = time.Now()
 	}
 
 	return c.state
@@ -177,8 +182,8 @@ func (cb *CircuitBreaker) Reset(destination string) {
 
 // Stats returns statistics about circuit breakers.
 func (cb *CircuitBreaker) Stats() CircuitStats {
-	cb.mu.RLock()
-	defer cb.mu.RUnlock()
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
 
 	stats := CircuitStats{
 		Circuits: make(map[string]CircuitInfo),

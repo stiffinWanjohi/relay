@@ -10,9 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/google/uuid"
+	"github.com/relay/internal/config"
 	"github.com/relay/internal/domain"
 )
 
@@ -37,11 +37,23 @@ func (r *eventResolver) DeliveryAttempts(ctx context.Context, obj *Event) ([]Del
 
 // CreateEvent is the resolver for the createEvent field.
 func (r *mutationResolver) CreateEvent(ctx context.Context, input CreateEventInput, idempotencyKey string) (*Event, error) {
-	if input.Destination == "" {
-		return nil, fmt.Errorf("destination is required")
+	// Validate idempotency key
+	if err := config.ValidateIdempotencyKey(idempotencyKey); err != nil {
+		return nil, err
 	}
-	if idempotencyKey == "" {
-		return nil, fmt.Errorf("idempotencyKey is required")
+
+	// Validate destination URL (SSRF protection)
+	if err := config.ValidateDestinationURL(input.Destination); err != nil {
+		return nil, fmt.Errorf("invalid destination: %w", err)
+	}
+
+	// Marshal and validate payload size
+	payload, err := json.Marshal(input.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("invalid payload: %w", err)
+	}
+	if err := config.ValidatePayloadSize(payload); err != nil {
+		return nil, err
 	}
 
 	// Check idempotency
@@ -56,12 +68,6 @@ func (r *mutationResolver) CreateEvent(ctx context.Context, input CreateEventInp
 			return nil, err
 		}
 		return domainEventToGQL(evt), nil
-	}
-
-	// Marshal payload
-	payload, err := json.Marshal(input.Payload)
-	if err != nil {
-		return nil, fmt.Errorf("invalid payload: %w", err)
 	}
 
 	// Parse headers
@@ -115,10 +121,8 @@ func (r *mutationResolver) ReplayEvent(ctx context.Context, id string) (*Event, 
 		return nil, fmt.Errorf("can only replay dead or failed events")
 	}
 
-	now := time.Now().UTC()
-	evt.Status = domain.EventStatusQueued
-	evt.Attempts = 0
-	evt.NextAttemptAt = &now
+	// Use domain method for immutability
+	evt = evt.Replay()
 
 	evt, err = r.Store.Update(ctx, evt)
 	if err != nil {

@@ -7,12 +7,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/relay/internal/api"
+	"github.com/relay/internal/config"
 	"github.com/relay/internal/dedup"
 	"github.com/relay/internal/event"
 	"github.com/relay/internal/queue"
@@ -23,14 +23,26 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 
-	// Load configuration from environment
-	databaseURL := getEnv("DATABASE_URL", "postgres://relay:relay@localhost:5432/relay?sslmode=disable")
-	redisURL := getEnv("REDIS_URL", "localhost:6379")
-	addr := getEnv("ADDR", ":8080")
+	// Load configuration
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logger.Error("failed to load configuration", "error", err)
+		os.Exit(1)
+	}
 
-	// Connect to PostgreSQL
+	// Connect to PostgreSQL with connection pool settings
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, databaseURL)
+	poolConfig, err := pgxpool.ParseConfig(cfg.Database.URL)
+	if err != nil {
+		logger.Error("failed to parse database URL", "error", err)
+		os.Exit(1)
+	}
+	poolConfig.MaxConns = cfg.Database.MaxConns
+	poolConfig.MinConns = cfg.Database.MinConns
+	poolConfig.MaxConnLifetime = cfg.Database.MaxConnLifetime
+	poolConfig.MaxConnIdleTime = cfg.Database.MaxConnIdleTime
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		logger.Error("failed to connect to database", "error", err)
 		os.Exit(1)
@@ -41,11 +53,17 @@ func main() {
 		logger.Error("failed to ping database", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("connected to database")
+	logger.Info("connected to database",
+		"max_conns", cfg.Database.MaxConns,
+		"min_conns", cfg.Database.MinConns,
+	)
 
-	// Connect to Redis
+	// Connect to Redis with proper configuration
 	redisClient := redis.NewClient(&redis.Options{
-		Addr: redisURL,
+		Addr:         cfg.Redis.URL,
+		PoolSize:     cfg.Redis.PoolSize,
+		ReadTimeout:  cfg.Redis.ReadTimeout,
+		WriteTimeout: cfg.Redis.WriteTimeout,
 	})
 	defer redisClient.Close()
 
@@ -53,7 +71,7 @@ func main() {
 		logger.Error("failed to connect to redis", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("connected to redis")
+	logger.Info("connected to redis", "pool_size", cfg.Redis.PoolSize)
 
 	// Initialize components
 	store := event.NewStore(pool)
@@ -63,18 +81,18 @@ func main() {
 	// Create server
 	server := api.NewServer(store, q, dedupChecker, logger)
 
-	// Create HTTP server
+	// Create HTTP server with proper timeouts
 	httpServer := &http.Server{
-		Addr:         addr,
+		Addr:         cfg.API.Addr,
 		Handler:      server.Handler(),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  cfg.API.ReadTimeout,
+		WriteTimeout: cfg.API.WriteTimeout,
+		IdleTimeout:  cfg.API.IdleTimeout,
 	}
 
 	// Start server in goroutine
 	go func() {
-		logger.Info("starting API server", "addr", addr)
+		logger.Info("starting API server", "addr", cfg.API.Addr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("server error", "error", err)
 			os.Exit(1)
@@ -88,8 +106,8 @@ func main() {
 
 	logger.Info("shutting down server")
 
-	// Graceful shutdown
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Graceful shutdown with timeout
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.API.ShutdownTimeout)
 	defer cancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
@@ -97,11 +115,4 @@ func main() {
 	}
 
 	logger.Info("server stopped")
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }
