@@ -29,11 +29,23 @@ CREATE TABLE delivery_attempts (
 -- Index for querying events by status
 CREATE INDEX idx_events_status ON events(status);
 
+-- Index for efficient queue polling (worker dequeue pattern)
+CREATE INDEX idx_events_queue_poll ON events(next_attempt_at, id) WHERE status = 'queued';
+
 -- Index for querying events ready for retry
 CREATE INDEX idx_events_next_attempt ON events(next_attempt_at) WHERE status IN ('queued', 'failed');
 
+-- Index for destination-based queries (circuit breaker stats)
+CREATE INDEX idx_events_destination_status ON events(destination, status, created_at DESC);
+
 -- Index for querying delivery attempts by event
 CREATE INDEX idx_delivery_attempts_event_id ON delivery_attempts(event_id);
+
+-- Index for delivery attempts by event and attempt number
+CREATE INDEX idx_delivery_attempts_event_attempt ON delivery_attempts(event_id, attempt_number);
+
+-- Index for delivery attempts by time (analytics)
+CREATE INDEX idx_delivery_attempts_time ON delivery_attempts(attempted_at DESC);
 
 -- Index for idempotency key lookups
 CREATE INDEX idx_events_idempotency_key ON events(idempotency_key);

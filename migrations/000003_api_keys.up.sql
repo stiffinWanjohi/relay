@@ -42,4 +42,11 @@ ALTER TABLE api_keys ADD CONSTRAINT fk_api_keys_client
 
 -- Add client_id to events table for multi-tenancy
 ALTER TABLE events ADD COLUMN client_id VARCHAR(255);
+
+-- Index for client-based event queries (multi-tenancy)
 CREATE INDEX idx_events_client_id ON events(client_id);
+CREATE INDEX idx_events_client_status ON events(client_id, status, created_at DESC) WHERE client_id IS NOT NULL;
+CREATE INDEX idx_events_client_created ON events(client_id, created_at DESC) WHERE client_id IS NOT NULL;
+
+-- Partial index for failed events requiring attention (last 7 days)
+CREATE INDEX idx_events_failed_recent ON events(client_id, created_at DESC) WHERE status = 'failed';

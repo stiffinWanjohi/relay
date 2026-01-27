@@ -1,3 +1,9 @@
+-- Drop client-related indexes from events
+DROP INDEX IF EXISTS idx_events_failed_recent;
+DROP INDEX IF EXISTS idx_events_client_created;
+DROP INDEX IF EXISTS idx_events_client_status;
+DROP INDEX IF EXISTS idx_events_client_id;
+
 -- Remove client_id from events
 ALTER TABLE events DROP COLUMN IF EXISTS client_id;
 
