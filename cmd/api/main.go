@@ -128,13 +128,17 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.API.ShutdownTimeout)
 	defer cancel()
 
-	// Stop outbox processor
-	outboxProcessor.Stop()
-	logger.Info("outbox processor stopped")
-
+	// Stop HTTP server first to stop accepting new requests
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("server shutdown error", "error", err)
 	}
+	logger.Info("HTTP server stopped")
+
+	// Then stop outbox processor to ensure all pending events are processed
+	if err := outboxProcessor.StopAndWait(cfg.API.ShutdownTimeout); err != nil {
+		logger.Error("outbox processor shutdown error", "error", err)
+	}
+	logger.Info("outbox processor stopped")
 
 	logger.Info("server stopped")
 }

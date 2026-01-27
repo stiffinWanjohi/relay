@@ -28,9 +28,17 @@ type Sender struct {
 
 // NewSender creates a new webhook sender.
 func NewSender(signingKey string) *Sender {
+	// Configure transport for connection reuse and performance
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+	}
+
 	return &Sender{
 		client: &http.Client{
-			Timeout: defaultTimeout,
+			Timeout:   defaultTimeout,
+			Transport: transport,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				// Don't follow redirects automatically
 				return http.ErrUseLastResponse
@@ -66,6 +74,14 @@ func (s *Sender) WithTimeout(timeout time.Duration) *Sender {
 // Send delivers a webhook event to its destination.
 func (s *Sender) Send(ctx context.Context, event domain.Event) domain.DeliveryResult {
 	start := time.Now()
+
+	// Ensure we have a deadline for the request
+	// If context doesn't have a deadline, create one with default timeout
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, defaultTimeout)
+		defer cancel()
+	}
 
 	// Create the request
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, event.Destination, bytes.NewReader(event.Payload))

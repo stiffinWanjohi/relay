@@ -52,21 +52,69 @@ type circuit struct {
 	failures          int
 	successes         int
 	lastStateChange   time.Time
+	lastAccess        time.Time
 	consecutiveErrors int
 }
 
 // CircuitBreaker manages circuit breakers per destination.
 type CircuitBreaker struct {
-	config   CircuitConfig
-	circuits map[string]*circuit
-	mu       sync.Mutex // Use single Mutex to avoid race condition between RLock and Lock
+	config       CircuitConfig
+	circuits     map[string]*circuit
+	mu           sync.Mutex // Use single Mutex to avoid race condition between RLock and Lock
+	ttl          time.Duration
+	cleanupStop  chan struct{}
 }
+
+const (
+	// Default TTL for idle circuits
+	defaultCircuitTTL = 1 * time.Hour
+	// Cleanup interval
+	circuitCleanupInterval = 10 * time.Minute
+)
 
 // NewCircuitBreaker creates a new circuit breaker manager.
 func NewCircuitBreaker(config CircuitConfig) *CircuitBreaker {
-	return &CircuitBreaker{
-		config:   config,
-		circuits: make(map[string]*circuit),
+	cb := &CircuitBreaker{
+		config:      config,
+		circuits:    make(map[string]*circuit),
+		ttl:         defaultCircuitTTL,
+		cleanupStop: make(chan struct{}),
+	}
+	go cb.cleanupLoop()
+	return cb
+}
+
+// Stop stops the circuit breaker cleanup goroutine.
+func (cb *CircuitBreaker) Stop() {
+	close(cb.cleanupStop)
+}
+
+// cleanupLoop periodically removes idle circuits to prevent memory leaks.
+func (cb *CircuitBreaker) cleanupLoop() {
+	ticker := time.NewTicker(circuitCleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-cb.cleanupStop:
+			return
+		case <-ticker.C:
+			cb.cleanup()
+		}
+	}
+}
+
+// cleanup removes circuits that have been idle for longer than TTL.
+func (cb *CircuitBreaker) cleanup() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	cutoff := time.Now().Add(-cb.ttl)
+	for dest, c := range cb.circuits {
+		// Only remove closed circuits that have been idle
+		if c.state == CircuitClosed && c.lastAccess.Before(cutoff) {
+			delete(cb.circuits, dest)
+		}
 	}
 }
 
@@ -80,6 +128,8 @@ func (cb *CircuitBreaker) IsOpen(destination string) bool {
 	if !exists {
 		return false
 	}
+
+	c.lastAccess = time.Now()
 
 	// Check if we should transition from open to half-open
 	if c.state == CircuitOpen {
@@ -105,6 +155,7 @@ func (cb *CircuitBreaker) RecordSuccess(destination string) {
 		return
 	}
 
+	c.lastAccess = time.Now()
 	c.consecutiveErrors = 0
 
 	switch c.state {
@@ -126,15 +177,18 @@ func (cb *CircuitBreaker) RecordFailure(destination string) {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
+	now := time.Now()
 	c, exists := cb.circuits[destination]
 	if !exists {
 		c = &circuit{
 			state:           CircuitClosed,
-			lastStateChange: time.Now(),
+			lastStateChange: now,
+			lastAccess:      now,
 		}
 		cb.circuits[destination] = c
 	}
 
+	c.lastAccess = now
 	c.consecutiveErrors++
 
 	switch c.state {
@@ -142,13 +196,13 @@ func (cb *CircuitBreaker) RecordFailure(destination string) {
 		c.failures++
 		if c.failures >= cb.config.FailureThreshold {
 			c.state = CircuitOpen
-			c.lastStateChange = time.Now()
+			c.lastStateChange = now
 		}
 	case CircuitHalfOpen:
 		// Any failure in half-open returns to open
 		c.state = CircuitOpen
 		c.successes = 0
-		c.lastStateChange = time.Now()
+		c.lastStateChange = now
 	}
 }
 

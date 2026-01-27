@@ -3,6 +3,7 @@ package event
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -111,7 +112,7 @@ func (s *Store) GetByID(ctx context.Context, id uuid.UUID) (domain.Event, error)
 	`
 
 	event, err := s.scanEvent(s.pool.QueryRow(ctx, query, id))
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Event{}, domain.ErrEventNotFound
 	}
 	return event, err
@@ -126,7 +127,7 @@ func (s *Store) GetByIdempotencyKey(ctx context.Context, key string) (domain.Eve
 	`
 
 	event, err := s.scanEvent(s.pool.QueryRow(ctx, query, key))
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Event{}, domain.ErrEventNotFound
 	}
 	return event, err
@@ -157,7 +158,7 @@ func (s *Store) Update(ctx context.Context, event domain.Event) (domain.Event, e
 		event.NextAttemptAt,
 		event.DeliveredAt,
 	))
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Event{}, domain.ErrEventNotFound
 	}
 	return updated, err
@@ -284,7 +285,50 @@ type OutboxEntry struct {
 	LastError   *string
 }
 
-// GetUnprocessedOutbox retrieves unprocessed outbox entries.
+// ClaimAndGetOutbox atomically claims and retrieves unprocessed outbox entries.
+// Uses UPDATE ... RETURNING to ensure atomicity - entries are claimed in the same
+// operation that retrieves them, preventing race conditions.
+func (s *Store) ClaimAndGetOutbox(ctx context.Context, workerID string, limit int, claimTimeout time.Duration) ([]OutboxEntry, error) {
+	// Use a CTE to atomically claim and return entries
+	// This prevents race conditions where multiple workers could claim the same entries
+	query := `
+		WITH claimed AS (
+			UPDATE outbox
+			SET last_error = $1
+			WHERE id IN (
+				SELECT id FROM outbox
+				WHERE processed_at IS NULL 
+				  AND (last_error IS NULL OR last_error NOT LIKE 'claimed:%' OR 
+				       created_at < NOW() - $3::interval)
+				ORDER BY created_at ASC
+				LIMIT $2
+				FOR UPDATE SKIP LOCKED
+			)
+			RETURNING id, event_id, created_at, processed_at, attempts, last_error
+		)
+		SELECT id, event_id, created_at, processed_at, attempts, last_error FROM claimed
+	`
+
+	claimMarker := "claimed:" + workerID
+	rows, err := s.pool.Query(ctx, query, claimMarker, limit, claimTimeout.String())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []OutboxEntry
+	for rows.Next() {
+		var entry OutboxEntry
+		if err := rows.Scan(&entry.ID, &entry.EventID, &entry.CreatedAt, &entry.ProcessedAt, &entry.Attempts, &entry.LastError); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, rows.Err()
+}
+
+// GetUnprocessedOutbox retrieves unprocessed outbox entries (legacy, prefer ClaimAndGetOutbox).
 func (s *Store) GetUnprocessedOutbox(ctx context.Context, limit int) ([]OutboxEntry, error) {
 	query := `
 		SELECT id, event_id, created_at, processed_at, attempts, last_error
@@ -292,7 +336,6 @@ func (s *Store) GetUnprocessedOutbox(ctx context.Context, limit int) ([]OutboxEn
 		WHERE processed_at IS NULL
 		ORDER BY created_at ASC
 		LIMIT $1
-		FOR UPDATE SKIP LOCKED
 	`
 
 	rows, err := s.pool.Query(ctx, query, limit)

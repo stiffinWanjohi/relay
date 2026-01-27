@@ -3,7 +3,10 @@ package outbox
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/relay/internal/event"
 	"github.com/relay/internal/queue"
@@ -21,6 +24,9 @@ const (
 
 	// DefaultRetentionPeriod is the default retention period for processed entries.
 	DefaultRetentionPeriod = 24 * time.Hour
+
+	// DefaultClaimTimeout is how long a claim is valid before another worker can take it.
+	DefaultClaimTimeout = 5 * time.Minute
 )
 
 // ProcessorConfig holds outbox processor configuration.
@@ -43,21 +49,24 @@ func DefaultProcessorConfig() ProcessorConfig {
 
 // Processor processes outbox entries and publishes them to the queue.
 type Processor struct {
-	store  *event.Store
-	queue  *queue.Queue
-	config ProcessorConfig
-	logger *slog.Logger
-	stopCh chan struct{}
+	store    *event.Store
+	queue    *queue.Queue
+	config   ProcessorConfig
+	logger   *slog.Logger
+	workerID string
+	stopCh   chan struct{}
+	wg       sync.WaitGroup
 }
 
 // NewProcessor creates a new outbox processor.
 func NewProcessor(store *event.Store, q *queue.Queue, config ProcessorConfig, logger *slog.Logger) *Processor {
 	return &Processor{
-		store:  store,
-		queue:  q,
-		config: config,
-		logger: logger,
-		stopCh: make(chan struct{}),
+		store:    store,
+		queue:    q,
+		config:   config,
+		logger:   logger,
+		workerID: uuid.New().String(),
+		stopCh:   make(chan struct{}),
 	}
 }
 
@@ -66,19 +75,51 @@ func (p *Processor) Start(ctx context.Context) {
 	p.logger.Info("starting outbox processor",
 		"batch_size", p.config.BatchSize,
 		"poll_interval", p.config.PollInterval,
+		"worker_id", p.workerID,
 	)
 
 	// Main processing loop
-	go p.processLoop(ctx)
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		p.processLoop(ctx)
+	}()
 
 	// Cleanup loop
-	go p.cleanupLoop(ctx)
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		p.cleanupLoop(ctx)
+	}()
 }
 
 // Stop signals the processor to stop.
 func (p *Processor) Stop() {
 	p.logger.Info("stopping outbox processor")
 	close(p.stopCh)
+}
+
+// Wait blocks until all processor goroutines have exited.
+func (p *Processor) Wait() {
+	p.wg.Wait()
+}
+
+// StopAndWait stops the processor and waits for all goroutines to exit.
+func (p *Processor) StopAndWait(timeout time.Duration) error {
+	p.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		p.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-time.After(timeout):
+		return context.DeadlineExceeded
+	}
 }
 
 func (p *Processor) processLoop(ctx context.Context) {
@@ -100,7 +141,8 @@ func (p *Processor) processLoop(ctx context.Context) {
 }
 
 func (p *Processor) processBatch(ctx context.Context) error {
-	entries, err := p.store.GetUnprocessedOutbox(ctx, p.config.BatchSize)
+	// Use atomic claim to prevent race conditions
+	entries, err := p.store.ClaimAndGetOutbox(ctx, p.workerID, p.config.BatchSize, DefaultClaimTimeout)
 	if err != nil {
 		return err
 	}
@@ -109,7 +151,7 @@ func (p *Processor) processBatch(ctx context.Context) error {
 		return nil
 	}
 
-	p.logger.Debug("processing outbox entries", "count", len(entries))
+	p.logger.Debug("processing outbox entries", "count", len(entries), "worker_id", p.workerID)
 
 	for _, entry := range entries {
 		select {

@@ -129,11 +129,17 @@ func main() {
 
 	logger.Info("shutting down worker")
 
-	// Stop worker and cancel context
-	worker.Stop()
+	// Cancel context first to signal all goroutines
 	cancel()
 
-	// Wait for goroutines with timeout
+	// Stop worker and wait for completion
+	if err := worker.StopAndWait(cfg.Worker.ShutdownTimeout); err != nil {
+		logger.Warn("worker shutdown timed out", "error", err)
+	} else {
+		logger.Info("worker stopped gracefully")
+	}
+
+	// Wait for recovery goroutine
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -142,8 +148,8 @@ func main() {
 
 	select {
 	case <-done:
-		logger.Info("worker stopped gracefully")
-	case <-time.After(cfg.Worker.ShutdownTimeout):
-		logger.Warn("worker shutdown timed out")
+		logger.Info("all goroutines stopped")
+	case <-time.After(5 * time.Second):
+		logger.Warn("some goroutines did not stop in time")
 	}
 }

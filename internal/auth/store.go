@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -64,7 +65,7 @@ func (s *Store) ValidateAPIKey(ctx context.Context, apiKey string) (string, erro
 		WHERE key_hash = $1
 	`, keyHash).Scan(&clientID, &isActive, &expiresAt)
 
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrInvalidAPIKey
 	}
 	if err != nil {
@@ -105,7 +106,7 @@ func (s *Store) GetClient(ctx context.Context, clientID string) (*Client, error)
 		&client.CreatedAt, &client.UpdatedAt,
 	)
 
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrUnauthorized
 	}
 	if err != nil {

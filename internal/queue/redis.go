@@ -19,8 +19,14 @@ const (
 	processingQueueKey = "relay:queue:processing"
 	delayedQueueKey    = "relay:queue:delayed"
 
-	// Default visibility timeout
+	// Default visibility timeout (how long a message stays invisible to other consumers)
 	defaultVisibilityTimeout = 30 * time.Second
+
+	// Default blocking timeout (how long to wait for a message before returning)
+	defaultBlockingTimeout = 1 * time.Second
+
+	// Batch limit for moving delayed messages
+	delayedBatchLimit = 100
 )
 
 // Message represents a queue message.
@@ -34,6 +40,7 @@ type Message struct {
 type Queue struct {
 	client            *redis.Client
 	visibilityTimeout time.Duration
+	blockingTimeout   time.Duration
 }
 
 // NewQueue creates a new Redis-backed queue.
@@ -41,6 +48,7 @@ func NewQueue(client *redis.Client) *Queue {
 	return &Queue{
 		client:            client,
 		visibilityTimeout: defaultVisibilityTimeout,
+		blockingTimeout:   defaultBlockingTimeout,
 	}
 }
 
@@ -49,6 +57,16 @@ func (q *Queue) WithVisibilityTimeout(timeout time.Duration) *Queue {
 	return &Queue{
 		client:            q.client,
 		visibilityTimeout: timeout,
+		blockingTimeout:   q.blockingTimeout,
+	}
+}
+
+// WithBlockingTimeout sets a custom blocking timeout for dequeue operations.
+func (q *Queue) WithBlockingTimeout(timeout time.Duration) *Queue {
+	return &Queue{
+		client:            q.client,
+		visibilityTimeout: q.visibilityTimeout,
+		blockingTimeout:   timeout,
 	}
 }
 
@@ -93,22 +111,37 @@ func (q *Queue) Dequeue(ctx context.Context) (*Message, error) {
 		return nil, err
 	}
 
-	// Use BRPOPLPUSH for atomic dequeue with visibility timeout
-	// This moves the message to the processing queue
-	result, err := q.client.BRPopLPush(ctx, mainQueueKey, processingQueueKey, q.visibilityTimeout).Result()
-	if errors.Is(err, redis.Nil) {
-		return nil, domain.ErrQueueEmpty
-	}
-	if err != nil {
-		return nil, err
-	}
+	// Use short blocking timeout to allow context cancellation checks
+	// Loop until we get a message or context is cancelled
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
 
-	var msg Message
-	if err := json.Unmarshal([]byte(result), &msg); err != nil {
-		return nil, err
-	}
+		// Use BRPOPLPUSH for atomic dequeue
+		// This moves the message to the processing queue
+		result, err := q.client.BRPopLPush(ctx, mainQueueKey, processingQueueKey, q.blockingTimeout).Result()
+		if errors.Is(err, redis.Nil) {
+			// No message available, return empty error (caller handles backoff)
+			return nil, domain.ErrQueueEmpty
+		}
+		if err != nil {
+			// Check if it's a context cancellation
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
+			return nil, err
+		}
 
-	return &msg, nil
+		var msg Message
+		if err := json.Unmarshal([]byte(result), &msg); err != nil {
+			return nil, err
+		}
+
+		return &msg, nil
+	}
 }
 
 // Ack acknowledges successful processing of a message.
@@ -135,9 +168,14 @@ func (q *Queue) Nack(ctx context.Context, msg *Message, delay time.Duration) err
 		return err
 	}
 
-	// Remove from processing queue
-	if err := q.client.LRem(ctx, processingQueueKey, 1, data).Err(); err != nil {
+	// Remove from processing queue and verify it existed
+	removed, err := q.client.LRem(ctx, processingQueueKey, 1, data).Result()
+	if err != nil {
 		return err
+	}
+	if removed == 0 {
+		// Message was already recovered or acked by another process
+		return domain.ErrMessageNotFound
 	}
 
 	// Re-enqueue with delay if specified
@@ -149,31 +187,44 @@ func (q *Queue) Nack(ctx context.Context, msg *Message, delay time.Duration) err
 	return q.client.RPush(ctx, mainQueueKey, data).Err()
 }
 
-// moveDelayedToMain moves delayed messages that are ready to the main queue.
-func (q *Queue) moveDelayedToMain(ctx context.Context) error {
-	now := float64(time.Now().UTC().Unix())
+// Lua script for atomic move from delayed to main queue
+// This prevents race conditions where multiple workers might move the same message
+var moveDelayedScript = redis.NewScript(`
+	local delayed_key = KEYS[1]
+	local main_key = KEYS[2]
+	local now = ARGV[1]
+	local limit = tonumber(ARGV[2])
+	
+	local messages = redis.call('ZRANGEBYSCORE', delayed_key, '-inf', now, 'LIMIT', 0, limit)
+	
+	if #messages == 0 then
+		return 0
+	end
+	
+	for i, msg in ipairs(messages) do
+		redis.call('RPUSH', main_key, msg)
+		redis.call('ZREM', delayed_key, msg)
+	end
+	
+	return #messages
+`)
 
-	// Get all messages with score <= now
-	messages, err := q.client.ZRangeByScore(ctx, delayedQueueKey, &redis.ZRangeBy{
-		Min: "-inf",
-		Max: formatFloat(now),
-	}).Result()
-	if err != nil {
+// moveDelayedToMain moves delayed messages that are ready to the main queue.
+// Uses a Lua script to ensure atomicity and prevent race conditions.
+func (q *Queue) moveDelayedToMain(ctx context.Context) error {
+	now := formatFloat(float64(time.Now().UTC().Unix()))
+
+	_, err := moveDelayedScript.Run(ctx, q.client,
+		[]string{delayedQueueKey, mainQueueKey},
+		now,
+		delayedBatchLimit,
+	).Result()
+
+	// Ignore NOSCRIPT error on first run (script will be loaded automatically)
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return err
 	}
-
-	if len(messages) == 0 {
-		return nil
-	}
-
-	// Use a pipeline for efficiency
-	pipe := q.client.Pipeline()
-	for _, msg := range messages {
-		pipe.RPush(ctx, mainQueueKey, msg)
-		pipe.ZRem(ctx, delayedQueueKey, msg)
-	}
-	_, err = pipe.Exec(ctx)
-	return err
+	return nil
 }
 
 // RecoverStaleMessages moves messages that have been processing too long back to the main queue.

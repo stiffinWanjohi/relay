@@ -2,7 +2,9 @@ package delivery
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/relay/internal/domain"
@@ -13,6 +15,10 @@ import (
 const (
 	// Default delay for circuit-open nack
 	circuitOpenDelay = 5 * time.Minute
+
+	// Backoff settings for empty queue
+	minEmptyQueueBackoff = 50 * time.Millisecond
+	maxEmptyQueueBackoff = 2 * time.Second
 )
 
 // Worker processes events from the queue and delivers them.
@@ -24,6 +30,7 @@ type Worker struct {
 	retry          *RetryPolicy
 	logger         *slog.Logger
 	stopCh         chan struct{}
+	wg             sync.WaitGroup
 	concurrency    int
 	visibilityTime time.Duration
 }
@@ -65,7 +72,11 @@ func (w *Worker) Start(ctx context.Context) {
 	w.logger.Info("starting worker", "concurrency", w.concurrency)
 
 	for i := 0; i < w.concurrency; i++ {
-		go w.processLoop(ctx, i)
+		w.wg.Add(1)
+		go func(workerID int) {
+			defer w.wg.Done()
+			w.processLoop(ctx, workerID)
+		}(i)
 	}
 }
 
@@ -75,9 +86,34 @@ func (w *Worker) Stop() {
 	close(w.stopCh)
 }
 
+// Wait blocks until all worker goroutines have exited.
+func (w *Worker) Wait() {
+	w.wg.Wait()
+}
+
+// StopAndWait stops the worker and waits for all goroutines to exit.
+func (w *Worker) StopAndWait(timeout time.Duration) error {
+	w.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		w.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-time.After(timeout):
+		return errors.New("worker shutdown timed out")
+	}
+}
+
 func (w *Worker) processLoop(ctx context.Context, workerID int) {
 	logger := w.logger.With("worker_id", workerID)
 	logger.Info("worker started")
+
+	backoff := minEmptyQueueBackoff
 
 	for {
 		select {
@@ -88,11 +124,24 @@ func (w *Worker) processLoop(ctx context.Context, workerID int) {
 			logger.Info("worker stopped (stop signal)")
 			return
 		default:
-			if err := w.processOne(ctx, logger); err != nil {
-				if err != domain.ErrQueueEmpty {
-					logger.Error("error processing message", "error", err)
+			err := w.processOne(ctx, logger)
+			if err != nil {
+				if errors.Is(err, domain.ErrQueueEmpty) {
+					// Exponential backoff when queue is empty
+					select {
+					case <-ctx.Done():
+						return
+					case <-w.stopCh:
+						return
+					case <-time.After(backoff):
+						backoff = min(backoff*2, maxEmptyQueueBackoff)
+					}
+					continue
 				}
+				logger.Error("error processing message", "error", err)
 			}
+			// Reset backoff on successful processing
+			backoff = minEmptyQueueBackoff
 		}
 	}
 }
