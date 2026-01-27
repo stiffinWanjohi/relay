@@ -126,21 +126,7 @@ func (r *mutationResolver) CreateEvent(ctx context.Context, input CreateEventInp
 		return nil, err
 	}
 
-	// Check idempotency
-	existingID, err := r.Dedup.CheckAndSet(ctx, idempotencyKey, uuid.Nil)
-	if err != nil {
-		return nil, err
-	}
-
-	if existingID != uuid.Nil {
-		evt, err := r.Store.GetByID(ctx, existingID)
-		if err != nil {
-			return nil, err
-		}
-		return domainEventToGQL(evt), nil
-	}
-
-	// Parse headers
+	// Parse headers first (needed for event creation)
 	var headers map[string]string
 	if input.Headers != nil {
 		headers = make(map[string]string)
@@ -151,22 +137,33 @@ func (r *mutationResolver) CreateEvent(ctx context.Context, input CreateEventInp
 		}
 	}
 
-	// Create event
+	// Create event object with a new ID (not yet persisted)
 	evt := domain.NewEvent(idempotencyKey, input.Destination, payload, headers)
 	if input.MaxAttempts != nil && *input.MaxAttempts > 0 {
 		evt.MaxAttempts = *input.MaxAttempts
 	}
 
-	// Save to store with outbox entry (atomic transaction)
-	// The outbox processor will handle enqueueing to Redis
+	// Check idempotency - use the real event ID we just generated
+	existingID, err := r.Dedup.CheckAndSet(ctx, idempotencyKey, evt.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// If another request already processed this idempotency key, return that event
+	if existingID != uuid.Nil {
+		existingEvt, err := r.Store.GetByID(ctx, existingID)
+		if err != nil {
+			return nil, err
+		}
+		return domainEventToGQL(existingEvt), nil
+	}
+
+	// We won the race - save the event to store with outbox entry
 	evt, err = r.Store.CreateWithOutbox(ctx, evt)
 	if err != nil {
 		_ = r.Dedup.Delete(ctx, idempotencyKey)
 		return nil, err
 	}
-
-	// Update idempotency key with actual event ID
-	_ = r.Dedup.Set(ctx, idempotencyKey, evt.ID)
 
 	return domainEventToGQL(evt), nil
 }

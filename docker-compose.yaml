@@ -1,57 +1,16 @@
 services:
-  api:
-    build:
-      context: .
-      dockerfile: deploy/docker/Dockerfile.api
-    ports:
-      - "8080:8080"
-    environment:
-      DATABASE_URL: postgres://relay:relay@postgres:5432/relay?sslmode=disable
-      REDIS_URL: redis:6379
-      SIGNING_KEY: your-min-32-char-signing-key-here
-      AUTH_ENABLED: "true"
-      ENABLE_PLAYGROUND: "true"
-      METRICS_PROVIDER: ""
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-
-  worker:
-    build:
-      context: .
-      dockerfile: deploy/docker/Dockerfile.worker
-    environment:
-      DATABASE_URL: postgres://relay:relay@postgres:5432/relay?sslmode=disable
-      REDIS_URL: redis:6379
-      SIGNING_KEY: your-min-32-char-signing-key-here
-      WORKER_CONCURRENCY: "10"
-      METRICS_PROVIDER: ""
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    deploy:
-      replicas: 2
-
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18
+    container_name: relay-postgres
     environment:
       POSTGRES_USER: relay
       POSTGRES_PASSWORD: relay
       POSTGRES_DB: relay
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./migrations:/docker-entrypoint-initdb.d/migrations:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U relay -d relay"]
       interval: 5s
@@ -59,12 +18,12 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
+    image: redis:8
+    container_name: relay-redis
+    ports:
+      - "6381:6379"
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -72,13 +31,67 @@ services:
       retries: 5
 
   migrate:
-    image: migrate/migrate:v4.17.0
-    volumes:
-      - ./migrations:/migrations
-    command: ["-path", "/migrations", "-database", "postgres://relay:relay@postgres:5432/relay?sslmode=disable", "up"]
+    image: migrate/migrate:latest
+    container_name: relay-migrate
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      [
+        "-path",
+        "/migrations",
+        "-database",
+        "postgres://relay:relay@postgres:5432/relay?sslmode=disable",
+        "up",
+      ]
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.api
+    container_name: relay-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://relay:relay@postgres:5432/relay?sslmode=disable
+      REDIS_URL: redis:6379
+      SIGNING_KEY: this-is-a-development-signing-key-min-32-chars
+      API_ADDR: ":8080"
+      AUTH_ENABLED: "false"
+      ENABLE_PLAYGROUND: "true"
+      ENVIRONMENT: development
+      SERVICE_NAME: relay-api
+    ports:
+      - "8088:8080"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.worker
+    container_name: relay-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://relay:relay@postgres:5432/relay?sslmode=disable
+      REDIS_URL: redis:6379
+      SIGNING_KEY: this-is-a-development-signing-key-min-32-chars
+      WORKER_CONCURRENCY: "10"
+      ENVIRONMENT: development
+      SERVICE_NAME: relay-worker
+    restart: unless-stopped
 
 volumes:
   postgres_data:
