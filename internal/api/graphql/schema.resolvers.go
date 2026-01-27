@@ -87,8 +87,9 @@ func (r *mutationResolver) CreateEvent(ctx context.Context, input CreateEventInp
 		evt.MaxAttempts = *input.MaxAttempts
 	}
 
-	// Save to store
-	evt, err = r.Store.Create(ctx, evt)
+	// Save to store with outbox entry (atomic transaction)
+	// The outbox processor will handle enqueueing to Redis
+	evt, err = r.Store.CreateWithOutbox(ctx, evt)
 	if err != nil {
 		_ = r.Dedup.Delete(ctx, idempotencyKey)
 		return nil, err
@@ -96,11 +97,6 @@ func (r *mutationResolver) CreateEvent(ctx context.Context, input CreateEventInp
 
 	// Update idempotency key with actual event ID
 	_ = r.Dedup.Set(ctx, idempotencyKey, evt.ID)
-
-	// Enqueue for delivery
-	if err := r.Queue.Enqueue(ctx, evt.ID); err != nil {
-		return nil, fmt.Errorf("failed to enqueue event: %w", err)
-	}
 
 	return domainEventToGQL(evt), nil
 }

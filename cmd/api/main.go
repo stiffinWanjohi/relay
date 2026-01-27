@@ -15,6 +15,7 @@ import (
 	"github.com/relay/internal/config"
 	"github.com/relay/internal/dedup"
 	"github.com/relay/internal/event"
+	"github.com/relay/internal/outbox"
 	"github.com/relay/internal/queue"
 )
 
@@ -78,6 +79,15 @@ func main() {
 	q := queue.NewQueue(redisClient)
 	dedupChecker := dedup.NewChecker(redisClient)
 
+	// Create and start outbox processor
+	outboxProcessor := outbox.NewProcessor(store, q, outbox.ProcessorConfig{
+		PollInterval:    cfg.Outbox.PollInterval,
+		BatchSize:       cfg.Outbox.BatchSize,
+		CleanupInterval: cfg.Outbox.CleanupInterval,
+		RetentionPeriod: cfg.Outbox.RetentionPeriod,
+	}, logger)
+	outboxProcessor.Start(ctx)
+
 	// Create server
 	server := api.NewServer(store, q, dedupChecker, logger)
 
@@ -109,6 +119,10 @@ func main() {
 	// Graceful shutdown with timeout
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.API.ShutdownTimeout)
 	defer cancel()
+
+	// Stop outbox processor
+	outboxProcessor.Stop()
+	logger.Info("outbox processor stopped")
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("server shutdown error", "error", err)

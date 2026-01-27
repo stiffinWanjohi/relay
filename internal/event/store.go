@@ -22,7 +22,7 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
-// Create persists a new event.
+// Create persists a new event (without outbox - use CreateWithOutbox for reliable publishing).
 func (s *Store) Create(ctx context.Context, event domain.Event) (domain.Event, error) {
 	headersJSON, err := json.Marshal(event.Headers)
 	if err != nil {
@@ -48,6 +48,58 @@ func (s *Store) Create(ctx context.Context, event domain.Event) (domain.Event, e
 		event.CreatedAt,
 		event.UpdatedAt,
 	))
+}
+
+// CreateWithOutbox creates an event and outbox entry in a single transaction.
+// This ensures the event will eventually be published to the queue even if the process crashes.
+func (s *Store) CreateWithOutbox(ctx context.Context, event domain.Event) (domain.Event, error) {
+	headersJSON, err := json.Marshal(event.Headers)
+	if err != nil {
+		return domain.Event{}, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Event{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Insert event
+	eventQuery := `
+		INSERT INTO events (id, idempotency_key, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id, idempotency_key, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+	`
+
+	createdEvent, err := s.scanEvent(tx.QueryRow(ctx, eventQuery,
+		event.ID,
+		event.IdempotencyKey,
+		event.Destination,
+		event.Payload,
+		headersJSON,
+		event.Status,
+		event.Attempts,
+		event.MaxAttempts,
+		event.NextAttemptAt,
+		event.CreatedAt,
+		event.UpdatedAt,
+	))
+	if err != nil {
+		return domain.Event{}, err
+	}
+
+	// Insert outbox entry
+	outboxQuery := `INSERT INTO outbox (id, event_id) VALUES ($1, $2)`
+	_, err = tx.Exec(ctx, outboxQuery, uuid.New(), createdEvent.ID)
+	if err != nil {
+		return domain.Event{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Event{}, err
+	}
+
+	return createdEvent, nil
 }
 
 // GetByID retrieves an event by ID.
@@ -220,6 +272,69 @@ func (s *Store) GetQueueStats(ctx context.Context) (QueueStats, error) {
 		&stats.Dead,
 	)
 	return stats, err
+}
+
+// OutboxEntry represents an entry in the outbox table.
+type OutboxEntry struct {
+	ID          uuid.UUID
+	EventID     uuid.UUID
+	CreatedAt   time.Time
+	ProcessedAt *time.Time
+	Attempts    int
+	LastError   *string
+}
+
+// GetUnprocessedOutbox retrieves unprocessed outbox entries.
+func (s *Store) GetUnprocessedOutbox(ctx context.Context, limit int) ([]OutboxEntry, error) {
+	query := `
+		SELECT id, event_id, created_at, processed_at, attempts, last_error
+		FROM outbox
+		WHERE processed_at IS NULL
+		ORDER BY created_at ASC
+		LIMIT $1
+		FOR UPDATE SKIP LOCKED
+	`
+
+	rows, err := s.pool.Query(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []OutboxEntry
+	for rows.Next() {
+		var entry OutboxEntry
+		if err := rows.Scan(&entry.ID, &entry.EventID, &entry.CreatedAt, &entry.ProcessedAt, &entry.Attempts, &entry.LastError); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, rows.Err()
+}
+
+// MarkOutboxProcessed marks an outbox entry as processed.
+func (s *Store) MarkOutboxProcessed(ctx context.Context, id uuid.UUID) error {
+	query := `UPDATE outbox SET processed_at = NOW() WHERE id = $1`
+	_, err := s.pool.Exec(ctx, query, id)
+	return err
+}
+
+// MarkOutboxFailed marks an outbox entry as failed with error.
+func (s *Store) MarkOutboxFailed(ctx context.Context, id uuid.UUID, errMsg string) error {
+	query := `UPDATE outbox SET attempts = attempts + 1, last_error = $2 WHERE id = $1`
+	_, err := s.pool.Exec(ctx, query, id, errMsg)
+	return err
+}
+
+// CleanupProcessedOutbox removes old processed outbox entries.
+func (s *Store) CleanupProcessedOutbox(ctx context.Context, olderThan time.Duration) (int64, error) {
+	query := `DELETE FROM outbox WHERE processed_at IS NOT NULL AND processed_at < $1`
+	result, err := s.pool.Exec(ctx, query, time.Now().Add(-olderThan))
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 // QueueStats holds queue statistics.

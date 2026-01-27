@@ -36,6 +36,7 @@ type Config struct {
 	Redis    RedisConfig
 	API      APIConfig
 	Worker   WorkerConfig
+	Outbox   OutboxConfig
 }
 
 // DatabaseConfig holds database configuration.
@@ -70,6 +71,14 @@ type WorkerConfig struct {
 	VisibilityTimeout time.Duration
 	SigningKey        string
 	ShutdownTimeout   time.Duration
+}
+
+// OutboxConfig holds outbox processor configuration.
+type OutboxConfig struct {
+	PollInterval    time.Duration
+	BatchSize       int
+	CleanupInterval time.Duration
+	RetentionPeriod time.Duration
 }
 
 // Validation errors.
@@ -126,6 +135,12 @@ func LoadConfig() (*Config, error) {
 	if len(cfg.Worker.SigningKey) < MinSigningKeyLength {
 		return nil, ErrSigningKeyTooShort
 	}
+
+	// Outbox config
+	cfg.Outbox.PollInterval = getEnvDuration("OUTBOX_POLL_INTERVAL", 1*time.Second)
+	cfg.Outbox.BatchSize = getEnvInt("OUTBOX_BATCH_SIZE", 100)
+	cfg.Outbox.CleanupInterval = getEnvDuration("OUTBOX_CLEANUP_INTERVAL", 1*time.Hour)
+	cfg.Outbox.RetentionPeriod = getEnvDuration("OUTBOX_RETENTION_PERIOD", 24*time.Hour)
 
 	return cfg, nil
 }
