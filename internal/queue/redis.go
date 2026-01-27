@@ -134,41 +134,38 @@ func (q *Queue) Dequeue(ctx context.Context) (*Message, error) {
 		return nil, err
 	}
 
-	// Use short blocking timeout to allow context cancellation checks
-	// Loop until we get a message or context is cancelled
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		// Use BRPOPLPUSH for atomic dequeue
-		// This moves the message to the processing queue
-		result, err := q.client.BRPopLPush(ctx, mainQueueKey, processingQueueKey, q.blockingTimeout).Result()
-		if errors.Is(err, redis.Nil) {
-			// No message available, return empty error (caller handles backoff)
-			return nil, domain.ErrQueueEmpty
-		}
-		if err != nil {
-			// Check if it's a context cancellation
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil, err
-			}
-			return nil, err
-		}
-
-		var msg Message
-		if err := json.Unmarshal([]byte(result), &msg); err != nil {
-			return nil, err
-		}
-
-		if q.metrics != nil {
-			q.metrics.QueueDequeued(ctx)
-		}
-
-		return &msg, nil
+	// Check for context cancellation before blocking
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
 	}
+
+	// Use BRPOPLPUSH for atomic dequeue
+	// This moves the message to the processing queue
+	result, err := q.client.BRPopLPush(ctx, mainQueueKey, processingQueueKey, q.blockingTimeout).Result()
+	if errors.Is(err, redis.Nil) {
+		// No message available, return empty error (caller handles backoff)
+		return nil, domain.ErrQueueEmpty
+	}
+	if err != nil {
+		// Check if it's a context cancellation
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, err
+	}
+
+	var msg Message
+	if err := json.Unmarshal([]byte(result), &msg); err != nil {
+		return nil, err
+	}
+
+	if q.metrics != nil {
+		q.metrics.QueueDequeued(ctx)
+	}
+
+	return &msg, nil
 }
 
 // Ack acknowledges successful processing of a message.
@@ -221,18 +218,18 @@ var moveDelayedScript = redis.NewScript(`
 	local main_key = KEYS[2]
 	local now = ARGV[1]
 	local limit = tonumber(ARGV[2])
-	
+
 	local messages = redis.call('ZRANGEBYSCORE', delayed_key, '-inf', now, 'LIMIT', 0, limit)
-	
+
 	if #messages == 0 then
 		return 0
 	end
-	
+
 	for i, msg in ipairs(messages) do
 		redis.call('RPUSH', main_key, msg)
 		redis.call('ZREM', delayed_key, msg)
 	end
-	
+
 	return #messages
 `)
 
@@ -318,8 +315,8 @@ func formatFloat(f float64) string {
 // Per-client queue support for fair scheduling
 
 const (
-	clientQueuePrefix  = "relay:queue:client:"
-	activeClientsKey   = "relay:queue:active_clients"
+	clientQueuePrefix = "relay:queue:client:"
+	activeClientsKey  = "relay:queue:active_clients"
 )
 
 // EnqueueForClient adds an event to a client-specific queue.

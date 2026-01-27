@@ -27,18 +27,18 @@ Relay fixes all four through a combination of transactional outbox pattern, idem
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                   CLIENT                                     │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                                   CLIENT                               │
+└────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              API SERVER                                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   GraphQL   │  │    Auth     │  │  Validation │  │   Dedup     │        │
-│  │   Handler   │──│  Middleware │──│  (SSRF,etc) │──│   Check     │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                              API SERVER                                │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │
+│  │   GraphQL   │  │    Auth     │  │  Validation │  │   Dedup     │    │
+│  │   Handler   │──│  Middleware │──│  (SSRF,etc) │──│   Check     │    │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘    │
+└────────────────────────────────────────────────────────────────────────┘
                                       │
                     ┌─────────────────┼─────────────────┐
                     ▼                 ▼                 ▼
@@ -48,39 +48,39 @@ Relay fixes all four through a combination of transactional outbox pattern, idem
             └─────────────┘   └─────────────┘   └─────────────┘
                                       │
                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           OUTBOX PROCESSOR                                   │
-│  Polls outbox table, enqueues to Redis, deletes processed entries           │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                           OUTBOX PROCESSOR                             │
+│  Polls outbox table, enqueues to Redis, deletes processed entries      │
+└────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              REDIS QUEUE                                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                         │
-│  │ Main Queue  │  │  Processing │  │  Delayed    │  BRPOPLPUSH for         │
-│  │   (LPUSH)   │  │    Queue    │  │   (ZSET)    │  visibility timeout     │
-│  └─────────────┘  └─────────────┘  └─────────────┘                         │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              REDIS QUEUE                                │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                      │
+│  │ Main Queue  │  │  Processing │  │   Delayed   │  BRPOPLPUSH for      │
+│  │   (LPUSH)   │  │    Queue    │  │   (ZSET)    │  visibility timeout  │
+│  └─────────────┘  └─────────────┘  └─────────────┘                      │
+└─────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              WORKER POOL                                     │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                         Per-Worker Loop                              │   │
-│  │  1. Dequeue (with visibility timeout)                               │   │
-│  │  2. Check circuit breaker state                                     │   │
-│  │  3. Check rate limiter                                              │   │
-│  │  4. Send HTTP request with signature                                │   │
-│  │  5. Record success/failure                                          │   │
+┌───────────────────────────────────────────────────────────────────────────┐
+│                              WORKER POOL                                  │
+│  ┌────────────────────────────────────────────────────────────────────┐   │
+│  │                         Per-Worker Loop                            │   │
+│  │  1. Dequeue (with visibility timeout)                              │   │
+│  │  2. Check circuit breaker state                                    │   │
+│  │  3. Check rate limiter                                             │   │
+│  │  4. Send HTTP request with signature                               │   │
+│  │  5. Record success/failure                                         │   │
 │  │  6. Ack or Nack (with backoff delay)                               │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
+│  └────────────────────────────────────────────────────────────────────┘   │
+│                                                                           │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
 │  │   Circuit    │  │    Rate      │  │    Retry     │  │     DRR      │   │
 │  │   Breaker    │  │   Limiter    │  │   Policy     │  │  Scheduler   │   │
 │  │ (per-dest)   │  │ (per-endpt)  │  │ (per-endpt)  │  │ (per-client) │   │
 │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
+└───────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
                             ┌─────────────────┐
@@ -532,27 +532,27 @@ Backoff formula: `min(retryBackoffMs * (retryBackoffMult ^ attempt), retryBackof
 Per-destination circuit breakers prevent cascading failures:
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                      CIRCUIT STATES                             │
-│                                                                 │
+┌───────────────────────────────────────────────────────────────┐
+│                      CIRCUIT STATES                           │
+│                                                               │
 │   ┌──────────┐     5 failures      ┌──────────┐               │
 │   │  CLOSED  │ ─────────────────►  │   OPEN   │               │
 │   │ (normal) │                     │ (reject) │               │
 │   └──────────┘                     └──────────┘               │
-│        ▲                                 │                     │
-│        │                                 │ 5 min timeout       │
-│        │ 3 successes                     ▼                     │
-│        │                           ┌───────────┐               │
-│        └─────────────────────────  │ HALF-OPEN │               │
-│                                    │  (probe)  │               │
-│                                    └───────────┘               │
-│                                          │                     │
-│                                          │ failure             │
-│                                          ▼                     │
+│        ▲                                 │                    │
+│        │                                 │ 5 min timeout      │
+│        │ 3 successes                     ▼                    │
+│        │                           ┌───────────┐              │
+│        └─────────────────────────  │ HALF-OPEN │              │
+│                                    │  (probe)  │              │
+│                                    └───────────┘              │
+│                                          │                    │
+│                                          │ failure            │
+│                                          ▼                    │
 │                                    ┌──────────┐               │
 │                                    │   OPEN   │               │
 │                                    └──────────┘               │
-└────────────────────────────────────────────────────────────────┘
+└───────────────────────────────────────────────────────────────┘
 ```
 
 **Behavior:**
@@ -594,18 +594,18 @@ When rate limited, events are returned to the queue with a short delay (100ms) r
 Deficit Round-Robin (DRR) ensures fair bandwidth allocation across clients:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────┐
 │                   DRR SCHEDULER                              │
 │                                                              │
-│  Client A (deficit: 1000)  ──┐                              │
-│  Client B (deficit: 500)   ──┼──► Select highest deficit    │
-│  Client C (deficit: 0)     ──┘    Process event             │
+│  Client A (deficit: 1000)  ──┐                               │
+│  Client B (deficit: 500)   ──┼──► Select highest deficit     │
+│  Client C (deficit: 0)     ──┘    Process event              │
 │                                   Subtract payload size      │
 │                                   Add quantum when exhausted │
 │                                                              │
-│  Quantum = 65536 bytes (64KB)                               │
-│  Each client gets equal bandwidth over time                 │
-└─────────────────────────────────────────────────────────────┘
+│  Quantum = 65536 bytes (64KB)                                │
+│  Each client gets equal bandwidth over time                  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 This prevents a single high-volume client from starving others.
