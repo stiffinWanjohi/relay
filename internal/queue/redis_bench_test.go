@@ -129,7 +129,7 @@ func BenchmarkQueueStats(b *testing.B) {
 	ctx := context.Background()
 
 	// Add some items
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		_ = q.Enqueue(ctx, uuid.New())
 	}
 

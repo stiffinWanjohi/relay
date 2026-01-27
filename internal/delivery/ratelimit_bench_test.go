@@ -66,7 +66,7 @@ func BenchmarkRateLimiterMultipleKeys(b *testing.B) {
 	ctx := context.Background()
 
 	keys := make([]string, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		keys[i] = fmt.Sprintf("endpoint-%d", i)
 	}
 
@@ -143,7 +143,7 @@ func BenchmarkRateLimiterGetCurrentRate(b *testing.B) {
 	ctx := context.Background()
 
 	// Warm up with some requests
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		_ = rl.Allow(ctx, "rate-check-key", 1000)
 	}
 

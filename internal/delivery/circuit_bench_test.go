@@ -50,7 +50,7 @@ func BenchmarkCircuitBreakerMixedOperations(b *testing.B) {
 	defer cb.Stop()
 
 	destinations := make([]string, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		destinations[i] = fmt.Sprintf("https://endpoint-%d.example.com/webhook", i)
 	}
 
@@ -73,7 +73,7 @@ func BenchmarkCircuitBreakerParallel(b *testing.B) {
 	defer cb.Stop()
 
 	destinations := make([]string, 50)
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		destinations[i] = fmt.Sprintf("https://endpoint-%d.example.com/webhook", i)
 	}
 
@@ -129,11 +129,11 @@ func BenchmarkCircuitBreakerGetState(b *testing.B) {
 	defer cb.Stop()
 
 	// Set up various states
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		dest := fmt.Sprintf("https://endpoint-%d.example.com", i)
 		if i%3 == 0 {
 			// Trip some circuits
-			for j := 0; j < 10; j++ {
+			for range 10 {
 				cb.RecordFailure(dest)
 			}
 		} else {
@@ -142,7 +142,7 @@ func BenchmarkCircuitBreakerGetState(b *testing.B) {
 	}
 
 	destinations := make([]string, 50)
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		destinations[i] = fmt.Sprintf("https://endpoint-%d.example.com", i)
 	}
 
@@ -159,7 +159,7 @@ func BenchmarkCircuitBreakerStats(b *testing.B) {
 	defer cb.Stop()
 
 	// Populate with destinations
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		cb.RecordSuccess(fmt.Sprintf("https://endpoint-%d.example.com", i))
 	}
 

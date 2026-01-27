@@ -10,10 +10,6 @@ import (
 	"github.com/relay/internal/domain"
 )
 
-// ============================================================================
-// JSON Marshaling Benchmarks (critical for store operations)
-// ============================================================================
-
 func BenchmarkHeadersMarshal_Empty(b *testing.B) {
 	headers := make(map[string]string)
 
@@ -37,7 +33,7 @@ func BenchmarkHeadersMarshal_Small(b *testing.B) {
 
 func BenchmarkHeadersMarshal_Large(b *testing.B) {
 	headers := make(map[string]string)
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		headers["X-Custom-Header-"+string(rune('A'+i))] = "value-" + string(rune('A'+i))
 	}
 
@@ -58,7 +54,7 @@ func BenchmarkHeadersUnmarshal_Small(b *testing.B) {
 }
 
 func BenchmarkPayloadMarshal_Small(b *testing.B) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"user_id": "123",
 		"action":  "purchase",
 	}
@@ -70,13 +66,13 @@ func BenchmarkPayloadMarshal_Small(b *testing.B) {
 }
 
 func BenchmarkPayloadMarshal_Medium(b *testing.B) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"user_id":    "123",
 		"action":     "purchase",
 		"product_id": "456",
 		"quantity":   5,
 		"price":      99.99,
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"source":    "web",
 			"campaign":  "summer_sale",
 			"timestamp": time.Now().Unix(),
@@ -90,16 +86,16 @@ func BenchmarkPayloadMarshal_Medium(b *testing.B) {
 }
 
 func BenchmarkPayloadMarshal_Large(b *testing.B) {
-	items := make([]map[string]interface{}, 100)
-	for i := 0; i < 100; i++ {
-		items[i] = map[string]interface{}{
+	items := make([]map[string]any, 100)
+	for i := range 100 {
+		items[i] = map[string]any{
 			"product_id": uuid.New().String(),
 			"name":       "Product " + string(rune('A'+i%26)),
 			"quantity":   i + 1,
 			"price":      float64(i) * 9.99,
 		}
 	}
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"order_id":   uuid.New().String(),
 		"user_id":    "123",
 		"items":      items,
@@ -112,10 +108,6 @@ func BenchmarkPayloadMarshal_Large(b *testing.B) {
 		_, _ = json.Marshal(payload)
 	}
 }
-
-// ============================================================================
-// Event Creation Benchmarks
-// ============================================================================
 
 func BenchmarkNewEvent(b *testing.B) {
 	idempotencyKey := "key-123"
@@ -170,10 +162,6 @@ func BenchmarkUUIDToString(b *testing.B) {
 	}
 }
 
-// ============================================================================
-// Delivery Attempt Creation Benchmarks
-// ============================================================================
-
 func BenchmarkNewDeliveryAttempt(b *testing.B) {
 	eventID := uuid.New()
 
@@ -209,10 +197,6 @@ func BenchmarkNewDeliveryAttemptWithError(b *testing.B) {
 	}
 }
 
-// ============================================================================
-// Endpoint Creation Benchmarks
-// ============================================================================
-
 func BenchmarkNewEndpoint(b *testing.B) {
 	clientID := "client-123"
 	url := "https://webhook.example.com/events"
@@ -242,10 +226,6 @@ func BenchmarkEndpointWithCustomHeaders(b *testing.B) {
 	}
 }
 
-// ============================================================================
-// Outbox Entry Benchmarks
-// ============================================================================
-
 func BenchmarkOutboxEntryCreation(b *testing.B) {
 	eventID := uuid.New()
 
@@ -258,10 +238,6 @@ func BenchmarkOutboxEntryCreation(b *testing.B) {
 		}
 	}
 }
-
-// ============================================================================
-// Idempotency Key Generation Benchmarks
-// ============================================================================
 
 func BenchmarkIdempotencyKeyGeneration_UUID(b *testing.B) {
 	for i := 0; i < b.N; i++ {
@@ -279,10 +255,6 @@ func BenchmarkIdempotencyKeyGeneration_Composite(b *testing.B) {
 	}
 }
 
-// ============================================================================
-// QueueStats Benchmarks
-// ============================================================================
-
 func BenchmarkQueueStatsCreation(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = QueueStats{
@@ -294,10 +266,6 @@ func BenchmarkQueueStatsCreation(b *testing.B) {
 		}
 	}
 }
-
-// ============================================================================
-// EndpointStats Benchmarks
-// ============================================================================
 
 func BenchmarkEndpointStatsCreation(b *testing.B) {
 	for i := 0; i < b.N; i++ {
@@ -314,10 +282,6 @@ func BenchmarkEndpointStatsCreation(b *testing.B) {
 		_ = stats
 	}
 }
-
-// ============================================================================
-// Map Operations (for header merging)
-// ============================================================================
 
 func BenchmarkMapMerge_Small(b *testing.B) {
 	base := map[string]string{
@@ -342,11 +306,11 @@ func BenchmarkMapMerge_Small(b *testing.B) {
 
 func BenchmarkMapMerge_Large(b *testing.B) {
 	base := make(map[string]string)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		base["Base-Header-"+string(rune('A'+i))] = "value"
 	}
 	custom := make(map[string]string)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		custom["Custom-Header-"+string(rune('A'+i))] = "value"
 	}
 
@@ -362,10 +326,6 @@ func BenchmarkMapMerge_Large(b *testing.B) {
 		_ = merged
 	}
 }
-
-// ============================================================================
-// Slice Operations (for event types matching)
-// ============================================================================
 
 func BenchmarkSliceContains_Small(b *testing.B) {
 	eventTypes := []string{"order.created", "order.updated", "order.cancelled"}
@@ -386,10 +346,10 @@ func BenchmarkSliceContains_Small(b *testing.B) {
 
 func BenchmarkSliceContains_Large(b *testing.B) {
 	eventTypes := make([]string, 50)
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		eventTypes[i] = "event.type." + string(rune('a'+i%26)) + string(rune('a'+i/26))
 	}
-	target := eventTypes[40] // Somewhere in the middle-end
+	target := eventTypes[40]
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -421,10 +381,6 @@ func BenchmarkSliceContainsWildcard(b *testing.B) {
 	}
 }
 
-// ============================================================================
-// Parallel Benchmarks
-// ============================================================================
-
 func BenchmarkNewEvent_Parallel(b *testing.B) {
 	idempotencyKey := "key-123"
 	destination := "https://webhook.example.com/events"
@@ -439,7 +395,7 @@ func BenchmarkNewEvent_Parallel(b *testing.B) {
 }
 
 func BenchmarkJSONMarshal_Parallel(b *testing.B) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"user_id": "123",
 		"action":  "purchase",
 		"amount":  99.99,
@@ -459,10 +415,6 @@ func BenchmarkUUID_Parallel(b *testing.B) {
 		}
 	})
 }
-
-// ============================================================================
-// nullString helper benchmark
-// ============================================================================
 
 func BenchmarkNullString_Empty(b *testing.B) {
 	s := ""

@@ -139,7 +139,7 @@ func BenchmarkDRRSchedulerStats(b *testing.B) {
 	ctx := context.Background()
 
 	// Register 50 clients
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		_ = scheduler.RegisterClient(ctx, fmt.Sprintf("client-%d", i))
 	}
 

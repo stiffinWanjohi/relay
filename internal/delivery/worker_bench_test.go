@@ -7,10 +7,6 @@ import (
 	"github.com/relay/internal/domain"
 )
 
-// ============================================================================
-// URL Parsing Benchmarks (used in extractHost)
-// ============================================================================
-
 func BenchmarkExtractHost_Valid(b *testing.B) {
 	destination := "https://webhook.example.com:8080/events"
 
@@ -37,10 +33,6 @@ func BenchmarkURLParse(b *testing.B) {
 		_, _ = url.Parse(destination)
 	}
 }
-
-// ============================================================================
-// Failure Classification Benchmarks
-// ============================================================================
 
 func BenchmarkClassifyFailureReason_Timeout(b *testing.B) {
 	result := domain.DeliveryResult{
@@ -110,7 +102,6 @@ func BenchmarkClassifyFailureReason_TLSError(b *testing.B) {
 	}
 }
 
-// Error types for benchmarking
 type timeoutError struct{}
 
 func (e *timeoutError) Error() string { return "context deadline exceeded (timeout)" }
@@ -126,10 +117,6 @@ func (e *dnsError) Error() string { return "lookup webhook.example.com: no such 
 type tlsError struct{}
 
 func (e *tlsError) Error() string { return "TLS handshake failed: certificate verify failed" }
-
-// ============================================================================
-// String Contains Benchmarks (used in classification)
-// ============================================================================
 
 func BenchmarkContains_Short(b *testing.B) {
 	s := "connection refused"
@@ -161,10 +148,6 @@ func BenchmarkContains_NotFound(b *testing.B) {
 	}
 }
 
-// ============================================================================
-// Worker Configuration Benchmarks
-// ============================================================================
-
 func BenchmarkDefaultWorkerConfig(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = DefaultWorkerConfig()
@@ -176,10 +159,6 @@ func BenchmarkDefaultCircuitConfig(b *testing.B) {
 		_ = DefaultCircuitConfig()
 	}
 }
-
-// ============================================================================
-// Event Status Transition Benchmarks
-// ============================================================================
 
 func BenchmarkEventMarkDelivering(b *testing.B) {
 	evt := domain.NewEvent(
@@ -253,10 +232,6 @@ func BenchmarkEventShouldRetry_False(b *testing.B) {
 	}
 }
 
-// ============================================================================
-// Parallel Benchmarks
-// ============================================================================
-
 func BenchmarkExtractHost_Parallel(b *testing.B) {
 	destinations := []string{
 		"https://api.example.com/webhooks",
@@ -292,10 +267,6 @@ func BenchmarkClassifyFailureReason_Parallel(b *testing.B) {
 	})
 }
 
-// ============================================================================
-// Delivery Attempt Creation Benchmarks
-// ============================================================================
-
 func BenchmarkNewDeliveryAttemptSuccess(b *testing.B) {
 	evt := domain.NewEvent(
 		"key-123",
@@ -325,10 +296,6 @@ func BenchmarkNewDeliveryAttemptFailure(b *testing.B) {
 		_ = attempt.WithFailure(500, "Internal Server Error", "server error", 250)
 	}
 }
-
-// ============================================================================
-// Min Function Benchmark (used for backoff capping)
-// ============================================================================
 
 func BenchmarkMinFunction(b *testing.B) {
 	a := 500
