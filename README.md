@@ -781,20 +781,79 @@ docker compose logs -f api worker
 docker compose up -d --scale worker=5
 ```
 
-### Kubernetes
+### Kubernetes (Kustomize)
+
+Relay uses [Kustomize](https://kustomize.io/) for Kubernetes deployments with environment-specific overlays.
+
+```
+deploy/k8s/
+├── base/                    # Shared base manifests
+│   ├── kustomization.yaml
+│   ├── namespace.yaml
+│   ├── serviceaccount.yaml
+│   ├── configmap.yaml
+│   ├── secret.yaml
+│   ├── api-deployment.yaml
+│   ├── api-service.yaml
+│   ├── api-hpa.yaml
+│   ├── worker-deployment.yaml
+│   ├── worker-hpa.yaml
+│   └── ingress.yaml
+└── overlays/
+    ├── dev/                 # Development settings
+    ├── staging/             # Staging settings
+    └── production/          # Production settings
+```
+
+**Deploy to an environment:**
 
 ```bash
-# Create namespace and apply manifests
-kubectl apply -f deploy/k8s/namespace.yaml
-kubectl apply -f deploy/k8s/
+# Preview what will be deployed
+kubectl kustomize deploy/k8s/overlays/dev
 
-# Check deployment status
-kubectl -n relay get pods
-kubectl -n relay get hpa
+# Deploy to dev
+kubectl apply -k deploy/k8s/overlays/dev
 
-# View logs
-kubectl -n relay logs -f deployment/relay-api
-kubectl -n relay logs -f deployment/relay-worker
+# Deploy to staging
+kubectl apply -k deploy/k8s/overlays/staging
+
+# Deploy to production
+kubectl apply -k deploy/k8s/overlays/production
+```
+
+**Check deployment:**
+
+```bash
+# Dev environment
+kubectl -n relay-dev get pods
+kubectl -n relay-dev get hpa
+kubectl -n relay-dev logs -f deployment/dev-relay-api
+
+# Production environment
+kubectl -n relay-production get pods
+kubectl -n relay-production logs -f deployment/prod-relay-api
+```
+
+**Environment differences:**
+
+| Setting | Dev | Staging | Production |
+|---------|-----|---------|------------|
+| Namespace | `relay-dev` | `relay-staging` | `relay-production` |
+| Replicas | 1 | 2 | 3 |
+| HPA Max (API) | 2 | 10 | 50 |
+| HPA Max (Worker) | 2 | 20 | 100 |
+| Log Level | debug | info | warn |
+| CPU Request | 100m | 100m | 500m |
+| Memory Request | 128Mi | 128Mi | 512Mi |
+
+**Customizing an overlay:**
+
+Edit `deploy/k8s/overlays/<env>/kustomization.yaml` to:
+- Change replica counts via patches
+- Override ConfigMap values via `configMapGenerator`
+- Override Secrets via `secretGenerator`
+- Add environment-specific resources
+```
 ```
 
 ### Production Checklist
@@ -857,7 +916,9 @@ relay/
 ├── migrations/                   # Database migrations
 ├── deploy/
 │   ├── docker/                   # Dockerfiles
-│   └── k8s/                      # Kubernetes manifests
+│   └── k8s/                      # Kubernetes manifests (Kustomize)
+│       ├── base/                # Shared base manifests
+│       └── overlays/            # Environment overlays (dev, staging, prod)
 ├── docker-compose.yaml
 ├── Makefile
 └── README.md

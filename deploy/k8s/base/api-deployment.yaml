@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: relay-api
-  namespace: relay
   labels:
     app.kubernetes.io/name: relay
     app.kubernetes.io/component: api
@@ -73,30 +72,3 @@ spec:
                     app.kubernetes.io/name: relay
                     app.kubernetes.io/component: api
                 topologyKey: kubernetes.io/hostname
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: relay-api
-  namespace: relay
-  labels:
-    app.kubernetes.io/name: relay
-    app.kubernetes.io/component: api
-spec:
-  type: ClusterIP
-  ports:
-    - port: 80
-      targetPort: http
-      protocol: TCP
-      name: http
-  selector:
-    app.kubernetes.io/name: relay
-    app.kubernetes.io/component: api
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: relay
-  namespace: relay
-  labels:
-    app.kubernetes.io/name: relay

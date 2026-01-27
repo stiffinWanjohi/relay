@@ -4,4 +4,3 @@ metadata:
   name: relay
   labels:
     app.kubernetes.io/name: relay
-    app.kubernetes.io/part-of: relay

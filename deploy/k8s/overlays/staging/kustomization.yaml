@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: relay-staging
+
+resources:
+  - ../../base
+
+namePrefix: staging-
+
+labels:
+  - pairs:
+      app.kubernetes.io/environment: staging
+    includeSelectors: false
+
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+
+configMapGenerator:
+  - name: relay-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=info
+
+secretGenerator:
+  - name: relay-secrets
+    behavior: merge
+    literals:
+      - DATABASE_URL=postgres://relay:CHANGE_ME@postgres-staging:5432/relay_staging?sslmode=require
+      - REDIS_URL=redis://redis-staging:6379

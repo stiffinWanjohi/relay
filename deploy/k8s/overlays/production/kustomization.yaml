@@ -1,0 +1,71 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: relay-production
+
+resources:
+  - ../../base
+
+namePrefix: prod-
+
+labels:
+  - pairs:
+      app.kubernetes.io/environment: production
+    includeSelectors: false
+
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+    target:
+      kind: Deployment
+  - patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 3
+      - op: replace
+        path: /spec/maxReplicas
+        value: 50
+    target:
+      kind: HorizontalPodAutoscaler
+      name: relay-api-hpa
+  - patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 5
+      - op: replace
+        path: /spec/maxReplicas
+        value: 100
+    target:
+      kind: HorizontalPodAutoscaler
+      name: relay-worker-hpa
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 500m
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 512Mi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "2"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 2Gi
+    target:
+      kind: Deployment
+
+configMapGenerator:
+  - name: relay-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=warn
+      - LOG_FORMAT=json
+
+secretGenerator:
+  - name: relay-secrets
+    behavior: merge
+    literals:
+      - DATABASE_URL=postgres://relay:CHANGE_ME@postgres-prod:5432/relay_prod?sslmode=require
+      - REDIS_URL=redis://redis-prod:6379

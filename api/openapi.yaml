@@ -1,0 +1,751 @@
+openapi: 3.1.0
+info:
+  title: Relay Webhook Delivery API
+  description: |
+    Relay is a webhook delivery system that guarantees delivery through 
+    idempotency keys, persistent storage, exponential backoff retries, 
+    and circuit breakers.
+    
+    ## Authentication
+    All API requests require an API key passed in the `X-API-Key` header.
+    
+    ## Rate Limiting
+    API requests are rate limited per API key. Check response headers for limits:
+    - `X-RateLimit-Limit`: Maximum requests per window
+    - `X-RateLimit-Remaining`: Remaining requests in current window
+    - `X-RateLimit-Reset`: Unix timestamp when the window resets
+  version: 1.0.0
+  contact:
+    name: Relay Support
+    url: https://github.com/relay/relay
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://api.relay.example.com
+    description: Production
+
+tags:
+  - name: Events
+    description: Webhook event operations
+  - name: Endpoints
+    description: Webhook endpoint management
+  - name: Health
+    description: Service health checks
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns the health status of the service
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/events:
+    post:
+      tags:
+        - Events
+      summary: Create a webhook event
+      description: |
+        Creates a new webhook event for delivery. The event will be queued
+        and delivered to the specified destination with automatic retries.
+        
+        Use the `X-Idempotency-Key` header to prevent duplicate events.
+      operationId: createEvent
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventRequest'
+      responses:
+        '201':
+          description: Event created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Idempotency conflict - event already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    get:
+      tags:
+        - Events
+      summary: List events
+      description: Returns a paginated list of webhook events
+      operationId: listEvents
+      parameters:
+        - name: status
+          in: query
+          description: Filter by event status
+          schema:
+            $ref: '#/components/schemas/EventStatus'
+        - name: limit
+          in: query
+          description: Maximum number of events to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          description: Pagination cursor from previous response
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/events/{eventId}:
+    get:
+      tags:
+        - Events
+      summary: Get event by ID
+      description: Returns a single event with its delivery history
+      operationId: getEvent
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Event details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventWithAttempts'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/events/{eventId}/replay:
+    post:
+      tags:
+        - Events
+      summary: Replay an event
+      description: |
+        Replays a failed or dead event. The event will be re-queued 
+        for delivery with a fresh retry count.
+      operationId: replayEvent
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Event replayed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Event cannot be replayed (not in failed/dead status)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/endpoints:
+    post:
+      tags:
+        - Endpoints
+      summary: Create an endpoint
+      description: Creates a new webhook endpoint with subscription rules
+      operationId: createEndpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEndpointRequest'
+      responses:
+        '201':
+          description: Endpoint created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Endpoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    get:
+      tags:
+        - Endpoints
+      summary: List endpoints
+      description: Returns a paginated list of webhook endpoints
+      operationId: listEndpoints
+      parameters:
+        - name: status
+          in: query
+          description: Filter by endpoint status
+          schema:
+            $ref: '#/components/schemas/EndpointStatus'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of endpoints
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/endpoints/{endpointId}:
+    get:
+      tags:
+        - Endpoints
+      summary: Get endpoint by ID
+      description: Returns endpoint details with statistics
+      operationId: getEndpoint
+      parameters:
+        - $ref: '#/components/parameters/EndpointId'
+      responses:
+        '200':
+          description: Endpoint details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndpointWithStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Endpoints
+      summary: Update an endpoint
+      description: Updates endpoint configuration
+      operationId: updateEndpoint
+      parameters:
+        - $ref: '#/components/parameters/EndpointId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEndpointRequest'
+      responses:
+        '200':
+          description: Endpoint updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Endpoint'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Endpoints
+      summary: Delete an endpoint
+      description: Deletes an endpoint (pending events will still be delivered)
+      operationId: deleteEndpoint
+      parameters:
+        - $ref: '#/components/parameters/EndpointId'
+      responses:
+        '204':
+          description: Endpoint deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/stats:
+    get:
+      tags:
+        - Health
+      summary: Queue statistics
+      description: Returns current queue and delivery statistics
+      operationId: getStats
+      responses:
+        '200':
+          description: Queue statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+
+  parameters:
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      description: Event UUID
+      schema:
+        type: string
+        format: uuid
+
+    EndpointId:
+      name: endpointId
+      in: path
+      required: true
+      description: Endpoint UUID
+      schema:
+        type: string
+        format: uuid
+
+    IdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      required: true
+      description: Unique key to prevent duplicate event creation
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+      required:
+        - status
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        idempotencyKey:
+          type: string
+        destination:
+          type: string
+          format: uri
+        eventType:
+          type: string
+        status:
+          $ref: '#/components/schemas/EventStatus'
+        attempts:
+          type: integer
+        maxAttempts:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+        nextAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - idempotencyKey
+        - destination
+        - status
+        - attempts
+        - maxAttempts
+        - createdAt
+
+    EventWithAttempts:
+      allOf:
+        - $ref: '#/components/schemas/Event'
+        - type: object
+          properties:
+            payload:
+              type: object
+            headers:
+              type: object
+              additionalProperties:
+                type: string
+            deliveryAttempts:
+              type: array
+              items:
+                $ref: '#/components/schemas/DeliveryAttempt'
+
+    DeliveryAttempt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        attemptNumber:
+          type: integer
+        statusCode:
+          type: integer
+          nullable: true
+        responseBody:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        durationMs:
+          type: integer
+        attemptedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - attemptNumber
+        - durationMs
+        - attemptedAt
+
+    EventStatus:
+      type: string
+      enum:
+        - queued
+        - delivering
+        - delivered
+        - failed
+        - dead
+
+    CreateEventRequest:
+      type: object
+      properties:
+        destination:
+          type: string
+          format: uri
+          description: Webhook destination URL (required if no eventType)
+        eventType:
+          type: string
+          description: Event type for fan-out to subscribed endpoints
+        payload:
+          type: object
+          description: JSON payload to deliver
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Custom headers to include in the webhook request
+        maxAttempts:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 10
+          description: Maximum delivery attempts before marking as dead
+      required:
+        - payload
+
+    EventList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+      required:
+        - data
+        - pagination
+
+    Endpoint:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        description:
+          type: string
+        eventTypes:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: '#/components/schemas/EndpointStatus'
+        maxRetries:
+          type: integer
+        retryBackoffMs:
+          type: integer
+        retryBackoffMax:
+          type: integer
+        retryBackoffMult:
+          type: number
+        timeoutMs:
+          type: integer
+        rateLimitPerSec:
+          type: integer
+        circuitThreshold:
+          type: integer
+        circuitResetMs:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - url
+        - eventTypes
+        - status
+        - createdAt
+        - updatedAt
+
+    EndpointWithStats:
+      allOf:
+        - $ref: '#/components/schemas/Endpoint'
+        - type: object
+          properties:
+            stats:
+              $ref: '#/components/schemas/EndpointStats'
+
+    EndpointStats:
+      type: object
+      properties:
+        totalEvents:
+          type: integer
+        delivered:
+          type: integer
+        failed:
+          type: integer
+        pending:
+          type: integer
+        successRate:
+          type: number
+          format: float
+        avgLatencyMs:
+          type: number
+          format: float
+
+    EndpointStatus:
+      type: string
+      enum:
+        - active
+        - paused
+        - disabled
+
+    CreateEndpointRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+        description:
+          type: string
+        eventTypes:
+          type: array
+          items:
+            type: string
+          minItems: 1
+        maxRetries:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 10
+        retryBackoffMs:
+          type: integer
+          minimum: 100
+          default: 1000
+        retryBackoffMax:
+          type: integer
+          default: 86400000
+        retryBackoffMult:
+          type: number
+          minimum: 1
+          default: 2.0
+        timeoutMs:
+          type: integer
+          minimum: 1000
+          maximum: 300000
+          default: 30000
+        rateLimitPerSec:
+          type: integer
+          minimum: 0
+          default: 0
+        circuitThreshold:
+          type: integer
+          minimum: 1
+          default: 5
+        circuitResetMs:
+          type: integer
+          default: 300000
+        customHeaders:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+        - url
+        - eventTypes
+
+    UpdateEndpointRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+        description:
+          type: string
+        eventTypes:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: '#/components/schemas/EndpointStatus'
+        maxRetries:
+          type: integer
+        retryBackoffMs:
+          type: integer
+        timeoutMs:
+          type: integer
+        rateLimitPerSec:
+          type: integer
+
+    EndpointList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Endpoint'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+      required:
+        - data
+        - pagination
+
+    QueueStats:
+      type: object
+      properties:
+        queued:
+          type: integer
+        delivering:
+          type: integer
+        delivered:
+          type: integer
+        failed:
+          type: integer
+        dead:
+          type: integer
+        pending:
+          type: integer
+        processing:
+          type: integer
+        delayed:
+          type: integer
+
+    Pagination:
+      type: object
+      properties:
+        hasMore:
+          type: boolean
+        cursor:
+          type: string
+          nullable: true
+        total:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: object
+      required:
+        - error
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Invalid request body"
+            code: "BAD_REQUEST"
+
+    Unauthorized:
+      description: Unauthorized - missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Invalid API key"
+            code: "UNAUTHORIZED"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Event not found"
+            code: "NOT_FOUND"
+
+    UnprocessableEntity:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "URL scheme must be http or https"
+            code: "VALIDATION_ERROR"
+
+security:
+  - ApiKeyAuth: []

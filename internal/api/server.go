@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/relay/internal/api/graphql"
+	"github.com/relay/internal/api/rest"
 	"github.com/relay/internal/auth"
 	"github.com/relay/internal/dedup"
 	"github.com/relay/internal/event"
@@ -22,6 +23,8 @@ import (
 type ServerConfig struct {
 	EnableAuth       bool
 	EnablePlayground bool
+	EnableDocs       bool         // Enable REST API docs (/docs)
+	MetricsHandler   http.Handler // Optional Prometheus metrics handler
 }
 
 // Server represents the HTTP server.
@@ -57,6 +60,11 @@ func NewServer(store *event.Store, q *queue.Queue, d *dedup.Checker, authValidat
 	// Public routes (no auth required)
 	r.Get("/health", s.healthHandler)
 
+	// Metrics endpoint (Prometheus)
+	if cfg.MetricsHandler != nil {
+		r.Handle("/metrics", cfg.MetricsHandler)
+	}
+
 	// Protected routes
 	r.Group(func(r chi.Router) {
 		if cfg.EnableAuth && authValidator != nil {
@@ -69,6 +77,10 @@ func NewServer(store *event.Store, q *queue.Queue, d *dedup.Checker, authValidat
 	if cfg.EnablePlayground {
 		r.Get("/playground", playground.Handler("Relay GraphQL", "/graphql"))
 	}
+
+	// REST API and documentation
+	restHandler := rest.NewHandler(store, q, d)
+	r.Mount("/", restHandler.Router())
 
 	return s
 }
