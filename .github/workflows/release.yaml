@@ -3,10 +3,10 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 env:
-  GO_VERSION: '1.23'
+  GO_VERSION: "1.25"
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
@@ -31,18 +31,18 @@ jobs:
       - name: Build binaries
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          
+
           # Linux
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.version=$VERSION" -o bin/relay-linux-amd64 ./cmd/relay
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.version=$VERSION" -o bin/relay-linux-arm64 ./cmd/relay
-          
+
           # macOS
           CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.version=$VERSION" -o bin/relay-darwin-amd64 ./cmd/relay
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.version=$VERSION" -o bin/relay-darwin-arm64 ./cmd/relay
-          
+
           # Windows
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.version=$VERSION" -o bin/relay-windows-amd64.exe ./cmd/relay
-          
+
           # Create archives
           cd bin
           tar czf relay-linux-amd64.tar.gz relay-linux-amd64
