@@ -63,7 +63,7 @@ func TestWorker_Integration_SuccessfulDelivery(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		deliveryCount.Add(1)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"received"}`))
+		_, _ = w.Write([]byte(`{"status":"received"}`))
 	}))
 	defer server.Close()
 
@@ -147,7 +147,7 @@ func TestWorker_Integration_FailedDeliveryWithRetry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		deliveryCount.Add(1)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"server error"}`))
+		_, _ = w.Write([]byte(`{"error":"server error"}`))
 	}))
 	defer server.Close()
 

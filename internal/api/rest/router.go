@@ -60,10 +60,11 @@ func (h *Handler) serveSwaggerUI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the path after /docs/
-	path := chi.URLParam(r, "*")
-	if path == "" || path == "/" {
-		path = "index.html"
+	urlPath := chi.URLParam(r, "*")
+	if urlPath == "" || urlPath == "/" {
+		urlPath = "index.html"
 	}
+	_ = urlPath // Used for documentation, actual serving handled by FileServer
 
 	http.StripPrefix("/docs/", http.FileServer(http.FS(subFS))).ServeHTTP(w, r)
 }

@@ -111,7 +111,7 @@ func TestDRRScheduler_UnregisterClient(t *testing.T) {
 	ctx := context.Background()
 
 	// Register first
-	scheduler.RegisterClient(ctx, "client-1")
+	_ = scheduler.RegisterClient(ctx, "client-1")
 
 	// Unregister
 	err := scheduler.UnregisterClient(ctx, "client-1")
@@ -155,7 +155,7 @@ func TestDRRScheduler_SelectNextClient_SingleClient(t *testing.T) {
 	scheduler := NewDRRScheduler(client, DefaultDRRConfig())
 	ctx := context.Background()
 
-	scheduler.RegisterClient(ctx, "client-1")
+	_ = scheduler.RegisterClient(ctx, "client-1")
 
 	clientID, err := scheduler.SelectNextClient(ctx)
 	if err != nil {
@@ -174,9 +174,9 @@ func TestDRRScheduler_SelectNextClient_MultipleClients(t *testing.T) {
 	ctx := context.Background()
 
 	// Register multiple clients
-	scheduler.RegisterClient(ctx, "client-1")
-	scheduler.RegisterClient(ctx, "client-2")
-	scheduler.RegisterClient(ctx, "client-3")
+	_ = scheduler.RegisterClient(ctx, "client-1")
+	_ = scheduler.RegisterClient(ctx, "client-2")
+	_ = scheduler.RegisterClient(ctx, "client-3")
 
 	// Select should return one of the clients
 	clientID, err := scheduler.SelectNextClient(ctx)
@@ -199,8 +199,8 @@ func TestDRRScheduler_SelectNextClient_RoundRobin(t *testing.T) {
 	ctx := context.Background()
 
 	// Register clients
-	scheduler.RegisterClient(ctx, "client-1")
-	scheduler.RegisterClient(ctx, "client-2")
+	_ = scheduler.RegisterClient(ctx, "client-1")
+	_ = scheduler.RegisterClient(ctx, "client-2")
 
 	// Track which clients are selected
 	selections := make(map[string]int)
@@ -211,7 +211,7 @@ func TestDRRScheduler_SelectNextClient_RoundRobin(t *testing.T) {
 		if clientID != "" {
 			selections[clientID]++
 			// Record delivery to consume deficit
-			scheduler.RecordDelivery(ctx, clientID, 500)
+			_ = scheduler.RecordDelivery(ctx, clientID, 500)
 		}
 	}
 
@@ -232,10 +232,10 @@ func TestDRRScheduler_RecordDelivery(t *testing.T) {
 	scheduler := NewDRRScheduler(client, config)
 	ctx := context.Background()
 
-	scheduler.RegisterClient(ctx, "client-1")
+	_ = scheduler.RegisterClient(ctx, "client-1")
 
 	// Select to initialize deficit
-	scheduler.SelectNextClient(ctx)
+	_, _ = scheduler.SelectNextClient(ctx)
 
 	// Get initial deficit
 	initialDeficit, _ := scheduler.GetDeficit(ctx, "client-1")
@@ -267,8 +267,8 @@ func TestDRRScheduler_RecordDelivery_NegativeDeficitCappedAtZero(t *testing.T) {
 	scheduler := NewDRRScheduler(client, config)
 	ctx := context.Background()
 
-	scheduler.RegisterClient(ctx, "client-1")
-	scheduler.SelectNextClient(ctx) // Initialize with quantum (100)
+	_ = scheduler.RegisterClient(ctx, "client-1")
+	_, _ = scheduler.SelectNextClient(ctx) // Initialize with quantum (100)
 
 	// Record delivery larger than quantum
 	err := scheduler.RecordDelivery(ctx, "client-1", 500)
@@ -301,8 +301,8 @@ func TestDRRScheduler_GetDeficit(t *testing.T) {
 	})
 
 	t.Run("existing client returns deficit", func(t *testing.T) {
-		scheduler.RegisterClient(ctx, "client-1")
-		scheduler.SelectNextClient(ctx) // Initialize deficit
+		_ = scheduler.RegisterClient(ctx, "client-1")
+		_, _ = scheduler.SelectNextClient(ctx) // Initialize deficit
 
 		deficit, err := scheduler.GetDeficit(ctx, "client-1")
 		if err != nil {
@@ -323,11 +323,11 @@ func TestDRRScheduler_Stats(t *testing.T) {
 	ctx := context.Background()
 
 	// Register clients
-	scheduler.RegisterClient(ctx, "client-1")
-	scheduler.RegisterClient(ctx, "client-2")
+	_ = scheduler.RegisterClient(ctx, "client-1")
+	_ = scheduler.RegisterClient(ctx, "client-2")
 
 	// Initialize deficits
-	scheduler.SelectNextClient(ctx)
+	_, _ = scheduler.SelectNextClient(ctx)
 
 	stats, err := scheduler.Stats(ctx)
 	if err != nil {
@@ -356,9 +356,9 @@ func TestDRRScheduler_Reset(t *testing.T) {
 	ctx := context.Background()
 
 	// Register and select
-	scheduler.RegisterClient(ctx, "client-1")
-	scheduler.RegisterClient(ctx, "client-2")
-	scheduler.SelectNextClient(ctx)
+	_ = scheduler.RegisterClient(ctx, "client-1")
+	_ = scheduler.RegisterClient(ctx, "client-2")
+	_, _ = scheduler.SelectNextClient(ctx)
 
 	// Reset
 	err := scheduler.Reset(ctx)
@@ -387,14 +387,14 @@ func TestDRRScheduler_SelectNextClient_AllZeroDeficit(t *testing.T) {
 	ctx := context.Background()
 
 	// Register clients
-	scheduler.RegisterClient(ctx, "client-1")
-	scheduler.RegisterClient(ctx, "client-2")
+	_ = scheduler.RegisterClient(ctx, "client-1")
+	_ = scheduler.RegisterClient(ctx, "client-2")
 
 	// Initialize and exhaust deficits
 	for range 10 {
 		clientID, _ := scheduler.SelectNextClient(ctx)
 		if clientID != "" {
-			scheduler.RecordDelivery(ctx, clientID, 200) // Larger than quantum
+			_ = scheduler.RecordDelivery(ctx, clientID, 200) // Larger than quantum
 		}
 	}
 
@@ -417,7 +417,7 @@ func TestDRRScheduler_ConcurrentAccess(t *testing.T) {
 
 	// Register clients
 	for i := range 5 {
-		scheduler.RegisterClient(ctx, "client-"+string(rune('A'+i)))
+		_ = scheduler.RegisterClient(ctx, "client-"+string(rune('A'+i)))
 	}
 
 	done := make(chan bool, 100)
@@ -425,7 +425,7 @@ func TestDRRScheduler_ConcurrentAccess(t *testing.T) {
 	// Concurrent selections
 	for range 50 {
 		go func() {
-			scheduler.SelectNextClient(ctx)
+			_, _ = scheduler.SelectNextClient(ctx)
 			done <- true
 		}()
 	}
@@ -433,7 +433,7 @@ func TestDRRScheduler_ConcurrentAccess(t *testing.T) {
 	// Concurrent deliveries
 	for range 50 {
 		go func() {
-			scheduler.RecordDelivery(ctx, "client-A", 100)
+			_ = scheduler.RecordDelivery(ctx, "client-A", 100)
 			done <- true
 		}()
 	}

@@ -92,7 +92,7 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func loggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {

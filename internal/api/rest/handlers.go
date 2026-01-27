@@ -35,7 +35,7 @@ func NewHandler(store *event.Store, q *queue.Queue, d *dedup.Checker) *Handler {
 func respondJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 func respondError(w http.ResponseWriter, status int, message, code string) {

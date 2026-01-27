@@ -222,7 +222,7 @@ func executeGraphQLWithErrors(t *testing.T, apiURL, query string, variables map[
 
 	body, _ := io.ReadAll(resp.Body)
 	var gqlResp graphQLResponse
-	json.Unmarshal(body, &gqlResp)
+	_ = json.Unmarshal(body, &gqlResp)
 
 	var errors []string
 	for _, e := range gqlResp.Errors {
@@ -420,7 +420,7 @@ func TestIdempotencyE2E(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"createEvent"`
 	}
-	json.Unmarshal(data1, &resp1)
+	_ = json.Unmarshal(data1, &resp1)
 	firstID := resp1.CreateEvent.ID
 	t.Logf("First request returned ID: %s", firstID)
 
@@ -434,7 +434,7 @@ func TestIdempotencyE2E(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"createEvent"`
 	}
-	json.Unmarshal(data2, &resp2)
+	_ = json.Unmarshal(data2, &resp2)
 	secondID := resp2.CreateEvent.ID
 	t.Logf("Second request returned ID: %s", secondID)
 
@@ -533,7 +533,7 @@ func TestConcurrentDeliveryE2E(t *testing.T) {
 					ID string `json:"id"`
 				} `json:"createEvent"`
 			}
-			json.Unmarshal(data, &resp)
+			_ = json.Unmarshal(data, &resp)
 			eventIDs[idx] = resp.CreateEvent.ID
 		}(i)
 	}
@@ -559,7 +559,7 @@ func TestConcurrentDeliveryE2E(t *testing.T) {
 					Status string `json:"status"`
 				} `json:"event"`
 			}
-			json.Unmarshal(data, &resp)
+			_ = json.Unmarshal(data, &resp)
 
 			if resp.Event.Status == "DELIVERED" {
 				deliveredCount++
@@ -610,7 +610,7 @@ func TestWebhookSignatureE2E(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"createEvent"`
 	}
-	json.Unmarshal(data, &createResp)
+	_ = json.Unmarshal(data, &createResp)
 	eventID := createResp.CreateEvent.ID
 
 	// Wait for delivery
@@ -624,7 +624,7 @@ func TestWebhookSignatureE2E(t *testing.T) {
 				Status string `json:"status"`
 			} `json:"event"`
 		}
-		json.Unmarshal(data, &resp)
+		_ = json.Unmarshal(data, &resp)
 
 		if resp.Event.Status == "DELIVERED" {
 			break
@@ -742,7 +742,7 @@ func TestReplayEventE2E(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"createEvent"`
 	}
-	json.Unmarshal(data, &createResp)
+	_ = json.Unmarshal(data, &createResp)
 	eventID := createResp.CreateEvent.ID
 
 	// Wait for initial delivery
@@ -756,7 +756,7 @@ func TestReplayEventE2E(t *testing.T) {
 				Status string `json:"status"`
 			} `json:"event"`
 		}
-		json.Unmarshal(data, &resp)
+		_ = json.Unmarshal(data, &resp)
 
 		if resp.Event.Status == "DELIVERED" {
 			t.Log("Initial delivery completed")
@@ -803,6 +803,7 @@ func TestReplayEventE2E(t *testing.T) {
 }
 
 // Integration test helper to clean up test data
+// nolint:unused // kept for manual cleanup during development
 func cleanupTestData(t *testing.T, dbURL, redisURL string) {
 	t.Helper()
 

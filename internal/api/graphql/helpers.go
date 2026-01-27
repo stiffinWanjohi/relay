@@ -11,7 +11,7 @@ import (
 func domainEventToGQL(evt domain.Event) *Event {
 	var payload map[string]any
 	if len(evt.Payload) > 0 {
-		json.Unmarshal(evt.Payload, &payload)
+		_ = json.Unmarshal(evt.Payload, &payload)
 	}
 
 	var headers map[string]any

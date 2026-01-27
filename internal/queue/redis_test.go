@@ -396,7 +396,7 @@ func TestQueue_moveDelayedToMain(t *testing.T) {
 		}
 		data, _ := json.Marshal(msg)
 		score := float64(msg.EnqueueAt.Unix())
-		mr.ZAdd(delayedQueueKey, score, string(data))
+		_, _ = mr.ZAdd(delayedQueueKey, score, string(data))
 	}
 
 	// Move delayed to main
@@ -429,7 +429,7 @@ func TestQueue_moveDelayedToMain_NotReady(t *testing.T) {
 	}
 	data, _ := json.Marshal(msg)
 	score := float64(msg.EnqueueAt.Unix())
-	mr.ZAdd(delayedQueueKey, score, string(data))
+	_, _ = mr.ZAdd(delayedQueueKey, score, string(data))
 
 	// Move delayed to main
 	if err := q.moveDelayedToMain(ctx); err != nil {
@@ -461,7 +461,7 @@ func TestQueue_RecoverStaleMessages(t *testing.T) {
 		EnqueueAt: time.Now().Add(-10 * time.Minute), // Old message
 	}
 	staleData, _ := json.Marshal(staleMsg)
-	mr.Lpush(processingQueueKey, string(staleData))
+	_, _ = mr.Lpush(processingQueueKey, string(staleData))
 
 	// Add a fresh message
 	freshMsg := Message{
@@ -470,7 +470,7 @@ func TestQueue_RecoverStaleMessages(t *testing.T) {
 		EnqueueAt: time.Now(), // Fresh message
 	}
 	freshData, _ := json.Marshal(freshMsg)
-	mr.Lpush(processingQueueKey, string(freshData))
+	_, _ = mr.Lpush(processingQueueKey, string(freshData))
 
 	// Recover stale messages (older than 5 minutes)
 	recovered, err := q.RecoverStaleMessages(ctx, 5*time.Minute)
@@ -500,7 +500,7 @@ func TestQueue_RecoverStaleMessages_InvalidJSON(t *testing.T) {
 	ctx := context.Background()
 
 	// Add invalid JSON to processing queue
-	mr.Lpush(processingQueueKey, "invalid json")
+	_, _ = mr.Lpush(processingQueueKey, "invalid json")
 
 	// Should not fail, just skip invalid messages
 	recovered, err := q.RecoverStaleMessages(ctx, 5*time.Minute)
@@ -518,12 +518,12 @@ func TestQueue_Stats(t *testing.T) {
 	ctx := context.Background()
 
 	// Add messages to different queues
-	mr.Lpush(mainQueueKey, "msg1")
-	mr.Lpush(mainQueueKey, "msg2")
-	mr.Lpush(mainQueueKey, "msg3")
-	mr.Lpush(processingQueueKey, "proc1")
-	mr.ZAdd(delayedQueueKey, 1.0, "delayed1")
-	mr.ZAdd(delayedQueueKey, 2.0, "delayed2")
+	_, _ = mr.Lpush(mainQueueKey, "msg1")
+	_, _ = mr.Lpush(mainQueueKey, "msg2")
+	_, _ = mr.Lpush(mainQueueKey, "msg3")
+	_, _ = mr.Lpush(processingQueueKey, "proc1")
+	_, _ = mr.ZAdd(delayedQueueKey, 1.0, "delayed1")
+	_, _ = mr.ZAdd(delayedQueueKey, 2.0, "delayed2")
 
 	stats, err := q.Stats(ctx)
 	if err != nil {
@@ -678,7 +678,7 @@ func TestQueue_GetActiveClients(t *testing.T) {
 	ctx := context.Background()
 
 	// Add clients to active set
-	mr.SAdd(activeClientsKey, "client-1", "client-2", "client-3")
+	_, _ = mr.SAdd(activeClientsKey, "client-1", "client-2", "client-3")
 
 	clients, err := q.GetActiveClients(ctx)
 	if err != nil {
@@ -697,9 +697,9 @@ func TestQueue_GetClientQueueLength(t *testing.T) {
 
 	// Add messages to client queue
 	clientKey := clientQueuePrefix + clientID
-	mr.Lpush(clientKey, "msg1")
-	mr.Lpush(clientKey, "msg2")
-	mr.Lpush(clientKey, "msg3")
+	_, _ = mr.Lpush(clientKey, "msg1")
+	_, _ = mr.Lpush(clientKey, "msg2")
+	_, _ = mr.Lpush(clientKey, "msg3")
 
 	length, err := q.GetClientQueueLength(ctx, clientID)
 	if err != nil {
@@ -716,10 +716,10 @@ func TestQueue_ClientStats(t *testing.T) {
 	ctx := context.Background()
 
 	// Setup multiple clients with queues
-	mr.SAdd(activeClientsKey, "client-1", "client-2")
-	mr.Lpush(clientQueuePrefix+"client-1", "msg1")
-	mr.Lpush(clientQueuePrefix+"client-1", "msg2")
-	mr.Lpush(clientQueuePrefix+"client-2", "msg1")
+	_, _ = mr.SAdd(activeClientsKey, "client-1", "client-2")
+	_, _ = mr.Lpush(clientQueuePrefix+"client-1", "msg1")
+	_, _ = mr.Lpush(clientQueuePrefix+"client-1", "msg2")
+	_, _ = mr.Lpush(clientQueuePrefix+"client-2", "msg1")
 
 	stats, err := q.ClientStats(ctx)
 	if err != nil {
@@ -778,7 +778,7 @@ func TestQueue_Dequeue_MovesDelayedFirst(t *testing.T) {
 	}
 	data, _ := json.Marshal(msg)
 	score := float64(msg.EnqueueAt.Unix())
-	mr.ZAdd(delayedQueueKey, score, string(data))
+	_, _ = mr.ZAdd(delayedQueueKey, score, string(data))
 
 	// Dequeue should move delayed to main first
 	result, err := q.Dequeue(ctx)

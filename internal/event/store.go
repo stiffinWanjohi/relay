@@ -74,7 +74,7 @@ func (s *Store) CreateWithOutbox(ctx context.Context, event domain.Event) (domai
 	if err != nil {
 		return domain.Event{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Insert event
 	eventQuery := `
@@ -269,7 +269,7 @@ func (s *Store) GetDeliveryAttempts(ctx context.Context, eventID uuid.UUID) ([]d
 // GetQueueStats retrieves queue statistics.
 func (s *Store) GetQueueStats(ctx context.Context) (QueueStats, error) {
 	query := `
-		SELECT 
+		SELECT
 			COUNT(*) FILTER (WHERE status = 'queued') as queued,
 			COUNT(*) FILTER (WHERE status = 'delivering') as delivering,
 			COUNT(*) FILTER (WHERE status = 'delivered') as delivered,
@@ -311,8 +311,8 @@ func (s *Store) ClaimAndGetOutbox(ctx context.Context, workerID string, limit in
 			SET last_error = $1
 			WHERE id IN (
 				SELECT id FROM outbox
-				WHERE processed_at IS NULL 
-				  AND (last_error IS NULL OR last_error NOT LIKE 'claimed:%' OR 
+				WHERE processed_at IS NULL
+				  AND (last_error IS NULL OR last_error NOT LIKE 'claimed:%' OR
 				       created_at < NOW() - $3::interval)
 				ORDER BY created_at ASC
 				LIMIT $2
@@ -599,7 +599,7 @@ func (s *Store) CreateEventWithFanout(ctx context.Context, clientID, eventType, 
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var createdEvents []domain.Event
 
@@ -681,7 +681,7 @@ func (s *Store) ListEventsByEndpoint(ctx context.Context, endpointID uuid.UUID, 
 // GetEndpointStats retrieves delivery statistics for an endpoint.
 func (s *Store) GetEndpointStats(ctx context.Context, endpointID uuid.UUID) (EndpointStats, error) {
 	query := `
-		SELECT 
+		SELECT
 			COUNT(*) as total,
 			COUNT(*) FILTER (WHERE status = 'delivered') as delivered,
 			COUNT(*) FILTER (WHERE status = 'failed') as failed,

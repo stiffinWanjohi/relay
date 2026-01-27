@@ -382,7 +382,7 @@ func TestWorker_SenderIntegration(t *testing.T) {
 		callCount++
 		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
 	defer server.Close()
 

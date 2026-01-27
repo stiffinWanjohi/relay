@@ -77,7 +77,7 @@ func TestChecker_Check_Found(t *testing.T) {
 	idempotencyKey := "test-key"
 
 	// Set the key directly in Redis
-	mr.Set(keyPrefix+idempotencyKey, eventID.String())
+	_ = mr.Set(keyPrefix+idempotencyKey, eventID.String())
 
 	result, err := checker.Check(ctx, idempotencyKey)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestChecker_Check_InvalidUUID(t *testing.T) {
 	ctx := context.Background()
 
 	idempotencyKey := "invalid-uuid-key"
-	mr.Set(keyPrefix+idempotencyKey, "not-a-uuid")
+	_ = mr.Set(keyPrefix+idempotencyKey, "not-a-uuid")
 
 	_, err := checker.Check(ctx, idempotencyKey)
 	if err == nil {

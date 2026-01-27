@@ -41,14 +41,40 @@ func cleanupTestData(t *testing.T, pool *pgxpool.Pool, eventIDs []uuid.UUID, end
 	ctx := context.Background()
 
 	for _, id := range eventIDs {
-		pool.Exec(ctx, "DELETE FROM delivery_attempts WHERE event_id = $1", id)
-		pool.Exec(ctx, "DELETE FROM outbox WHERE event_id = $1", id)
-		pool.Exec(ctx, "DELETE FROM events WHERE id = $1", id)
+		_, _ = pool.Exec(ctx, "DELETE FROM delivery_attempts WHERE event_id = $1", id)
+		_, _ = pool.Exec(ctx, "DELETE FROM outbox WHERE event_id = $1", id)
+		_, _ = pool.Exec(ctx, "DELETE FROM events WHERE id = $1", id)
 	}
 
 	for _, id := range endpointIDs {
-		pool.Exec(ctx, "DELETE FROM endpoints WHERE id = $1", id)
+		_, _ = pool.Exec(ctx, "DELETE FROM endpoints WHERE id = $1", id)
 	}
+}
+
+// createTestClient creates a client in the database for testing endpoint operations
+func createTestClient(t *testing.T, pool *pgxpool.Pool) string {
+	t.Helper()
+	ctx := context.Background()
+
+	clientID := "test-client-" + uuid.New().String()
+	_, err := pool.Exec(ctx, `
+		INSERT INTO clients (id, name, email, webhook_url_patterns, max_events_per_day, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+	`, clientID, "Test Client", "test@example.com", []string{"https://example.com/*"}, 10000, true)
+	if err != nil {
+		t.Fatalf("Failed to create test client: %v", err)
+	}
+
+	return clientID
+}
+
+// cleanupTestClient removes a test client from the database
+func cleanupTestClient(t *testing.T, pool *pgxpool.Pool, clientID string) {
+	t.Helper()
+	ctx := context.Background()
+	_, _ = pool.Exec(ctx, "DELETE FROM endpoints WHERE client_id = $1", clientID)
+	_, _ = pool.Exec(ctx, "DELETE FROM api_keys WHERE client_id = $1", clientID)
+	_, _ = pool.Exec(ctx, "DELETE FROM clients WHERE id = $1", clientID)
 }
 
 func TestNewStore(t *testing.T) {
@@ -647,8 +673,12 @@ func TestStore_CreateEndpoint(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
+	// Create a test client first to satisfy foreign key constraint
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
+
 	endpoint := domain.NewEndpoint(
-		"test-client-"+uuid.New().String(),
+		clientID,
 		"https://example.com/webhook",
 		[]string{"order.created", "order.updated"},
 	)
@@ -678,8 +708,12 @@ func TestStore_UpdateEndpoint(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
+	// Create a test client first to satisfy foreign key constraint
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
+
 	endpoint := domain.NewEndpoint(
-		"test-client-"+uuid.New().String(),
+		clientID,
 		"https://example.com/webhook",
 		[]string{"order.created"},
 	)
@@ -735,8 +769,12 @@ func TestStore_GetEndpointByID(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
+	// Create a test client first to satisfy foreign key constraint
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
+
 	endpoint := domain.NewEndpoint(
-		"test-client-"+uuid.New().String(),
+		clientID,
 		"https://example.com/webhook",
 		[]string{"*"},
 	)
@@ -778,7 +816,10 @@ func TestStore_ListEndpointsByClient(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
-	clientID := "test-client-" + uuid.New().String()
+	// Create a test client first to satisfy foreign key constraint
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
+
 	var endpointIDs []uuid.UUID
 
 	// Create multiple endpoints for the same client
@@ -815,7 +856,10 @@ func TestStore_FindActiveEndpointsByEventType(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
-	clientID := "test-client-" + uuid.New().String()
+	// Create a test client first to satisfy foreign key constraint
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
+
 	var endpointIDs []uuid.UUID
 
 	// Create endpoint subscribed to specific event
@@ -863,8 +907,12 @@ func TestStore_DeleteEndpoint(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
+	// Create a test client first to satisfy foreign key constraint
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
+
 	endpoint := domain.NewEndpoint(
-		"test-client-"+uuid.New().String(),
+		clientID,
 		"https://example.com/webhook",
 		[]string{"order.created"},
 	)
@@ -906,7 +954,10 @@ func TestStore_CountEndpointsByClient(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
-	clientID := "test-client-" + uuid.New().String()
+	// Create a test client first to satisfy foreign key constraint
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
+
 	var endpointIDs []uuid.UUID
 
 	// Create endpoints
@@ -938,7 +989,10 @@ func TestStore_CreateEventWithFanout(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
-	clientID := "test-client-" + uuid.New().String()
+	// Create a test client first to satisfy foreign key constraint
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
+
 	var endpointIDs []uuid.UUID
 	var eventIDs []uuid.UUID
 
@@ -1013,7 +1067,9 @@ func TestStore_ListEventsByEndpoint(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
-	clientID := "test-client-" + uuid.New().String()
+	// Create a test client first to satisfy foreign key constraint
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
 
 	// Create endpoint
 	endpoint := domain.NewEndpoint(clientID, "https://example.com/webhook", []string{"*"})
@@ -1056,8 +1112,12 @@ func TestStore_GetEndpointStats(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
+	// Create a test client first to satisfy foreign key constraint
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
+
 	// Create endpoint
-	endpoint := domain.NewEndpoint("test-client-"+uuid.New().String(), "https://example.com/webhook", []string{"*"})
+	endpoint := domain.NewEndpoint(clientID, "https://example.com/webhook", []string{"*"})
 	_, err := store.CreateEndpoint(ctx, endpoint)
 	if err != nil {
 		t.Fatalf("CreateEndpoint failed: %v", err)

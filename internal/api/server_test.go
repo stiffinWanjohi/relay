@@ -251,7 +251,7 @@ func TestLoggingMiddleware(t *testing.T) {
 
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test"))
+		_, _ = w.Write([]byte("test"))
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)

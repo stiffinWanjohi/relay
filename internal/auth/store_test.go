@@ -175,7 +175,9 @@ func TestStore_RevokeAPIKey_NotFound(t *testing.T) {
 	store := NewStore(pool)
 	ctx := context.Background()
 
-	err := store.RevokeAPIKey(ctx, "nonexistent-key-id")
+	// Use a valid UUID format that doesn't exist
+	nonExistentID := "00000000-0000-0000-0000-000000000000"
+	err := store.RevokeAPIKey(ctx, nonExistentID)
 	if err != ErrInvalidAPIKey {
 		t.Errorf("expected ErrInvalidAPIKey, got %v", err)
 	}
@@ -210,8 +212,8 @@ func TestStore_FullWorkflow(t *testing.T) {
 
 	// Cleanup at the end
 	defer func() {
-		pool.Exec(ctx, "DELETE FROM api_keys WHERE client_id = $1", clientID)
-		pool.Exec(ctx, "DELETE FROM clients WHERE id = $1", clientID)
+		_, _ = pool.Exec(ctx, "DELETE FROM api_keys WHERE client_id = $1", clientID)
+		_, _ = pool.Exec(ctx, "DELETE FROM clients WHERE id = $1", clientID)
 	}()
 
 	// Create client
@@ -305,8 +307,8 @@ func TestStore_ValidateAPIKey_ExpiredKey(t *testing.T) {
 	clientID := "test-client-expired-" + generateRandomHex(8)
 
 	defer func() {
-		pool.Exec(ctx, "DELETE FROM api_keys WHERE client_id = $1", clientID)
-		pool.Exec(ctx, "DELETE FROM clients WHERE id = $1", clientID)
+		_, _ = pool.Exec(ctx, "DELETE FROM api_keys WHERE client_id = $1", clientID)
+		_, _ = pool.Exec(ctx, "DELETE FROM clients WHERE id = $1", clientID)
 	}()
 
 	// Create client
@@ -346,8 +348,8 @@ func TestStore_ValidateAPIKey_InactiveKey(t *testing.T) {
 	clientID := "test-client-inactive-" + generateRandomHex(8)
 
 	defer func() {
-		pool.Exec(ctx, "DELETE FROM api_keys WHERE client_id = $1", clientID)
-		pool.Exec(ctx, "DELETE FROM clients WHERE id = $1", clientID)
+		_, _ = pool.Exec(ctx, "DELETE FROM api_keys WHERE client_id = $1", clientID)
+		_, _ = pool.Exec(ctx, "DELETE FROM clients WHERE id = $1", clientID)
 	}()
 
 	// Create client
