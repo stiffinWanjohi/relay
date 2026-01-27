@@ -37,6 +37,7 @@ type Config struct {
 	API      APIConfig
 	Worker   WorkerConfig
 	Outbox   OutboxConfig
+	Auth     AuthConfig
 }
 
 // DatabaseConfig holds database configuration.
@@ -79,6 +80,12 @@ type OutboxConfig struct {
 	BatchSize       int
 	CleanupInterval time.Duration
 	RetentionPeriod time.Duration
+}
+
+// AuthConfig holds authentication configuration.
+type AuthConfig struct {
+	Enabled          bool
+	EnablePlayground bool
 }
 
 // Validation errors.
@@ -141,6 +148,10 @@ func LoadConfig() (*Config, error) {
 	cfg.Outbox.BatchSize = getEnvInt("OUTBOX_BATCH_SIZE", 100)
 	cfg.Outbox.CleanupInterval = getEnvDuration("OUTBOX_CLEANUP_INTERVAL", 1*time.Hour)
 	cfg.Outbox.RetentionPeriod = getEnvDuration("OUTBOX_RETENTION_PERIOD", 24*time.Hour)
+
+	// Auth config
+	cfg.Auth.Enabled = getEnvBool("AUTH_ENABLED", true)
+	cfg.Auth.EnablePlayground = getEnvBool("ENABLE_PLAYGROUND", false)
 
 	return cfg, nil
 }
@@ -297,4 +308,12 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 		}
 	}
 	return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value == "true" || value == "1" || value == "yes"
 }

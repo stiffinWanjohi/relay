@@ -12,10 +12,17 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/relay/internal/api/graphql"
+	"github.com/relay/internal/auth"
 	"github.com/relay/internal/dedup"
 	"github.com/relay/internal/event"
 	"github.com/relay/internal/queue"
 )
+
+// ServerConfig holds server configuration.
+type ServerConfig struct {
+	EnableAuth     bool
+	EnablePlayground bool
+}
 
 // Server represents the HTTP server.
 type Server struct {
@@ -24,7 +31,7 @@ type Server struct {
 }
 
 // NewServer creates a new HTTP server.
-func NewServer(store *event.Store, q *queue.Queue, d *dedup.Checker, logger *slog.Logger) *Server {
+func NewServer(store *event.Store, q *queue.Queue, d *dedup.Checker, authValidator auth.APIKeyValidator, cfg ServerConfig, logger *slog.Logger) *Server {
 	r := chi.NewRouter()
 
 	// Middleware
@@ -47,10 +54,21 @@ func NewServer(store *event.Store, q *queue.Queue, d *dedup.Checker, logger *slo
 		logger: logger,
 	}
 
-	// Routes
+	// Public routes (no auth required)
 	r.Get("/health", s.healthHandler)
-	r.Handle("/graphql", srv)
-	r.Get("/playground", playground.Handler("Relay GraphQL", "/graphql"))
+
+	// Protected routes
+	r.Group(func(r chi.Router) {
+		if cfg.EnableAuth && authValidator != nil {
+			r.Use(auth.Middleware(authValidator))
+		}
+		r.Handle("/graphql", srv)
+	})
+
+	// Playground (only in development)
+	if cfg.EnablePlayground {
+		r.Get("/playground", playground.Handler("Relay GraphQL", "/graphql"))
+	}
 
 	return s
 }

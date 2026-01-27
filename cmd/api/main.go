@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/relay/internal/api"
+	"github.com/relay/internal/auth"
 	"github.com/relay/internal/config"
 	"github.com/relay/internal/dedup"
 	"github.com/relay/internal/event"
@@ -79,6 +80,9 @@ func main() {
 	q := queue.NewQueue(redisClient)
 	dedupChecker := dedup.NewChecker(redisClient)
 
+	// Initialize auth store
+	authStore := auth.NewStore(pool)
+
 	// Create and start outbox processor
 	outboxProcessor := outbox.NewProcessor(store, q, outbox.ProcessorConfig{
 		PollInterval:    cfg.Outbox.PollInterval,
@@ -89,7 +93,11 @@ func main() {
 	outboxProcessor.Start(ctx)
 
 	// Create server
-	server := api.NewServer(store, q, dedupChecker, logger)
+	serverCfg := api.ServerConfig{
+		EnableAuth:       cfg.Auth.Enabled,
+		EnablePlayground: cfg.Auth.EnablePlayground,
+	}
+	server := api.NewServer(store, q, dedupChecker, authStore, serverCfg, logger)
 
 	// Create HTTP server with proper timeouts
 	httpServer := &http.Server{
