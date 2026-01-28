@@ -26,7 +26,7 @@ func setupBenchRedisForRateLimit(b *testing.B) *redis.Client {
 		if len(keys) > 0 {
 			client.Del(ctx, keys...)
 		}
-		client.Close()
+		_ = client.Close()
 	})
 
 	return client

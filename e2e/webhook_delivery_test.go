@@ -95,7 +95,7 @@ func getWebhookSiteRequests(t *testing.T, tokenUUID string) []WebhookSiteRequest
 	if err != nil {
 		t.Fatalf("Failed to get webhook.site requests: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var requests WebhookSiteRequests
 	if err := json.NewDecoder(resp.Body).Decode(&requests); err != nil {
@@ -145,7 +145,7 @@ func skipIfNoInfra(t *testing.T) (dbURL, redisURL, apiURL string) {
 	if err != nil {
 		t.Skipf("Skipping E2E test: API not available at %s: %v", apiURL, err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Skipf("Skipping E2E test: API health check failed with status %d", resp.StatusCode)
 	}
@@ -160,7 +160,7 @@ func skipIfNoWebhookSite(t *testing.T) {
 	if err != nil {
 		t.Skipf("Skipping E2E test: webhook.site not accessible: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // GraphQL request/response helpers
@@ -191,7 +191,7 @@ func executeGraphQL(t *testing.T, apiURL, query string, variables map[string]any
 	if err != nil {
 		t.Fatalf("Failed to execute GraphQL request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -218,7 +218,7 @@ func executeGraphQLWithErrors(t *testing.T, apiURL, query string, variables map[
 	if err != nil {
 		t.Fatalf("Failed to execute GraphQL request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	var gqlResp graphQLResponse

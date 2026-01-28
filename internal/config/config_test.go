@@ -69,8 +69,8 @@ func TestLoadConfig_SigningKeyTooShort(t *testing.T) {
 
 func TestLoadConfig_Success(t *testing.T) {
 	clearEnv()
-	os.Setenv("DATABASE_URL", "postgres://localhost/relay")
-	os.Setenv("SIGNING_KEY", "this-is-a-32-character-key-here!")
+	_ = os.Setenv("DATABASE_URL", "postgres://localhost/relay")
+	_ = os.Setenv("SIGNING_KEY", "this-is-a-32-character-key-here!")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -123,35 +123,35 @@ func TestLoadConfig_Success(t *testing.T) {
 
 func TestLoadConfig_CustomValues(t *testing.T) {
 	clearEnv()
-	os.Setenv("DATABASE_URL", "postgres://localhost/relay")
-	os.Setenv("DATABASE_MAX_CONNS", "50")
-	os.Setenv("DATABASE_MIN_CONNS", "5")
-	os.Setenv("DATABASE_MAX_CONN_LIFETIME", "2h")
-	os.Setenv("DATABASE_MAX_CONN_IDLE_TIME", "15m")
-	os.Setenv("REDIS_URL", "redis://custom:6380")
-	os.Setenv("REDIS_POOL_SIZE", "200")
-	os.Setenv("REDIS_READ_TIMEOUT", "5s")
-	os.Setenv("REDIS_WRITE_TIMEOUT", "5s")
-	os.Setenv("API_ADDR", ":9090")
-	os.Setenv("API_READ_TIMEOUT", "30s")
-	os.Setenv("API_WRITE_TIMEOUT", "30s")
-	os.Setenv("API_IDLE_TIMEOUT", "120s")
-	os.Setenv("API_SHUTDOWN_TIMEOUT", "60s")
-	os.Setenv("WORKER_CONCURRENCY", "20")
-	os.Setenv("WORKER_VISIBILITY_TIMEOUT", "60s")
-	os.Setenv("WORKER_SHUTDOWN_TIMEOUT", "45s")
-	os.Setenv("SIGNING_KEY", "this-is-a-32-character-key-here!")
-	os.Setenv("OUTBOX_POLL_INTERVAL", "2s")
-	os.Setenv("OUTBOX_BATCH_SIZE", "50")
-	os.Setenv("OUTBOX_CLEANUP_INTERVAL", "2h")
-	os.Setenv("OUTBOX_RETENTION_PERIOD", "48h")
-	os.Setenv("AUTH_ENABLED", "false")
-	os.Setenv("ENABLE_PLAYGROUND", "true")
-	os.Setenv("METRICS_PROVIDER", "otel")
-	os.Setenv("METRICS_ENDPOINT", "http://collector:4317")
-	os.Setenv("SERVICE_NAME", "custom-relay")
-	os.Setenv("SERVICE_VERSION", "2.0.0")
-	os.Setenv("ENVIRONMENT", "production")
+	_ = os.Setenv("DATABASE_URL", "postgres://localhost/relay")
+	_ = os.Setenv("DATABASE_MAX_CONNS", "50")
+	_ = os.Setenv("DATABASE_MIN_CONNS", "5")
+	_ = os.Setenv("DATABASE_MAX_CONN_LIFETIME", "2h")
+	_ = os.Setenv("DATABASE_MAX_CONN_IDLE_TIME", "15m")
+	_ = os.Setenv("REDIS_URL", "redis://custom:6380")
+	_ = os.Setenv("REDIS_POOL_SIZE", "200")
+	_ = os.Setenv("REDIS_READ_TIMEOUT", "5s")
+	_ = os.Setenv("REDIS_WRITE_TIMEOUT", "5s")
+	_ = os.Setenv("API_ADDR", ":9090")
+	_ = os.Setenv("API_READ_TIMEOUT", "30s")
+	_ = os.Setenv("API_WRITE_TIMEOUT", "30s")
+	_ = os.Setenv("API_IDLE_TIMEOUT", "120s")
+	_ = os.Setenv("API_SHUTDOWN_TIMEOUT", "60s")
+	_ = os.Setenv("WORKER_CONCURRENCY", "20")
+	_ = os.Setenv("WORKER_VISIBILITY_TIMEOUT", "60s")
+	_ = os.Setenv("WORKER_SHUTDOWN_TIMEOUT", "45s")
+	_ = os.Setenv("SIGNING_KEY", "this-is-a-32-character-key-here!")
+	_ = os.Setenv("OUTBOX_POLL_INTERVAL", "2s")
+	_ = os.Setenv("OUTBOX_BATCH_SIZE", "50")
+	_ = os.Setenv("OUTBOX_CLEANUP_INTERVAL", "2h")
+	_ = os.Setenv("OUTBOX_RETENTION_PERIOD", "48h")
+	_ = os.Setenv("AUTH_ENABLED", "false")
+	_ = os.Setenv("ENABLE_PLAYGROUND", "true")
+	_ = os.Setenv("METRICS_PROVIDER", "otel")
+	_ = os.Setenv("METRICS_ENDPOINT", "http://collector:4317")
+	_ = os.Setenv("SERVICE_NAME", "custom-relay")
+	_ = os.Setenv("SERVICE_VERSION", "2.0.0")
+	_ = os.Setenv("ENVIRONMENT", "production")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -256,10 +256,10 @@ func TestLoadConfig_CustomValues(t *testing.T) {
 
 func TestLoadConfig_InvalidEnvValues(t *testing.T) {
 	clearEnv()
-	os.Setenv("DATABASE_URL", "postgres://localhost/relay")
-	os.Setenv("SIGNING_KEY", "this-is-a-32-character-key-here!")
-	os.Setenv("DATABASE_MAX_CONNS", "invalid")
-	os.Setenv("REDIS_READ_TIMEOUT", "invalid")
+	_ = os.Setenv("DATABASE_URL", "postgres://localhost/relay")
+	_ = os.Setenv("SIGNING_KEY", "this-is-a-32-character-key-here!")
+	_ = os.Setenv("DATABASE_MAX_CONNS", "invalid")
+	_ = os.Setenv("REDIS_READ_TIMEOUT", "invalid")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -463,7 +463,7 @@ func TestGetEnv(t *testing.T) {
 	}
 
 	// Test with env var set
-	os.Setenv("TEST_VAR", "custom")
+	_ = os.Setenv("TEST_VAR", "custom")
 	result = getEnv("TEST_VAR", "default")
 	if result != "custom" {
 		t.Errorf("getEnv should return env value, got %s", result)
@@ -480,14 +480,14 @@ func TestGetEnvInt(t *testing.T) {
 	}
 
 	// Test with valid int
-	os.Setenv("TEST_INT", "100")
+	_ = os.Setenv("TEST_INT", "100")
 	result = getEnvInt("TEST_INT", 42)
 	if result != 100 {
 		t.Errorf("getEnvInt should return parsed int, got %d", result)
 	}
 
 	// Test with invalid int
-	os.Setenv("TEST_INT", "not-a-number")
+	_ = os.Setenv("TEST_INT", "not-a-number")
 	result = getEnvInt("TEST_INT", 42)
 	if result != 42 {
 		t.Errorf("getEnvInt should return default for invalid int, got %d", result)
@@ -504,14 +504,14 @@ func TestGetEnvDuration(t *testing.T) {
 	}
 
 	// Test with valid duration
-	os.Setenv("TEST_DUR", "10m")
+	_ = os.Setenv("TEST_DUR", "10m")
 	result = getEnvDuration("TEST_DUR", 5*time.Second)
 	if result != 10*time.Minute {
 		t.Errorf("getEnvDuration should return parsed duration, got %v", result)
 	}
 
 	// Test with invalid duration
-	os.Setenv("TEST_DUR", "not-a-duration")
+	_ = os.Setenv("TEST_DUR", "not-a-duration")
 	result = getEnvDuration("TEST_DUR", 5*time.Second)
 	if result != 5*time.Second {
 		t.Errorf("getEnvDuration should return default for invalid duration, got %v", result)
@@ -539,7 +539,7 @@ func TestGetEnvBool(t *testing.T) {
 	for _, tt := range tests {
 		clearEnv()
 		if tt.value != "" {
-			os.Setenv("TEST_BOOL", tt.value)
+			_ = os.Setenv("TEST_BOOL", tt.value)
 		}
 		result := getEnvBool("TEST_BOOL", tt.def)
 		if result != tt.expected {

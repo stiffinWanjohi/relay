@@ -25,7 +25,7 @@ func setupTestRedis(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
 
 func TestNewRateLimiter(t *testing.T) {
 	_, client := setupTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	rl := NewRateLimiter(client)
 
@@ -39,7 +39,7 @@ func TestNewRateLimiter(t *testing.T) {
 
 func TestRateLimiter_Allow_NoLimit(t *testing.T) {
 	_, client := setupTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	rl := NewRateLimiter(client)
 	ctx := context.Background()
@@ -67,7 +67,7 @@ func TestRateLimiter_Allow_NoLimit(t *testing.T) {
 
 func TestRateLimiter_Allow_WithLimit(t *testing.T) {
 	mr, client := setupTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	rl := NewRateLimiter(client)
 	ctx := context.Background()
@@ -98,7 +98,7 @@ func TestRateLimiter_Allow_WithLimit(t *testing.T) {
 
 func TestRateLimiter_Allow_DifferentKeys(t *testing.T) {
 	_, client := setupTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	rl := NewRateLimiter(client)
 	ctx := context.Background()
@@ -130,7 +130,7 @@ func TestRateLimiter_Allow_DifferentKeys(t *testing.T) {
 
 func TestRateLimiter_AllowN(t *testing.T) {
 	mr, client := setupTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	rl := NewRateLimiter(client)
 	ctx := context.Background()
@@ -172,7 +172,7 @@ func TestRateLimiter_AllowN(t *testing.T) {
 
 func TestRateLimiter_GetCurrentRate(t *testing.T) {
 	mr, client := setupTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	rl := NewRateLimiter(client)
 	ctx := context.Background()
@@ -215,7 +215,7 @@ func TestRateLimiter_GetCurrentRate(t *testing.T) {
 
 func TestRateLimiter_Reset(t *testing.T) {
 	_, client := setupTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	rl := NewRateLimiter(client)
 	ctx := context.Background()
@@ -251,7 +251,7 @@ func TestRateLimiter_Allow_RedisError(t *testing.T) {
 
 	// Close miniredis to simulate connection error
 	mr.Close()
-	client.Close()
+	_ = client.Close()
 
 	// Should fail open (return true) on Redis error
 	result := rl.Allow(ctx, "error-key", 5)
@@ -262,7 +262,7 @@ func TestRateLimiter_Allow_RedisError(t *testing.T) {
 
 func TestRateLimiter_SlidingWindow_BasicBehavior(t *testing.T) {
 	_, client := setupTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	rl := NewRateLimiter(client)
 	ctx := context.Background()
@@ -338,7 +338,7 @@ func TestFormatInt(t *testing.T) {
 
 func TestRateLimiter_ConcurrentAccess(t *testing.T) {
 	_, client := setupTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	rl := NewRateLimiter(client)
 	ctx := context.Background()

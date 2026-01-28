@@ -71,7 +71,7 @@ func setupTestServer(t *testing.T, cfg ServerConfig, authValidator auth.APIKeyVa
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	t.Cleanup(func() {
-		redisClient.Close()
+		_ = redisClient.Close()
 		mr.Close()
 		pool.Close()
 	})

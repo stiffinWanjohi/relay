@@ -21,7 +21,7 @@ func setupBenchRedisForScheduler(b *testing.B) *redis.Client {
 
 	b.Cleanup(func() {
 		client.Del(ctx, drrDeficitKey, drrActiveKey, drrLastServed)
-		client.Close()
+		_ = client.Close()
 	})
 
 	return client

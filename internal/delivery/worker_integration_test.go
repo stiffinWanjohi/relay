@@ -56,7 +56,7 @@ func TestWorker_Integration_SuccessfulDelivery(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Setup mock HTTP server
 	var deliveryCount atomic.Int32
@@ -140,7 +140,7 @@ func TestWorker_Integration_FailedDeliveryWithRetry(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Setup mock HTTP server that fails
 	var deliveryCount atomic.Int32
@@ -224,7 +224,7 @@ func TestWorker_Integration_CircuitBreaker(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Server that always fails
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -280,7 +280,7 @@ func TestWorker_Integration_RateLimiting(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -327,7 +327,7 @@ func TestWorker_HandleSuccess_Unit(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	q := queue.NewQueue(redisClient)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -364,7 +364,7 @@ func TestWorker_HandleFailure_CircuitBreaker(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	q := queue.NewQueue(redisClient)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))

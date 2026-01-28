@@ -33,7 +33,7 @@ func TestDefaultDRRConfig(t *testing.T) {
 
 func TestNewDRRScheduler(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	t.Run("with default config", func(t *testing.T) {
 		config := DefaultDRRConfig()
@@ -82,7 +82,7 @@ func TestNewDRRScheduler(t *testing.T) {
 
 func TestDRRScheduler_RegisterClient(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scheduler := NewDRRScheduler(client, DefaultDRRConfig())
 	ctx := context.Background()
@@ -105,7 +105,7 @@ func TestDRRScheduler_RegisterClient(t *testing.T) {
 
 func TestDRRScheduler_UnregisterClient(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scheduler := NewDRRScheduler(client, DefaultDRRConfig())
 	ctx := context.Background()
@@ -134,7 +134,7 @@ func TestDRRScheduler_UnregisterClient(t *testing.T) {
 
 func TestDRRScheduler_SelectNextClient_NoClients(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scheduler := NewDRRScheduler(client, DefaultDRRConfig())
 	ctx := context.Background()
@@ -150,7 +150,7 @@ func TestDRRScheduler_SelectNextClient_NoClients(t *testing.T) {
 
 func TestDRRScheduler_SelectNextClient_SingleClient(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scheduler := NewDRRScheduler(client, DefaultDRRConfig())
 	ctx := context.Background()
@@ -168,7 +168,7 @@ func TestDRRScheduler_SelectNextClient_SingleClient(t *testing.T) {
 
 func TestDRRScheduler_SelectNextClient_MultipleClients(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scheduler := NewDRRScheduler(client, DefaultDRRConfig())
 	ctx := context.Background()
@@ -192,7 +192,7 @@ func TestDRRScheduler_SelectNextClient_MultipleClients(t *testing.T) {
 
 func TestDRRScheduler_SelectNextClient_RoundRobin(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	config := DRRConfig{Quantum: 1000} // Small quantum for testing
 	scheduler := NewDRRScheduler(client, config)
@@ -226,7 +226,7 @@ func TestDRRScheduler_SelectNextClient_RoundRobin(t *testing.T) {
 
 func TestDRRScheduler_RecordDelivery(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	config := DRRConfig{Quantum: 1000}
 	scheduler := NewDRRScheduler(client, config)
@@ -261,7 +261,7 @@ func TestDRRScheduler_RecordDelivery(t *testing.T) {
 
 func TestDRRScheduler_RecordDelivery_NegativeDeficitCappedAtZero(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	config := DRRConfig{Quantum: 100}
 	scheduler := NewDRRScheduler(client, config)
@@ -285,7 +285,7 @@ func TestDRRScheduler_RecordDelivery_NegativeDeficitCappedAtZero(t *testing.T) {
 
 func TestDRRScheduler_GetDeficit(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scheduler := NewDRRScheduler(client, DefaultDRRConfig())
 	ctx := context.Background()
@@ -316,7 +316,7 @@ func TestDRRScheduler_GetDeficit(t *testing.T) {
 
 func TestDRRScheduler_Stats(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	config := DRRConfig{Quantum: 1000}
 	scheduler := NewDRRScheduler(client, config)
@@ -350,7 +350,7 @@ func TestDRRScheduler_Stats(t *testing.T) {
 
 func TestDRRScheduler_Reset(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scheduler := NewDRRScheduler(client, DefaultDRRConfig())
 	ctx := context.Background()
@@ -380,7 +380,7 @@ func TestDRRScheduler_Reset(t *testing.T) {
 
 func TestDRRScheduler_SelectNextClient_AllZeroDeficit(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	config := DRRConfig{Quantum: 100}
 	scheduler := NewDRRScheduler(client, config)
@@ -410,7 +410,7 @@ func TestDRRScheduler_SelectNextClient_AllZeroDeficit(t *testing.T) {
 
 func TestDRRScheduler_ConcurrentAccess(t *testing.T) {
 	_, client := setupSchedulerTestRedis(t)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scheduler := NewDRRScheduler(client, DefaultDRRConfig())
 	ctx := context.Background()
@@ -461,7 +461,7 @@ func TestDRRScheduler_SelectNextClient_RedisError(t *testing.T) {
 
 	// Close redis
 	mr.Close()
-	client.Close()
+	_ = client.Close()
 
 	clientID, err := scheduler.SelectNextClient(ctx)
 	// Should return error or empty string, but not panic

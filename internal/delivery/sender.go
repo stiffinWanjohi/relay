@@ -116,7 +116,7 @@ func (s *Sender) SendWithTimeout(ctx context.Context, event domain.Event, timeou
 	if err != nil {
 		return domain.NewFailureResult(0, "", err, time.Since(start).Milliseconds())
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read the response body (limited)
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
