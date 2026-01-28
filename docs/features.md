@@ -265,3 +265,28 @@ verifySignature(payload, signature, timestamp, 'whsec_secret');
 ```
 
 [TypeScript SDK Documentation →](../sdk/typescript/README.md)
+
+### Python SDK
+
+Official Python client library:
+
+```python
+from relay_sdk import RelayClient, verify_signature, EventStatus
+
+client = RelayClient("http://localhost:8080", "rly_xxx")
+
+# Send event
+event = client.create_event(
+    "order-123",
+    destination="https://example.com/webhook",
+    payload={"order_id": 123},
+)
+
+# Batch retry failed events
+result = client.batch_retry_by_status(EventStatus.FAILED, limit=100)
+
+# Verify incoming webhooks
+verify_signature(payload, signature, timestamp, "whsec_secret")
+```
+
+[Python SDK Documentation →](../sdk/python/README.md)
