@@ -53,6 +53,8 @@ func main() {
 		err = cmdStats(client)
 	case "health":
 		err = cmdHealth(client)
+	case "openapi":
+		err = cmdOpenAPI(args)
 	case "version", "-v", "--version":
 		fmt.Printf("relay version %s\n", version)
 	case "help", "-h", "--help":
@@ -82,6 +84,7 @@ Commands:
   replay    Replay a failed/dead event
   stats     Show queue statistics
   health    Check service health
+  openapi   Show or serve OpenAPI specification
   version   Show version information
   help      Show this help message
 

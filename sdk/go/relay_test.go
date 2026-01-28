@@ -177,12 +177,12 @@ func TestAPIError_Error(t *testing.T) {
 		{
 			name:     "with code",
 			err:      APIError{StatusCode: 400, Message: "invalid request", Code: "INVALID"},
-			expected: "relay: invalid request (INVALID, status 400)",
+			expected: "relay: invalid request (HTTP 400, code: INVALID)",
 		},
 		{
 			name:     "without code",
 			err:      APIError{StatusCode: 500, Message: "server error"},
-			expected: "relay: server error (status 500)",
+			expected: "relay: server error (HTTP 500)",
 		},
 	}
 

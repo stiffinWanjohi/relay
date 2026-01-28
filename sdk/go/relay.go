@@ -106,17 +106,3 @@ func (c *Client) do(ctx context.Context, method, path string, body, result any, 
 
 	return nil
 }
-
-// APIError represents an API error response.
-type APIError struct {
-	StatusCode int    `json:"-"`
-	Message    string `json:"error"`
-	Code       string `json:"code"`
-}
-
-func (e *APIError) Error() string {
-	if e.Code != "" {
-		return fmt.Sprintf("relay: %s (%s, status %d)", e.Message, e.Code, e.StatusCode)
-	}
-	return fmt.Sprintf("relay: %s (status %d)", e.Message, e.StatusCode)
-}
