@@ -54,6 +54,11 @@ type Endpoint struct {
 	// Custom headers to include with every delivery
 	CustomHeaders map[string]string
 
+	// Signing secret for webhook signatures (per-endpoint)
+	SigningSecret   string     // Current signing secret (if empty, use global)
+	PreviousSecret  string     // Previous secret for rotation grace period
+	SecretRotatedAt *time.Time // When the secret was last rotated
+
 	// Metadata
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -246,4 +251,76 @@ func (e Endpoint) GetTimeoutDuration() time.Duration {
 // GetCircuitResetDuration returns the circuit reset time as a time.Duration.
 func (e Endpoint) GetCircuitResetDuration() time.Duration {
 	return time.Duration(e.CircuitResetMs) * time.Millisecond
+}
+
+// RotateSecret rotates the signing secret, moving current to previous.
+func (e Endpoint) RotateSecret(newSecret string) Endpoint {
+	now := time.Now().UTC()
+	return Endpoint{
+		ID:               e.ID,
+		ClientID:         e.ClientID,
+		URL:              e.URL,
+		Description:      e.Description,
+		EventTypes:       e.EventTypes,
+		Status:           e.Status,
+		MaxRetries:       e.MaxRetries,
+		RetryBackoffMs:   e.RetryBackoffMs,
+		RetryBackoffMax:  e.RetryBackoffMax,
+		RetryBackoffMult: e.RetryBackoffMult,
+		TimeoutMs:        e.TimeoutMs,
+		RateLimitPerSec:  e.RateLimitPerSec,
+		CircuitThreshold: e.CircuitThreshold,
+		CircuitResetMs:   e.CircuitResetMs,
+		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    newSecret,
+		PreviousSecret:   e.SigningSecret, // Move current to previous
+		SecretRotatedAt:  &now,
+		CreatedAt:        e.CreatedAt,
+		UpdatedAt:        now,
+	}
+}
+
+// ClearPreviousSecret removes the previous secret after rotation grace period.
+func (e Endpoint) ClearPreviousSecret() Endpoint {
+	now := time.Now().UTC()
+	return Endpoint{
+		ID:               e.ID,
+		ClientID:         e.ClientID,
+		URL:              e.URL,
+		Description:      e.Description,
+		EventTypes:       e.EventTypes,
+		Status:           e.Status,
+		MaxRetries:       e.MaxRetries,
+		RetryBackoffMs:   e.RetryBackoffMs,
+		RetryBackoffMax:  e.RetryBackoffMax,
+		RetryBackoffMult: e.RetryBackoffMult,
+		TimeoutMs:        e.TimeoutMs,
+		RateLimitPerSec:  e.RateLimitPerSec,
+		CircuitThreshold: e.CircuitThreshold,
+		CircuitResetMs:   e.CircuitResetMs,
+		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    e.SigningSecret,
+		PreviousSecret:   "", // Clear previous
+		SecretRotatedAt:  e.SecretRotatedAt,
+		CreatedAt:        e.CreatedAt,
+		UpdatedAt:        now,
+	}
+}
+
+// HasCustomSecret returns true if the endpoint has a custom signing secret.
+func (e Endpoint) HasCustomSecret() bool {
+	return e.SigningSecret != ""
+}
+
+// GetSigningSecrets returns all active signing secrets for this endpoint.
+// During rotation, both current and previous secrets are valid.
+func (e Endpoint) GetSigningSecrets() []string {
+	secrets := make([]string, 0, 2)
+	if e.SigningSecret != "" {
+		secrets = append(secrets, e.SigningSecret)
+	}
+	if e.PreviousSecret != "" {
+		secrets = append(secrets, e.PreviousSecret)
+	}
+	return secrets
 }

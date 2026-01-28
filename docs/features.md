@@ -61,6 +61,82 @@ CLOSED → (5 failures) → OPEN → (5 min) → HALF-OPEN
 - **Open**: All requests fail fast, queued for later
 - **Half-Open**: Single probe request, success closes circuit
 
+## Failure Notifications
+
+Get alerted when circuit breakers trip via Slack or email:
+
+```bash
+# Enable notifications
+NOTIFICATION_ENABLED=true
+NOTIFICATION_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+NOTIFICATION_SMTP_HOST=smtp.example.com
+NOTIFICATION_SMTP_PORT=587
+NOTIFICATION_EMAIL_TO=ops@example.com,oncall@example.com
+```
+
+Notification types:
+- **Circuit Trip**: When a circuit breaker opens due to failures
+- **Circuit Recovery**: When a circuit breaker recovers
+- **Endpoint Disabled**: When an endpoint is disabled
+
+## Batch Retry
+
+Retry multiple failed events at once:
+
+```graphql
+# Retry by IDs
+mutation {
+  retryEvents(ids: ["evt_1", "evt_2"]) {
+    succeeded { id status }
+    failed { eventId error }
+  }
+}
+
+# Retry by status
+mutation {
+  retryEventsByStatus(status: FAILED, limit: 100) {
+    succeeded { id }
+    failed { eventId error }
+  }
+}
+
+# Retry by endpoint
+mutation {
+  retryEventsByEndpoint(endpointId: "ep_123", status: DEAD, limit: 50) {
+    succeeded { id }
+    failed { eventId error }
+  }
+}
+```
+
+REST API:
+```bash
+curl -X POST http://localhost:8080/api/v1/events/batch/retry \
+  -H "X-API-Key: $KEY" \
+  -d '{"event_ids": ["evt_1", "evt_2"]}'
+```
+
+## Per-Endpoint Signing Secrets
+
+Each endpoint can have its own signing secret with rotation support:
+
+```graphql
+# Rotate secret (generates new, keeps old for grace period)
+mutation {
+  rotateEndpointSecret(id: "ep_123") {
+    endpoint { id hasCustomSecret }
+    newSecret  # Only shown once!
+  }
+}
+
+# Clear old secret after rotation is complete
+mutation {
+  clearPreviousSecret(id: "ep_123") { id }
+}
+```
+
+During rotation, both old and new secrets are valid, allowing receivers to update without downtime.
+
 ## Event Fan-out
 
 Subscribe endpoints to event types with wildcards:
@@ -139,3 +215,29 @@ query {
   }
 }
 ```
+
+## Go SDK
+
+Official Go client library for Relay:
+
+```go
+import "github.com/stiffinWanjohi/relay/sdk/go"
+
+// Create client
+client := relay.NewClient("http://localhost:8080", "rly_xxx")
+
+// Send event
+event, err := client.CreateEvent(ctx, "order-123", relay.CreateEventRequest{
+    Destination: "https://example.com/webhook",
+    Payload:     map[string]any{"order_id": 123},
+})
+
+// Batch retry failed events
+result, err := client.BatchRetryByStatus(ctx, relay.EventStatusFailed, 100)
+
+// Verify incoming webhooks
+verifier := relay.NewWebhookVerifier("whsec_your_secret")
+err := verifier.Verify(payload, signature, timestamp)
+```
+
+[SDK Documentation →](../sdk/go/README.md)

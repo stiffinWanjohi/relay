@@ -2,13 +2,13 @@ openapi: 3.1.0
 info:
   title: Relay Webhook Delivery API
   description: |
-    Relay is a webhook delivery system that guarantees delivery through 
-    idempotency keys, persistent storage, exponential backoff retries, 
+    Relay is a webhook delivery system that guarantees delivery through
+    idempotency keys, persistent storage, exponential backoff retries,
     and circuit breakers.
-    
+
     ## Authentication
     All API requests require an API key passed in the `X-API-Key` header.
-    
+
     ## Rate Limiting
     API requests are rate limited per API key. Check response headers for limits:
     - `X-RateLimit-Limit`: Maximum requests per window
@@ -46,12 +46,12 @@ paths:
       operationId: healthCheck
       security: []
       responses:
-        '200':
+        "200":
           description: Service is healthy
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                $ref: "#/components/schemas/HealthResponse"
 
   /api/v1/events:
     post:
@@ -61,36 +61,36 @@ paths:
       description: |
         Creates a new webhook event for delivery. The event will be queued
         and delivered to the specified destination with automatic retries.
-        
+
         Use the `X-Idempotency-Key` header to prevent duplicate events.
       operationId: createEvent
       parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateEventRequest'
+              $ref: "#/components/schemas/CreateEventRequest"
       responses:
-        '201':
+        "201":
           description: Event created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Event'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '409':
+                $ref: "#/components/schemas/Event"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
           description: Idempotency conflict - event already exists
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Event'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
+                $ref: "#/components/schemas/Event"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
     get:
       tags:
@@ -103,7 +103,7 @@ paths:
           in: query
           description: Filter by event status
           schema:
-            $ref: '#/components/schemas/EventStatus'
+            $ref: "#/components/schemas/EventStatus"
         - name: limit
           in: query
           description: Maximum number of events to return
@@ -118,14 +118,14 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: List of events
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EventList'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                $ref: "#/components/schemas/EventList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /api/v1/events/{eventId}:
     get:
@@ -135,18 +135,18 @@ paths:
       description: Returns a single event with its delivery history
       operationId: getEvent
       parameters:
-        - $ref: '#/components/parameters/EventId'
+        - $ref: "#/components/parameters/EventId"
       responses:
-        '200':
+        "200":
           description: Event details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EventWithAttempts'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: "#/components/schemas/EventWithAttempts"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/events/{eventId}/replay:
     post:
@@ -154,28 +154,58 @@ paths:
         - Events
       summary: Replay an event
       description: |
-        Replays a failed or dead event. The event will be re-queued 
+        Replays a failed or dead event. The event will be re-queued
         for delivery with a fresh retry count.
       operationId: replayEvent
       parameters:
-        - $ref: '#/components/parameters/EventId'
+        - $ref: "#/components/parameters/EventId"
       responses:
-        '200':
+        "200":
           description: Event replayed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Event'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
+                $ref: "#/components/schemas/Event"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
           description: Event cannot be replayed (not in failed/dead status)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/events/batch/retry:
+    post:
+      tags:
+        - Events
+      summary: Batch retry events
+      description: |
+        Retry multiple failed or dead events in a single request.
+        Supports three modes:
+        - By IDs: Retry specific events by their UUIDs
+        - By status: Retry all events with a given status (failed/dead)
+        - By endpoint: Retry all failed/dead events for a specific endpoint
+      operationId: batchRetryEvents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchRetryRequest"
+      responses:
+        "200":
+          description: Batch retry result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchRetryResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /api/v1/endpoints:
     post:
@@ -189,18 +219,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateEndpointRequest'
+              $ref: "#/components/schemas/CreateEndpointRequest"
       responses:
-        '201':
+        "201":
           description: Endpoint created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Endpoint'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                $ref: "#/components/schemas/Endpoint"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
     get:
       tags:
@@ -213,7 +243,7 @@ paths:
           in: query
           description: Filter by endpoint status
           schema:
-            $ref: '#/components/schemas/EndpointStatus'
+            $ref: "#/components/schemas/EndpointStatus"
         - name: limit
           in: query
           schema:
@@ -226,14 +256,14 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: List of endpoints
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EndpointList'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                $ref: "#/components/schemas/EndpointList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /api/v1/endpoints/{endpointId}:
     get:
@@ -243,18 +273,18 @@ paths:
       description: Returns endpoint details with statistics
       operationId: getEndpoint
       parameters:
-        - $ref: '#/components/parameters/EndpointId'
+        - $ref: "#/components/parameters/EndpointId"
       responses:
-        '200':
+        "200":
           description: Endpoint details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EndpointWithStats'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: "#/components/schemas/EndpointWithStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
     patch:
       tags:
@@ -263,24 +293,24 @@ paths:
       description: Updates endpoint configuration
       operationId: updateEndpoint
       parameters:
-        - $ref: '#/components/parameters/EndpointId'
+        - $ref: "#/components/parameters/EndpointId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateEndpointRequest'
+              $ref: "#/components/schemas/UpdateEndpointRequest"
       responses:
-        '200':
+        "200":
           description: Endpoint updated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Endpoint'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: "#/components/schemas/Endpoint"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
     delete:
       tags:
@@ -289,14 +319,14 @@ paths:
       description: Deletes an endpoint (pending events will still be delivered)
       operationId: deleteEndpoint
       parameters:
-        - $ref: '#/components/parameters/EndpointId'
+        - $ref: "#/components/parameters/EndpointId"
       responses:
-        '204':
+        "204":
           description: Endpoint deleted successfully
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/stats:
     get:
@@ -306,14 +336,14 @@ paths:
       description: Returns current queue and delivery statistics
       operationId: getStats
       responses:
-        '200':
+        "200":
           description: Queue statistics
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/QueueStats'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                $ref: "#/components/schemas/QueueStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
 components:
   securitySchemes:
@@ -376,7 +406,7 @@ components:
         eventType:
           type: string
         status:
-          $ref: '#/components/schemas/EventStatus'
+          $ref: "#/components/schemas/EventStatus"
         attempts:
           type: integer
         maxAttempts:
@@ -403,7 +433,7 @@ components:
 
     EventWithAttempts:
       allOf:
-        - $ref: '#/components/schemas/Event'
+        - $ref: "#/components/schemas/Event"
         - type: object
           properties:
             payload:
@@ -415,7 +445,7 @@ components:
             deliveryAttempts:
               type: array
               items:
-                $ref: '#/components/schemas/DeliveryAttempt'
+                $ref: "#/components/schemas/DeliveryAttempt"
 
     DeliveryAttempt:
       type: object
@@ -454,6 +484,63 @@ components:
         - failed
         - dead
 
+    BatchRetryRequest:
+      type: object
+      properties:
+        event_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of event IDs to retry
+        status:
+          type: string
+          enum: [failed, dead]
+          description: Retry all events with this status
+        endpoint_id:
+          type: string
+          format: uuid
+          description: Retry all failed/dead events for this endpoint
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 100
+          description: Maximum number of events to retry (for status/endpoint modes)
+
+    BatchRetryResult:
+      type: object
+      properties:
+        succeeded:
+          type: array
+          items:
+            $ref: "#/components/schemas/Event"
+        failed:
+          type: array
+          items:
+            $ref: "#/components/schemas/BatchRetryError"
+        totalRequested:
+          type: integer
+        totalSucceeded:
+          type: integer
+      required:
+        - succeeded
+        - failed
+        - totalRequested
+        - totalSucceeded
+
+    BatchRetryError:
+      type: object
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        error:
+          type: string
+      required:
+        - eventId
+        - error
+
     CreateEventRequest:
       type: object
       properties:
@@ -487,9 +574,9 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/Event'
+            $ref: "#/components/schemas/Event"
         pagination:
-          $ref: '#/components/schemas/Pagination'
+          $ref: "#/components/schemas/Pagination"
       required:
         - data
         - pagination
@@ -510,7 +597,7 @@ components:
           items:
             type: string
         status:
-          $ref: '#/components/schemas/EndpointStatus'
+          $ref: "#/components/schemas/EndpointStatus"
         maxRetries:
           type: integer
         retryBackoffMs:
@@ -527,6 +614,14 @@ components:
           type: integer
         circuitResetMs:
           type: integer
+        hasCustomSecret:
+          type: boolean
+          description: Whether this endpoint has a custom signing secret
+        secretRotatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the signing secret was last rotated
         createdAt:
           type: string
           format: date-time
@@ -538,16 +633,17 @@ components:
         - url
         - eventTypes
         - status
+        - hasCustomSecret
         - createdAt
         - updatedAt
 
     EndpointWithStats:
       allOf:
-        - $ref: '#/components/schemas/Endpoint'
+        - $ref: "#/components/schemas/Endpoint"
         - type: object
           properties:
             stats:
-              $ref: '#/components/schemas/EndpointStats'
+              $ref: "#/components/schemas/EndpointStats"
 
     EndpointStats:
       type: object
@@ -640,7 +736,7 @@ components:
           items:
             type: string
         status:
-          $ref: '#/components/schemas/EndpointStatus'
+          $ref: "#/components/schemas/EndpointStatus"
         maxRetries:
           type: integer
         retryBackoffMs:
@@ -656,9 +752,9 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/Endpoint'
+            $ref: "#/components/schemas/Endpoint"
         pagination:
-          $ref: '#/components/schemas/Pagination'
+          $ref: "#/components/schemas/Pagination"
       required:
         - data
         - pagination
@@ -712,7 +808,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
           example:
             error: "Invalid request body"
             code: "BAD_REQUEST"
@@ -722,7 +818,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
           example:
             error: "Invalid API key"
             code: "UNAUTHORIZED"
@@ -732,7 +828,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
           example:
             error: "Event not found"
             code: "NOT_FOUND"
@@ -742,7 +838,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: "#/components/schemas/Error"
           example:
             error: "URL scheme must be http or https"
             code: "VALIDATION_ERROR"

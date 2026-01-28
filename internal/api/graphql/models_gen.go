@@ -10,6 +10,18 @@ import (
 	"time"
 )
 
+type BatchRetryError struct {
+	EventID string `json:"eventId"`
+	Error   string `json:"error"`
+}
+
+type BatchRetryResult struct {
+	Succeeded      []Event           `json:"succeeded"`
+	Failed         []BatchRetryError `json:"failed"`
+	TotalRequested int               `json:"totalRequested"`
+	TotalSucceeded int               `json:"totalSucceeded"`
+}
+
 type CreateEndpointInput struct {
 	URL              string         `json:"url"`
 	Description      *string        `json:"description,omitempty"`
@@ -59,6 +71,8 @@ type Endpoint struct {
 	CircuitThreshold int            `json:"circuitThreshold"`
 	CircuitResetMs   int            `json:"circuitResetMs"`
 	CustomHeaders    map[string]any `json:"customHeaders,omitempty"`
+	HasCustomSecret  bool           `json:"hasCustomSecret"`
+	SecretRotatedAt  *time.Time     `json:"secretRotatedAt,omitempty"`
 	CreatedAt        time.Time      `json:"createdAt"`
 	UpdatedAt        time.Time      `json:"updatedAt"`
 	Stats            *EndpointStats `json:"stats"`
@@ -74,6 +88,11 @@ type EndpointConnection struct {
 type EndpointEdge struct {
 	Node   *Endpoint `json:"node"`
 	Cursor string    `json:"cursor"`
+}
+
+type EndpointSecretRotation struct {
+	Endpoint  *Endpoint `json:"endpoint"`
+	NewSecret string    `json:"newSecret"`
 }
 
 type EndpointStats struct {

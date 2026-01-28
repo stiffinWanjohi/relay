@@ -268,3 +268,104 @@ func eventWithAttemptsToResponse(evt domain.Event, attempts []domain.DeliveryAtt
 
 	return resp
 }
+
+// BatchRetryRequest represents the request body for batch retry.
+type BatchRetryRequest struct {
+	EventIDs   []string `json:"event_ids,omitempty"`
+	Status     string   `json:"status,omitempty"`
+	EndpointID string   `json:"endpoint_id,omitempty"`
+	Limit      int      `json:"limit,omitempty"`
+}
+
+// BatchRetry handles POST /api/v1/events/batch/retry
+func (h *Handler) BatchRetry(w http.ResponseWriter, r *http.Request) {
+	var req BatchRetryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST")
+		return
+	}
+
+	// Set default limit
+	limit := req.Limit
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+
+	var result *event.BatchRetryResult
+	var err error
+
+	switch {
+	case len(req.EventIDs) > 0:
+		// Retry by IDs
+		ids := make([]uuid.UUID, 0, len(req.EventIDs))
+		for _, idStr := range req.EventIDs {
+			id, parseErr := uuid.Parse(idStr)
+			if parseErr != nil {
+				respondError(w, http.StatusBadRequest, "Invalid event ID: "+idStr, "BAD_REQUEST")
+				return
+			}
+			ids = append(ids, id)
+		}
+		result, err = h.store.RetryEventsByIDs(r.Context(), ids)
+
+	case req.EndpointID != "":
+		// Retry by endpoint
+		endpointID, parseErr := uuid.Parse(req.EndpointID)
+		if parseErr != nil {
+			respondError(w, http.StatusBadRequest, "Invalid endpoint ID", "BAD_REQUEST")
+			return
+		}
+		status := domain.EventStatusFailed
+		if req.Status == "dead" {
+			status = domain.EventStatusDead
+		}
+		result, err = h.store.RetryEventsByEndpoint(r.Context(), endpointID, status, limit)
+
+	case req.Status != "":
+		// Retry by status
+		status := domain.EventStatus(req.Status)
+		if status != domain.EventStatusFailed && status != domain.EventStatusDead {
+			respondError(w, http.StatusBadRequest, "Only 'failed' or 'dead' status can be retried", "VALIDATION_ERROR")
+			return
+		}
+		result, err = h.store.RetryEventsByStatus(r.Context(), status, limit)
+
+	default:
+		respondError(w, http.StatusBadRequest, "Must provide event_ids, status, or endpoint_id", "VALIDATION_ERROR")
+		return
+	}
+
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error(), "INTERNAL_ERROR")
+		return
+	}
+
+	// Enqueue all successfully retried events
+	for _, evt := range result.Succeeded {
+		if qErr := h.queue.Enqueue(r.Context(), evt.ID); qErr != nil {
+			// Log but don't fail - events are already reset for retry
+			continue
+		}
+	}
+
+	// Build response
+	succeededList := make([]map[string]any, len(result.Succeeded))
+	for i, evt := range result.Succeeded {
+		succeededList[i] = eventToResponse(evt)
+	}
+
+	failedList := make([]map[string]any, len(result.Failed))
+	for i, f := range result.Failed {
+		failedList[i] = map[string]any{
+			"eventId": f.EventID.String(),
+			"error":   f.Error,
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"succeeded":      succeededList,
+		"failed":         failedList,
+		"totalRequested": len(result.Succeeded) + len(result.Failed),
+		"totalSucceeded": len(result.Succeeded),
+	})
+}

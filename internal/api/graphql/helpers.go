@@ -1,10 +1,22 @@
 package graphql
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/event"
 )
+
+// generateSecret generates a cryptographically secure random secret.
+func generateSecret(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
 
 // Helper functions for converting between domain and GraphQL types
 
@@ -110,6 +122,8 @@ func domainEndpointToGQL(ep domain.Endpoint) *Endpoint {
 		CircuitThreshold: ep.CircuitThreshold,
 		CircuitResetMs:   ep.CircuitResetMs,
 		CustomHeaders:    headers,
+		HasCustomSecret:  ep.HasCustomSecret(),
+		SecretRotatedAt:  ep.SecretRotatedAt,
 		CreatedAt:        ep.CreatedAt,
 		UpdatedAt:        ep.UpdatedAt,
 	}
@@ -172,5 +186,27 @@ func gqlEndpointStatusToDomain(s EndpointStatus) domain.EndpointStatus {
 		return domain.EndpointStatusDisabled
 	default:
 		return domain.EndpointStatusActive
+	}
+}
+
+func storeBatchResultToGQL(result *event.BatchRetryResult) *BatchRetryResult {
+	succeeded := make([]Event, len(result.Succeeded))
+	for i, evt := range result.Succeeded {
+		succeeded[i] = *domainEventToGQL(evt)
+	}
+
+	failed := make([]BatchRetryError, len(result.Failed))
+	for i, f := range result.Failed {
+		failed[i] = BatchRetryError{
+			EventID: f.EventID.String(),
+			Error:   f.Error,
+		}
+	}
+
+	return &BatchRetryResult{
+		Succeeded:      succeeded,
+		Failed:         failed,
+		TotalRequested: len(result.Succeeded) + len(result.Failed),
+		TotalSucceeded: len(result.Succeeded),
 	}
 }

@@ -2,203 +2,242 @@ scalar JSON
 scalar DateTime
 
 type Query {
-  event(id: ID!): Event
-  events(status: EventStatus, first: Int, after: String): EventConnection!
-  queueStats: QueueStats!
-  
-  # Endpoint queries
-  endpoint(id: ID!): Endpoint
-  endpoints(status: EndpointStatus, first: Int, after: String): EndpointConnection!
+    event(id: ID!): Event
+    events(status: EventStatus, first: Int, after: String): EventConnection!
+    queueStats: QueueStats!
+
+    # Endpoint queries
+    endpoint(id: ID!): Endpoint
+    endpoints(
+        status: EndpointStatus
+        first: Int
+        after: String
+    ): EndpointConnection!
 }
 
 type Mutation {
-  # Legacy: create event with direct destination URL
-  createEvent(input: CreateEventInput!, idempotencyKey: String!): Event!
-  
-  # New: create event by event type (fans out to all subscribed endpoints)
-  sendEvent(input: SendEventInput!, idempotencyKey: String!): [Event!]!
-  
-  replayEvent(id: ID!): Event!
-  
-  # Endpoint mutations
-  createEndpoint(input: CreateEndpointInput!): Endpoint!
-  updateEndpoint(id: ID!, input: UpdateEndpointInput!): Endpoint!
-  deleteEndpoint(id: ID!): Boolean!
-  pauseEndpoint(id: ID!): Endpoint!
-  resumeEndpoint(id: ID!): Endpoint!
+    # Legacy: create event with direct destination URL
+    createEvent(input: CreateEventInput!, idempotencyKey: String!): Event!
+
+    # New: create event by event type (fans out to all subscribed endpoints)
+    sendEvent(input: SendEventInput!, idempotencyKey: String!): [Event!]!
+
+    replayEvent(id: ID!): Event!
+
+    # Batch retry operations
+    retryEvents(ids: [ID!]!): BatchRetryResult!
+    retryEventsByStatus(status: EventStatus!, limit: Int): BatchRetryResult!
+    retryEventsByEndpoint(
+        endpointId: ID!
+        status: EventStatus
+        limit: Int
+    ): BatchRetryResult!
+
+    # Endpoint mutations
+    createEndpoint(input: CreateEndpointInput!): Endpoint!
+    updateEndpoint(id: ID!, input: UpdateEndpointInput!): Endpoint!
+    deleteEndpoint(id: ID!): Boolean!
+    pauseEndpoint(id: ID!): Endpoint!
+    resumeEndpoint(id: ID!): Endpoint!
+
+    # Secret rotation mutations
+    rotateEndpointSecret(id: ID!): EndpointSecretRotation!
+    clearPreviousSecret(id: ID!): Endpoint!
+}
+
+type EndpointSecretRotation {
+    endpoint: Endpoint!
+    newSecret: String!
 }
 
 type Event {
-  id: ID!
-  idempotencyKey: String!
-  clientId: String
-  eventType: String
-  endpointId: ID
-  destination: String!
-  payload: JSON!
-  headers: JSON
-  status: EventStatus!
-  attempts: Int!
-  maxAttempts: Int!
-  nextAttemptAt: DateTime
-  deliveredAt: DateTime
-  createdAt: DateTime!
-  updatedAt: DateTime!
-  deliveryAttempts: [DeliveryAttempt!]!
-  
-  # Resolved fields
-  endpoint: Endpoint
+    id: ID!
+    idempotencyKey: String!
+    clientId: String
+    eventType: String
+    endpointId: ID
+    destination: String!
+    payload: JSON!
+    headers: JSON
+    status: EventStatus!
+    attempts: Int!
+    maxAttempts: Int!
+    nextAttemptAt: DateTime
+    deliveredAt: DateTime
+    createdAt: DateTime!
+    updatedAt: DateTime!
+    deliveryAttempts: [DeliveryAttempt!]!
+
+    # Resolved fields
+    endpoint: Endpoint
 }
 
 type DeliveryAttempt {
-  id: ID!
-  eventId: ID!
-  statusCode: Int
-  responseBody: String
-  error: String
-  durationMs: Int!
-  attemptNumber: Int!
-  attemptedAt: DateTime!
+    id: ID!
+    eventId: ID!
+    statusCode: Int
+    responseBody: String
+    error: String
+    durationMs: Int!
+    attemptNumber: Int!
+    attemptedAt: DateTime!
 }
 
 type Endpoint {
-  id: ID!
-  clientId: String!
-  url: String!
-  description: String
-  eventTypes: [String!]!
-  status: EndpointStatus!
-  
-  # Retry configuration
-  maxRetries: Int!
-  retryBackoffMs: Int!
-  retryBackoffMax: Int!
-  retryBackoffMult: Float!
-  
-  # Delivery configuration
-  timeoutMs: Int!
-  rateLimitPerSec: Int!
-  
-  # Circuit breaker configuration
-  circuitThreshold: Int!
-  circuitResetMs: Int!
-  
-  customHeaders: JSON
-  createdAt: DateTime!
-  updatedAt: DateTime!
-  
-  # Computed fields
-  stats: EndpointStats!
-  recentEvents(first: Int): [Event!]!
+    id: ID!
+    clientId: String!
+    url: String!
+    description: String
+    eventTypes: [String!]!
+    status: EndpointStatus!
+
+    # Retry configuration
+    maxRetries: Int!
+    retryBackoffMs: Int!
+    retryBackoffMax: Int!
+    retryBackoffMult: Float!
+
+    # Delivery configuration
+    timeoutMs: Int!
+    rateLimitPerSec: Int!
+
+    # Circuit breaker configuration
+    circuitThreshold: Int!
+    circuitResetMs: Int!
+
+    customHeaders: JSON
+
+    # Secret rotation (secrets are not exposed, only metadata)
+    hasCustomSecret: Boolean!
+    secretRotatedAt: DateTime
+
+    createdAt: DateTime!
+    updatedAt: DateTime!
+
+    # Computed fields
+    stats: EndpointStats!
+    recentEvents(first: Int): [Event!]!
 }
 
 type EndpointStats {
-  totalEvents: Int!
-  delivered: Int!
-  failed: Int!
-  pending: Int!
-  successRate: Float!
-  avgLatencyMs: Float!
+    totalEvents: Int!
+    delivered: Int!
+    failed: Int!
+    pending: Int!
+    successRate: Float!
+    avgLatencyMs: Float!
 }
 
 type EventConnection {
-  edges: [EventEdge!]!
-  pageInfo: PageInfo!
-  totalCount: Int!
+    edges: [EventEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
 }
 
 type EventEdge {
-  node: Event!
-  cursor: String!
+    node: Event!
+    cursor: String!
 }
 
 type EndpointConnection {
-  edges: [EndpointEdge!]!
-  pageInfo: PageInfo!
-  totalCount: Int!
+    edges: [EndpointEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
 }
 
 type EndpointEdge {
-  node: Endpoint!
-  cursor: String!
+    node: Endpoint!
+    cursor: String!
 }
 
 type PageInfo {
-  hasNextPage: Boolean!
-  hasPreviousPage: Boolean!
-  startCursor: String
-  endCursor: String
+    hasNextPage: Boolean!
+    hasPreviousPage: Boolean!
+    startCursor: String
+    endCursor: String
 }
 
 type QueueStats {
-  queued: Int!
-  delivering: Int!
-  delivered: Int!
-  failed: Int!
-  dead: Int!
-  pending: Int!
-  processing: Int!
-  delayed: Int!
+    queued: Int!
+    delivering: Int!
+    delivered: Int!
+    failed: Int!
+    dead: Int!
+    pending: Int!
+    processing: Int!
+    delayed: Int!
+}
+
+type BatchRetryResult {
+    succeeded: [Event!]!
+    failed: [BatchRetryError!]!
+    totalRequested: Int!
+    totalSucceeded: Int!
+}
+
+type BatchRetryError {
+    eventId: ID!
+    error: String!
 }
 
 enum EventStatus {
-  QUEUED
-  DELIVERING
-  DELIVERED
-  FAILED
-  DEAD
+    QUEUED
+    DELIVERING
+    DELIVERED
+    FAILED
+    DEAD
 }
 
 enum EndpointStatus {
-  ACTIVE
-  PAUSED
-  DISABLED
+    ACTIVE
+    PAUSED
+    DISABLED
 }
 
 # Legacy input: direct destination URL
 input CreateEventInput {
-  destination: String!
-  payload: JSON!
-  headers: JSON
-  maxAttempts: Int
+    destination: String!
+    payload: JSON!
+    headers: JSON
+    maxAttempts: Int
 }
 
 # New input: event type based routing
 input SendEventInput {
-  eventType: String!
-  payload: JSON!
-  headers: JSON
+    eventType: String!
+    payload: JSON!
+    headers: JSON
 }
 
 input CreateEndpointInput {
-  url: String!
-  description: String
-  eventTypes: [String!]!
-  
-  # Optional configuration (uses defaults if not provided)
-  maxRetries: Int
-  retryBackoffMs: Int
-  retryBackoffMax: Int
-  retryBackoffMult: Float
-  timeoutMs: Int
-  rateLimitPerSec: Int
-  circuitThreshold: Int
-  circuitResetMs: Int
-  customHeaders: JSON
+    url: String!
+    description: String
+    eventTypes: [String!]!
+
+    # Optional configuration (uses defaults if not provided)
+    maxRetries: Int
+    retryBackoffMs: Int
+    retryBackoffMax: Int
+    retryBackoffMult: Float
+    timeoutMs: Int
+    rateLimitPerSec: Int
+    circuitThreshold: Int
+    circuitResetMs: Int
+    customHeaders: JSON
 }
 
 input UpdateEndpointInput {
-  url: String
-  description: String
-  eventTypes: [String!]
-  status: EndpointStatus
-  maxRetries: Int
-  retryBackoffMs: Int
-  retryBackoffMax: Int
-  retryBackoffMult: Float
-  timeoutMs: Int
-  rateLimitPerSec: Int
-  circuitThreshold: Int
-  circuitResetMs: Int
-  customHeaders: JSON
+    url: String
+    description: String
+    eventTypes: [String!]
+    status: EndpointStatus
+    maxRetries: Int
+    retryBackoffMs: Int
+    retryBackoffMax: Int
+    retryBackoffMult: Float
+    timeoutMs: Int
+    rateLimitPerSec: Int
+    circuitThreshold: Int
+    circuitResetMs: Int
+    customHeaders: JSON
 }

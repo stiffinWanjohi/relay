@@ -256,6 +256,103 @@ func (r *mutationResolver) ReplayEvent(ctx context.Context, id string) (*Event, 
 	return domainEventToGQL(evt), nil
 }
 
+// RetryEvents is the resolver for the retryEvents field.
+func (r *mutationResolver) RetryEvents(ctx context.Context, ids []string) (*BatchRetryResult, error) {
+	uuids := make([]uuid.UUID, 0, len(ids))
+	for _, idStr := range ids {
+		uid, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid event ID %s: %w", idStr, err)
+		}
+		uuids = append(uuids, uid)
+	}
+
+	result, err := r.Store.RetryEventsByIDs(ctx, uuids)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enqueue all successfully retried events
+	for _, evt := range result.Succeeded {
+		if qErr := r.Queue.Enqueue(ctx, evt.ID); qErr != nil {
+			// Log but don't fail - events are already reset for retry
+			continue
+		}
+	}
+
+	return storeBatchResultToGQL(result), nil
+}
+
+// RetryEventsByStatus is the resolver for the retryEventsByStatus field.
+func (r *mutationResolver) RetryEventsByStatus(ctx context.Context, status EventStatus, limit *int) (*BatchRetryResult, error) {
+	domainStatus := gqlStatusToDomain(status)
+	if domainStatus != domain.EventStatusFailed && domainStatus != domain.EventStatusDead {
+		return nil, fmt.Errorf("only FAILED or DEAD events can be retried")
+	}
+
+	l := 100
+	if limit != nil && *limit > 0 {
+		l = *limit
+		if l > 1000 {
+			l = 1000
+		}
+	}
+
+	result, err := r.Store.RetryEventsByStatus(ctx, domainStatus, l)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enqueue all successfully retried events
+	for _, evt := range result.Succeeded {
+		if qErr := r.Queue.Enqueue(ctx, evt.ID); qErr != nil {
+			continue
+		}
+	}
+
+	return storeBatchResultToGQL(result), nil
+}
+
+// RetryEventsByEndpoint is the resolver for the retryEventsByEndpoint field.
+func (r *mutationResolver) RetryEventsByEndpoint(ctx context.Context, endpointID string, status *EventStatus, limit *int) (*BatchRetryResult, error) {
+	uid, err := uuid.Parse(endpointID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid endpoint ID: %w", err)
+	}
+
+	// Default to failed status
+	domainStatus := domain.EventStatusFailed
+	if status != nil {
+		domainStatus = gqlStatusToDomain(*status)
+	}
+
+	if domainStatus != domain.EventStatusFailed && domainStatus != domain.EventStatusDead {
+		return nil, fmt.Errorf("only FAILED or DEAD events can be retried")
+	}
+
+	l := 100
+	if limit != nil && *limit > 0 {
+		l = *limit
+		if l > 1000 {
+			l = 1000
+		}
+	}
+
+	result, err := r.Store.RetryEventsByEndpoint(ctx, uid, domainStatus, l)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enqueue all successfully retried events
+	for _, evt := range result.Succeeded {
+		if qErr := r.Queue.Enqueue(ctx, evt.ID); qErr != nil {
+			continue
+		}
+	}
+
+	return storeBatchResultToGQL(result), nil
+}
+
 // CreateEndpoint is the resolver for the createEndpoint field.
 func (r *mutationResolver) CreateEndpoint(ctx context.Context, input CreateEndpointInput) (*Endpoint, error) {
 	clientID, err := auth.RequireClientID(ctx)
@@ -489,6 +586,83 @@ func (r *mutationResolver) ResumeEndpoint(ctx context.Context, id string) (*Endp
 	}
 
 	endpoint.Status = domain.EndpointStatusActive
+
+	updated, err := r.Store.UpdateEndpoint(ctx, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	return domainEndpointToGQL(updated), nil
+}
+
+// RotateEndpointSecret is the resolver for the rotateEndpointSecret field.
+func (r *mutationResolver) RotateEndpointSecret(ctx context.Context, id string) (*EndpointSecretRotation, error) {
+	clientID, err := auth.RequireClientID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid endpoint ID: %w", err)
+	}
+
+	// Get existing endpoint
+	endpoint, err := r.Store.GetEndpointByID(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify ownership
+	if endpoint.ClientID != clientID {
+		return nil, domain.ErrEndpointNotFound
+	}
+
+	// Generate new secret
+	newSecret, err := generateSecret(32)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate secret: %w", err)
+	}
+
+	// Rotate the secret
+	endpoint = endpoint.RotateSecret(newSecret)
+
+	updated, err := r.Store.UpdateEndpoint(ctx, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	return &EndpointSecretRotation{
+		Endpoint:  domainEndpointToGQL(updated),
+		NewSecret: newSecret,
+	}, nil
+}
+
+// ClearPreviousSecret is the resolver for the clearPreviousSecret field.
+func (r *mutationResolver) ClearPreviousSecret(ctx context.Context, id string) (*Endpoint, error) {
+	clientID, err := auth.RequireClientID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid endpoint ID: %w", err)
+	}
+
+	// Get existing endpoint
+	endpoint, err := r.Store.GetEndpointByID(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify ownership
+	if endpoint.ClientID != clientID {
+		return nil, domain.ErrEndpointNotFound
+	}
+
+	// Clear previous secret
+	endpoint = endpoint.ClearPreviousSecret()
 
 	updated, err := r.Store.UpdateEndpoint(ctx, endpoint)
 	if err != nil {

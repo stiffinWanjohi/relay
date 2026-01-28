@@ -22,6 +22,7 @@ func (h *Handler) Router() chi.Router {
 		r.Get("/events", h.ListEvents)
 		r.Get("/events/{eventId}", h.GetEvent)
 		r.Post("/events/{eventId}/replay", h.ReplayEvent)
+		r.Post("/events/batch/retry", h.BatchRetry)
 
 		// Stats
 		r.Get("/stats", h.GetStats)

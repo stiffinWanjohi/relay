@@ -49,6 +49,18 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
+	BatchRetryError struct {
+		Error   func(childComplexity int) int
+		EventID func(childComplexity int) int
+	}
+
+	BatchRetryResult struct {
+		Failed         func(childComplexity int) int
+		Succeeded      func(childComplexity int) int
+		TotalRequested func(childComplexity int) int
+		TotalSucceeded func(childComplexity int) int
+	}
+
 	DeliveryAttempt struct {
 		AttemptNumber func(childComplexity int) int
 		AttemptedAt   func(childComplexity int) int
@@ -68,6 +80,7 @@ type ComplexityRoot struct {
 		CustomHeaders    func(childComplexity int) int
 		Description      func(childComplexity int) int
 		EventTypes       func(childComplexity int) int
+		HasCustomSecret  func(childComplexity int) int
 		ID               func(childComplexity int) int
 		MaxRetries       func(childComplexity int) int
 		RateLimitPerSec  func(childComplexity int) int
@@ -75,6 +88,7 @@ type ComplexityRoot struct {
 		RetryBackoffMax  func(childComplexity int) int
 		RetryBackoffMs   func(childComplexity int) int
 		RetryBackoffMult func(childComplexity int) int
+		SecretRotatedAt  func(childComplexity int) int
 		Stats            func(childComplexity int) int
 		Status           func(childComplexity int) int
 		TimeoutMs        func(childComplexity int) int
@@ -91,6 +105,11 @@ type ComplexityRoot struct {
 	EndpointEdge struct {
 		Cursor func(childComplexity int) int
 		Node   func(childComplexity int) int
+	}
+
+	EndpointSecretRotation struct {
+		Endpoint  func(childComplexity int) int
+		NewSecret func(childComplexity int) int
 	}
 
 	EndpointStats struct {
@@ -134,14 +153,19 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		CreateEndpoint func(childComplexity int, input CreateEndpointInput) int
-		CreateEvent    func(childComplexity int, input CreateEventInput, idempotencyKey string) int
-		DeleteEndpoint func(childComplexity int, id string) int
-		PauseEndpoint  func(childComplexity int, id string) int
-		ReplayEvent    func(childComplexity int, id string) int
-		ResumeEndpoint func(childComplexity int, id string) int
-		SendEvent      func(childComplexity int, input SendEventInput, idempotencyKey string) int
-		UpdateEndpoint func(childComplexity int, id string, input UpdateEndpointInput) int
+		ClearPreviousSecret   func(childComplexity int, id string) int
+		CreateEndpoint        func(childComplexity int, input CreateEndpointInput) int
+		CreateEvent           func(childComplexity int, input CreateEventInput, idempotencyKey string) int
+		DeleteEndpoint        func(childComplexity int, id string) int
+		PauseEndpoint         func(childComplexity int, id string) int
+		ReplayEvent           func(childComplexity int, id string) int
+		ResumeEndpoint        func(childComplexity int, id string) int
+		RetryEvents           func(childComplexity int, ids []string) int
+		RetryEventsByEndpoint func(childComplexity int, endpointID string, status *EventStatus, limit *int) int
+		RetryEventsByStatus   func(childComplexity int, status EventStatus, limit *int) int
+		RotateEndpointSecret  func(childComplexity int, id string) int
+		SendEvent             func(childComplexity int, input SendEventInput, idempotencyKey string) int
+		UpdateEndpoint        func(childComplexity int, id string, input UpdateEndpointInput) int
 	}
 
 	PageInfo struct {
@@ -183,11 +207,16 @@ type MutationResolver interface {
 	CreateEvent(ctx context.Context, input CreateEventInput, idempotencyKey string) (*Event, error)
 	SendEvent(ctx context.Context, input SendEventInput, idempotencyKey string) ([]Event, error)
 	ReplayEvent(ctx context.Context, id string) (*Event, error)
+	RetryEvents(ctx context.Context, ids []string) (*BatchRetryResult, error)
+	RetryEventsByStatus(ctx context.Context, status EventStatus, limit *int) (*BatchRetryResult, error)
+	RetryEventsByEndpoint(ctx context.Context, endpointID string, status *EventStatus, limit *int) (*BatchRetryResult, error)
 	CreateEndpoint(ctx context.Context, input CreateEndpointInput) (*Endpoint, error)
 	UpdateEndpoint(ctx context.Context, id string, input UpdateEndpointInput) (*Endpoint, error)
 	DeleteEndpoint(ctx context.Context, id string) (bool, error)
 	PauseEndpoint(ctx context.Context, id string) (*Endpoint, error)
 	ResumeEndpoint(ctx context.Context, id string) (*Endpoint, error)
+	RotateEndpointSecret(ctx context.Context, id string) (*EndpointSecretRotation, error)
+	ClearPreviousSecret(ctx context.Context, id string) (*Endpoint, error)
 }
 type QueryResolver interface {
 	Event(ctx context.Context, id string) (*Event, error)
@@ -215,6 +244,44 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 	ec := executionContext{nil, e, 0, 0, nil}
 	_ = ec
 	switch typeName + "." + field {
+
+	case "BatchRetryError.error":
+		if e.complexity.BatchRetryError.Error == nil {
+			break
+		}
+
+		return e.complexity.BatchRetryError.Error(childComplexity), true
+	case "BatchRetryError.eventId":
+		if e.complexity.BatchRetryError.EventID == nil {
+			break
+		}
+
+		return e.complexity.BatchRetryError.EventID(childComplexity), true
+
+	case "BatchRetryResult.failed":
+		if e.complexity.BatchRetryResult.Failed == nil {
+			break
+		}
+
+		return e.complexity.BatchRetryResult.Failed(childComplexity), true
+	case "BatchRetryResult.succeeded":
+		if e.complexity.BatchRetryResult.Succeeded == nil {
+			break
+		}
+
+		return e.complexity.BatchRetryResult.Succeeded(childComplexity), true
+	case "BatchRetryResult.totalRequested":
+		if e.complexity.BatchRetryResult.TotalRequested == nil {
+			break
+		}
+
+		return e.complexity.BatchRetryResult.TotalRequested(childComplexity), true
+	case "BatchRetryResult.totalSucceeded":
+		if e.complexity.BatchRetryResult.TotalSucceeded == nil {
+			break
+		}
+
+		return e.complexity.BatchRetryResult.TotalSucceeded(childComplexity), true
 
 	case "DeliveryAttempt.attemptNumber":
 		if e.complexity.DeliveryAttempt.AttemptNumber == nil {
@@ -307,6 +374,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Endpoint.EventTypes(childComplexity), true
+	case "Endpoint.hasCustomSecret":
+		if e.complexity.Endpoint.HasCustomSecret == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.HasCustomSecret(childComplexity), true
 	case "Endpoint.id":
 		if e.complexity.Endpoint.ID == nil {
 			break
@@ -354,6 +427,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Endpoint.RetryBackoffMult(childComplexity), true
+	case "Endpoint.secretRotatedAt":
+		if e.complexity.Endpoint.SecretRotatedAt == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.SecretRotatedAt(childComplexity), true
 	case "Endpoint.stats":
 		if e.complexity.Endpoint.Stats == nil {
 			break
@@ -416,6 +495,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.EndpointEdge.Node(childComplexity), true
+
+	case "EndpointSecretRotation.endpoint":
+		if e.complexity.EndpointSecretRotation.Endpoint == nil {
+			break
+		}
+
+		return e.complexity.EndpointSecretRotation.Endpoint(childComplexity), true
+	case "EndpointSecretRotation.newSecret":
+		if e.complexity.EndpointSecretRotation.NewSecret == nil {
+			break
+		}
+
+		return e.complexity.EndpointSecretRotation.NewSecret(childComplexity), true
 
 	case "EndpointStats.avgLatencyMs":
 		if e.complexity.EndpointStats.AvgLatencyMs == nil {
@@ -589,6 +681,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.EventEdge.Node(childComplexity), true
 
+	case "Mutation.clearPreviousSecret":
+		if e.complexity.Mutation.ClearPreviousSecret == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_clearPreviousSecret_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ClearPreviousSecret(childComplexity, args["id"].(string)), true
 	case "Mutation.createEndpoint":
 		if e.complexity.Mutation.CreateEndpoint == nil {
 			break
@@ -655,6 +758,50 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.ResumeEndpoint(childComplexity, args["id"].(string)), true
+	case "Mutation.retryEvents":
+		if e.complexity.Mutation.RetryEvents == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_retryEvents_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.RetryEvents(childComplexity, args["ids"].([]string)), true
+	case "Mutation.retryEventsByEndpoint":
+		if e.complexity.Mutation.RetryEventsByEndpoint == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_retryEventsByEndpoint_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.RetryEventsByEndpoint(childComplexity, args["endpointId"].(string), args["status"].(*EventStatus), args["limit"].(*int)), true
+	case "Mutation.retryEventsByStatus":
+		if e.complexity.Mutation.RetryEventsByStatus == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_retryEventsByStatus_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.RetryEventsByStatus(childComplexity, args["status"].(EventStatus), args["limit"].(*int)), true
+	case "Mutation.rotateEndpointSecret":
+		if e.complexity.Mutation.RotateEndpointSecret == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_rotateEndpointSecret_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.RotateEndpointSecret(childComplexity, args["id"].(string)), true
 	case "Mutation.sendEvent":
 		if e.complexity.Mutation.SendEvent == nil {
 			break
@@ -942,10 +1089,21 @@ func (ec *executionContext) field_Endpoint_recentEvents_args(ctx context.Context
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_clearPreviousSecret_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_createEndpoint_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNCreateEndpointInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEndpointInput)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNCreateEndpointInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEndpointInput)
 	if err != nil {
 		return nil, err
 	}
@@ -956,7 +1114,7 @@ func (ec *executionContext) field_Mutation_createEndpoint_args(ctx context.Conte
 func (ec *executionContext) field_Mutation_createEvent_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNCreateEventInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEventInput)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNCreateEventInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEventInput)
 	if err != nil {
 		return nil, err
 	}
@@ -1013,10 +1171,69 @@ func (ec *executionContext) field_Mutation_resumeEndpoint_args(ctx context.Conte
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_retryEventsByEndpoint_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "endpointId", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["endpointId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "status", ec.unmarshalOEventStatus2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus)
+	if err != nil {
+		return nil, err
+	}
+	args["status"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "limit", ec.unmarshalOInt2ᚖint)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg2
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_retryEventsByStatus_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "status", ec.unmarshalNEventStatus2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus)
+	if err != nil {
+		return nil, err
+	}
+	args["status"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "limit", ec.unmarshalOInt2ᚖint)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_retryEvents_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "ids", ec.unmarshalNID2ᚕstringᚄ)
+	if err != nil {
+		return nil, err
+	}
+	args["ids"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_rotateEndpointSecret_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_sendEvent_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNSendEventInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐSendEventInput)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNSendEventInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐSendEventInput)
 	if err != nil {
 		return nil, err
 	}
@@ -1037,7 +1254,7 @@ func (ec *executionContext) field_Mutation_updateEndpoint_args(ctx context.Conte
 		return nil, err
 	}
 	args["id"] = arg0
-	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNUpdateEndpointInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐUpdateEndpointInput)
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNUpdateEndpointInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐUpdateEndpointInput)
 	if err != nil {
 		return nil, err
 	}
@@ -1070,7 +1287,7 @@ func (ec *executionContext) field_Query_endpoint_args(ctx context.Context, rawAr
 func (ec *executionContext) field_Query_endpoints_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "status", ec.unmarshalOEndpointStatus2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "status", ec.unmarshalOEndpointStatus2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus)
 	if err != nil {
 		return nil, err
 	}
@@ -1102,7 +1319,7 @@ func (ec *executionContext) field_Query_event_args(ctx context.Context, rawArgs 
 func (ec *executionContext) field_Query_events_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "status", ec.unmarshalOEventStatus2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "status", ec.unmarshalOEventStatus2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus)
 	if err != nil {
 		return nil, err
 	}
@@ -1171,6 +1388,222 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 // endregion ************************** directives.gotpl **************************
 
 // region    **************************** field.gotpl *****************************
+
+func (ec *executionContext) _BatchRetryError_eventId(ctx context.Context, field graphql.CollectedField, obj *BatchRetryError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_BatchRetryError_eventId,
+		func(ctx context.Context) (any, error) {
+			return obj.EventID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_BatchRetryError_eventId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "BatchRetryError",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _BatchRetryError_error(ctx context.Context, field graphql.CollectedField, obj *BatchRetryError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_BatchRetryError_error,
+		func(ctx context.Context) (any, error) {
+			return obj.Error, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_BatchRetryError_error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "BatchRetryError",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _BatchRetryResult_succeeded(ctx context.Context, field graphql.CollectedField, obj *BatchRetryResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_BatchRetryResult_succeeded,
+		func(ctx context.Context) (any, error) {
+			return obj.Succeeded, nil
+		},
+		nil,
+		ec.marshalNEvent2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_BatchRetryResult_succeeded(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "BatchRetryResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Event_id(ctx, field)
+			case "idempotencyKey":
+				return ec.fieldContext_Event_idempotencyKey(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Event_clientId(ctx, field)
+			case "eventType":
+				return ec.fieldContext_Event_eventType(ctx, field)
+			case "endpointId":
+				return ec.fieldContext_Event_endpointId(ctx, field)
+			case "destination":
+				return ec.fieldContext_Event_destination(ctx, field)
+			case "payload":
+				return ec.fieldContext_Event_payload(ctx, field)
+			case "headers":
+				return ec.fieldContext_Event_headers(ctx, field)
+			case "status":
+				return ec.fieldContext_Event_status(ctx, field)
+			case "attempts":
+				return ec.fieldContext_Event_attempts(ctx, field)
+			case "maxAttempts":
+				return ec.fieldContext_Event_maxAttempts(ctx, field)
+			case "nextAttemptAt":
+				return ec.fieldContext_Event_nextAttemptAt(ctx, field)
+			case "deliveredAt":
+				return ec.fieldContext_Event_deliveredAt(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Event_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Event_updatedAt(ctx, field)
+			case "deliveryAttempts":
+				return ec.fieldContext_Event_deliveryAttempts(ctx, field)
+			case "endpoint":
+				return ec.fieldContext_Event_endpoint(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Event", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _BatchRetryResult_failed(ctx context.Context, field graphql.CollectedField, obj *BatchRetryResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_BatchRetryResult_failed,
+		func(ctx context.Context) (any, error) {
+			return obj.Failed, nil
+		},
+		nil,
+		ec.marshalNBatchRetryError2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐBatchRetryErrorᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_BatchRetryResult_failed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "BatchRetryResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "eventId":
+				return ec.fieldContext_BatchRetryError_eventId(ctx, field)
+			case "error":
+				return ec.fieldContext_BatchRetryError_error(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type BatchRetryError", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _BatchRetryResult_totalRequested(ctx context.Context, field graphql.CollectedField, obj *BatchRetryResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_BatchRetryResult_totalRequested,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalRequested, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_BatchRetryResult_totalRequested(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "BatchRetryResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _BatchRetryResult_totalSucceeded(ctx context.Context, field graphql.CollectedField, obj *BatchRetryResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_BatchRetryResult_totalSucceeded,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalSucceeded, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_BatchRetryResult_totalSucceeded(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "BatchRetryResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
 
 func (ec *executionContext) _DeliveryAttempt_id(ctx context.Context, field graphql.CollectedField, obj *DeliveryAttempt) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
@@ -1559,7 +1992,7 @@ func (ec *executionContext) _Endpoint_status(ctx context.Context, field graphql.
 			return obj.Status, nil
 		},
 		nil,
-		ec.marshalNEndpointStatus2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus,
+		ec.marshalNEndpointStatus2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus,
 		true,
 		true,
 	)
@@ -1839,6 +2272,64 @@ func (ec *executionContext) fieldContext_Endpoint_customHeaders(_ context.Contex
 	return fc, nil
 }
 
+func (ec *executionContext) _Endpoint_hasCustomSecret(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_hasCustomSecret,
+		func(ctx context.Context) (any, error) {
+			return obj.HasCustomSecret, nil
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_hasCustomSecret(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_secretRotatedAt(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_secretRotatedAt,
+		func(ctx context.Context) (any, error) {
+			return obj.SecretRotatedAt, nil
+		},
+		nil,
+		ec.marshalODateTime2ᚖtimeᚐTime,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_secretRotatedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type DateTime does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Endpoint_createdAt(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1907,7 +2398,7 @@ func (ec *executionContext) _Endpoint_stats(ctx context.Context, field graphql.C
 			return ec.resolvers.Endpoint().Stats(ctx, obj)
 		},
 		nil,
-		ec.marshalNEndpointStats2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStats,
+		ec.marshalNEndpointStats2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStats,
 		true,
 		true,
 	)
@@ -1951,7 +2442,7 @@ func (ec *executionContext) _Endpoint_recentEvents(ctx context.Context, field gr
 			return ec.resolvers.Endpoint().RecentEvents(ctx, obj, fc.Args["first"].(*int))
 		},
 		nil,
-		ec.marshalNEvent2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventᚄ,
+		ec.marshalNEvent2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventᚄ,
 		true,
 		true,
 	)
@@ -2027,7 +2518,7 @@ func (ec *executionContext) _EndpointConnection_edges(ctx context.Context, field
 			return obj.Edges, nil
 		},
 		nil,
-		ec.marshalNEndpointEdge2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdgeᚄ,
+		ec.marshalNEndpointEdge2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdgeᚄ,
 		true,
 		true,
 	)
@@ -2062,7 +2553,7 @@ func (ec *executionContext) _EndpointConnection_pageInfo(ctx context.Context, fi
 			return obj.PageInfo, nil
 		},
 		nil,
-		ec.marshalNPageInfo2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐPageInfo,
+		ec.marshalNPageInfo2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐPageInfo,
 		true,
 		true,
 	)
@@ -2130,7 +2621,7 @@ func (ec *executionContext) _EndpointEdge_node(ctx context.Context, field graphq
 			return obj.Node, nil
 		},
 		nil,
-		ec.marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
 		true,
 		true,
 	)
@@ -2174,6 +2665,10 @@ func (ec *executionContext) fieldContext_EndpointEdge_node(_ context.Context, fi
 				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
 			case "customHeaders":
 				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "hasCustomSecret":
+				return ec.fieldContext_Endpoint_hasCustomSecret(ctx, field)
+			case "secretRotatedAt":
+				return ec.fieldContext_Endpoint_secretRotatedAt(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Endpoint_createdAt(ctx, field)
 			case "updatedAt":
@@ -2208,6 +2703,108 @@ func (ec *executionContext) _EndpointEdge_cursor(ctx context.Context, field grap
 func (ec *executionContext) fieldContext_EndpointEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "EndpointEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointSecretRotation_endpoint(ctx context.Context, field graphql.CollectedField, obj *EndpointSecretRotation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointSecretRotation_endpoint,
+		func(ctx context.Context) (any, error) {
+			return obj.Endpoint, nil
+		},
+		nil,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointSecretRotation_endpoint(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointSecretRotation",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Endpoint_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Endpoint_clientId(ctx, field)
+			case "url":
+				return ec.fieldContext_Endpoint_url(ctx, field)
+			case "description":
+				return ec.fieldContext_Endpoint_description(ctx, field)
+			case "eventTypes":
+				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
+			case "status":
+				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "maxRetries":
+				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
+			case "retryBackoffMs":
+				return ec.fieldContext_Endpoint_retryBackoffMs(ctx, field)
+			case "retryBackoffMax":
+				return ec.fieldContext_Endpoint_retryBackoffMax(ctx, field)
+			case "retryBackoffMult":
+				return ec.fieldContext_Endpoint_retryBackoffMult(ctx, field)
+			case "timeoutMs":
+				return ec.fieldContext_Endpoint_timeoutMs(ctx, field)
+			case "rateLimitPerSec":
+				return ec.fieldContext_Endpoint_rateLimitPerSec(ctx, field)
+			case "circuitThreshold":
+				return ec.fieldContext_Endpoint_circuitThreshold(ctx, field)
+			case "circuitResetMs":
+				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
+			case "customHeaders":
+				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "hasCustomSecret":
+				return ec.fieldContext_Endpoint_hasCustomSecret(ctx, field)
+			case "secretRotatedAt":
+				return ec.fieldContext_Endpoint_secretRotatedAt(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Endpoint_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Endpoint_updatedAt(ctx, field)
+			case "stats":
+				return ec.fieldContext_Endpoint_stats(ctx, field)
+			case "recentEvents":
+				return ec.fieldContext_Endpoint_recentEvents(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Endpoint", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EndpointSecretRotation_newSecret(ctx context.Context, field graphql.CollectedField, obj *EndpointSecretRotation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EndpointSecretRotation_newSecret,
+		func(ctx context.Context) (any, error) {
+			return obj.NewSecret, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EndpointSecretRotation_newSecret(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EndpointSecretRotation",
 		Field:      field,
 		IsMethod:   false,
 		IsResolver: false,
@@ -2634,7 +3231,7 @@ func (ec *executionContext) _Event_status(ctx context.Context, field graphql.Col
 			return obj.Status, nil
 		},
 		nil,
-		ec.marshalNEventStatus2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus,
+		ec.marshalNEventStatus2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus,
 		true,
 		true,
 	)
@@ -2837,7 +3434,7 @@ func (ec *executionContext) _Event_deliveryAttempts(ctx context.Context, field g
 			return ec.resolvers.Event().DeliveryAttempts(ctx, obj)
 		},
 		nil,
-		ec.marshalNDeliveryAttempt2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐDeliveryAttemptᚄ,
+		ec.marshalNDeliveryAttempt2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐDeliveryAttemptᚄ,
 		true,
 		true,
 	)
@@ -2884,7 +3481,7 @@ func (ec *executionContext) _Event_endpoint(ctx context.Context, field graphql.C
 			return ec.resolvers.Event().Endpoint(ctx, obj)
 		},
 		nil,
-		ec.marshalOEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		ec.marshalOEndpoint2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
 		true,
 		false,
 	)
@@ -2928,6 +3525,10 @@ func (ec *executionContext) fieldContext_Event_endpoint(_ context.Context, field
 				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
 			case "customHeaders":
 				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "hasCustomSecret":
+				return ec.fieldContext_Endpoint_hasCustomSecret(ctx, field)
+			case "secretRotatedAt":
+				return ec.fieldContext_Endpoint_secretRotatedAt(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Endpoint_createdAt(ctx, field)
 			case "updatedAt":
@@ -2953,7 +3554,7 @@ func (ec *executionContext) _EventConnection_edges(ctx context.Context, field gr
 			return obj.Edges, nil
 		},
 		nil,
-		ec.marshalNEventEdge2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventEdgeᚄ,
+		ec.marshalNEventEdge2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventEdgeᚄ,
 		true,
 		true,
 	)
@@ -2988,7 +3589,7 @@ func (ec *executionContext) _EventConnection_pageInfo(ctx context.Context, field
 			return obj.PageInfo, nil
 		},
 		nil,
-		ec.marshalNPageInfo2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐPageInfo,
+		ec.marshalNPageInfo2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐPageInfo,
 		true,
 		true,
 	)
@@ -3056,7 +3657,7 @@ func (ec *executionContext) _EventEdge_node(ctx context.Context, field graphql.C
 			return obj.Node, nil
 		},
 		nil,
-		ec.marshalNEvent2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent,
+		ec.marshalNEvent2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent,
 		true,
 		true,
 	)
@@ -3151,7 +3752,7 @@ func (ec *executionContext) _Mutation_createEvent(ctx context.Context, field gra
 			return ec.resolvers.Mutation().CreateEvent(ctx, fc.Args["input"].(CreateEventInput), fc.Args["idempotencyKey"].(string))
 		},
 		nil,
-		ec.marshalNEvent2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent,
+		ec.marshalNEvent2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent,
 		true,
 		true,
 	)
@@ -3228,7 +3829,7 @@ func (ec *executionContext) _Mutation_sendEvent(ctx context.Context, field graph
 			return ec.resolvers.Mutation().SendEvent(ctx, fc.Args["input"].(SendEventInput), fc.Args["idempotencyKey"].(string))
 		},
 		nil,
-		ec.marshalNEvent2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventᚄ,
+		ec.marshalNEvent2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventᚄ,
 		true,
 		true,
 	)
@@ -3305,7 +3906,7 @@ func (ec *executionContext) _Mutation_replayEvent(ctx context.Context, field gra
 			return ec.resolvers.Mutation().ReplayEvent(ctx, fc.Args["id"].(string))
 		},
 		nil,
-		ec.marshalNEvent2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent,
+		ec.marshalNEvent2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent,
 		true,
 		true,
 	)
@@ -3371,6 +3972,159 @@ func (ec *executionContext) fieldContext_Mutation_replayEvent(ctx context.Contex
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_retryEvents(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_retryEvents,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().RetryEvents(ctx, fc.Args["ids"].([]string))
+		},
+		nil,
+		ec.marshalNBatchRetryResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐBatchRetryResult,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_retryEvents(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "succeeded":
+				return ec.fieldContext_BatchRetryResult_succeeded(ctx, field)
+			case "failed":
+				return ec.fieldContext_BatchRetryResult_failed(ctx, field)
+			case "totalRequested":
+				return ec.fieldContext_BatchRetryResult_totalRequested(ctx, field)
+			case "totalSucceeded":
+				return ec.fieldContext_BatchRetryResult_totalSucceeded(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type BatchRetryResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_retryEvents_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_retryEventsByStatus(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_retryEventsByStatus,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().RetryEventsByStatus(ctx, fc.Args["status"].(EventStatus), fc.Args["limit"].(*int))
+		},
+		nil,
+		ec.marshalNBatchRetryResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐBatchRetryResult,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_retryEventsByStatus(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "succeeded":
+				return ec.fieldContext_BatchRetryResult_succeeded(ctx, field)
+			case "failed":
+				return ec.fieldContext_BatchRetryResult_failed(ctx, field)
+			case "totalRequested":
+				return ec.fieldContext_BatchRetryResult_totalRequested(ctx, field)
+			case "totalSucceeded":
+				return ec.fieldContext_BatchRetryResult_totalSucceeded(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type BatchRetryResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_retryEventsByStatus_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_retryEventsByEndpoint(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_retryEventsByEndpoint,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().RetryEventsByEndpoint(ctx, fc.Args["endpointId"].(string), fc.Args["status"].(*EventStatus), fc.Args["limit"].(*int))
+		},
+		nil,
+		ec.marshalNBatchRetryResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐBatchRetryResult,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_retryEventsByEndpoint(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "succeeded":
+				return ec.fieldContext_BatchRetryResult_succeeded(ctx, field)
+			case "failed":
+				return ec.fieldContext_BatchRetryResult_failed(ctx, field)
+			case "totalRequested":
+				return ec.fieldContext_BatchRetryResult_totalRequested(ctx, field)
+			case "totalSucceeded":
+				return ec.fieldContext_BatchRetryResult_totalSucceeded(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type BatchRetryResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_retryEventsByEndpoint_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_createEndpoint(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3382,7 +4136,7 @@ func (ec *executionContext) _Mutation_createEndpoint(ctx context.Context, field 
 			return ec.resolvers.Mutation().CreateEndpoint(ctx, fc.Args["input"].(CreateEndpointInput))
 		},
 		nil,
-		ec.marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
 		true,
 		true,
 	)
@@ -3426,6 +4180,10 @@ func (ec *executionContext) fieldContext_Mutation_createEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
 			case "customHeaders":
 				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "hasCustomSecret":
+				return ec.fieldContext_Endpoint_hasCustomSecret(ctx, field)
+			case "secretRotatedAt":
+				return ec.fieldContext_Endpoint_secretRotatedAt(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Endpoint_createdAt(ctx, field)
 			case "updatedAt":
@@ -3463,7 +4221,7 @@ func (ec *executionContext) _Mutation_updateEndpoint(ctx context.Context, field 
 			return ec.resolvers.Mutation().UpdateEndpoint(ctx, fc.Args["id"].(string), fc.Args["input"].(UpdateEndpointInput))
 		},
 		nil,
-		ec.marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
 		true,
 		true,
 	)
@@ -3507,6 +4265,10 @@ func (ec *executionContext) fieldContext_Mutation_updateEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
 			case "customHeaders":
 				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "hasCustomSecret":
+				return ec.fieldContext_Endpoint_hasCustomSecret(ctx, field)
+			case "secretRotatedAt":
+				return ec.fieldContext_Endpoint_secretRotatedAt(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Endpoint_createdAt(ctx, field)
 			case "updatedAt":
@@ -3585,7 +4347,7 @@ func (ec *executionContext) _Mutation_pauseEndpoint(ctx context.Context, field g
 			return ec.resolvers.Mutation().PauseEndpoint(ctx, fc.Args["id"].(string))
 		},
 		nil,
-		ec.marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
 		true,
 		true,
 	)
@@ -3629,6 +4391,10 @@ func (ec *executionContext) fieldContext_Mutation_pauseEndpoint(ctx context.Cont
 				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
 			case "customHeaders":
 				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "hasCustomSecret":
+				return ec.fieldContext_Endpoint_hasCustomSecret(ctx, field)
+			case "secretRotatedAt":
+				return ec.fieldContext_Endpoint_secretRotatedAt(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Endpoint_createdAt(ctx, field)
 			case "updatedAt":
@@ -3666,7 +4432,7 @@ func (ec *executionContext) _Mutation_resumeEndpoint(ctx context.Context, field 
 			return ec.resolvers.Mutation().ResumeEndpoint(ctx, fc.Args["id"].(string))
 		},
 		nil,
-		ec.marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
 		true,
 		true,
 	)
@@ -3710,6 +4476,10 @@ func (ec *executionContext) fieldContext_Mutation_resumeEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
 			case "customHeaders":
 				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "hasCustomSecret":
+				return ec.fieldContext_Endpoint_hasCustomSecret(ctx, field)
+			case "secretRotatedAt":
+				return ec.fieldContext_Endpoint_secretRotatedAt(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Endpoint_createdAt(ctx, field)
 			case "updatedAt":
@@ -3730,6 +4500,138 @@ func (ec *executionContext) fieldContext_Mutation_resumeEndpoint(ctx context.Con
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_resumeEndpoint_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_rotateEndpointSecret(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_rotateEndpointSecret,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().RotateEndpointSecret(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNEndpointSecretRotation2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointSecretRotation,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_rotateEndpointSecret(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "endpoint":
+				return ec.fieldContext_EndpointSecretRotation_endpoint(ctx, field)
+			case "newSecret":
+				return ec.fieldContext_EndpointSecretRotation_newSecret(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EndpointSecretRotation", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_rotateEndpointSecret_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_clearPreviousSecret(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_clearPreviousSecret,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().ClearPreviousSecret(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNEndpoint2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_clearPreviousSecret(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Endpoint_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Endpoint_clientId(ctx, field)
+			case "url":
+				return ec.fieldContext_Endpoint_url(ctx, field)
+			case "description":
+				return ec.fieldContext_Endpoint_description(ctx, field)
+			case "eventTypes":
+				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
+			case "status":
+				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "maxRetries":
+				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
+			case "retryBackoffMs":
+				return ec.fieldContext_Endpoint_retryBackoffMs(ctx, field)
+			case "retryBackoffMax":
+				return ec.fieldContext_Endpoint_retryBackoffMax(ctx, field)
+			case "retryBackoffMult":
+				return ec.fieldContext_Endpoint_retryBackoffMult(ctx, field)
+			case "timeoutMs":
+				return ec.fieldContext_Endpoint_timeoutMs(ctx, field)
+			case "rateLimitPerSec":
+				return ec.fieldContext_Endpoint_rateLimitPerSec(ctx, field)
+			case "circuitThreshold":
+				return ec.fieldContext_Endpoint_circuitThreshold(ctx, field)
+			case "circuitResetMs":
+				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
+			case "customHeaders":
+				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "hasCustomSecret":
+				return ec.fieldContext_Endpoint_hasCustomSecret(ctx, field)
+			case "secretRotatedAt":
+				return ec.fieldContext_Endpoint_secretRotatedAt(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Endpoint_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Endpoint_updatedAt(ctx, field)
+			case "stats":
+				return ec.fieldContext_Endpoint_stats(ctx, field)
+			case "recentEvents":
+				return ec.fieldContext_Endpoint_recentEvents(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Endpoint", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_clearPreviousSecret_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -3863,7 +4765,7 @@ func (ec *executionContext) _Query_event(ctx context.Context, field graphql.Coll
 			return ec.resolvers.Query().Event(ctx, fc.Args["id"].(string))
 		},
 		nil,
-		ec.marshalOEvent2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent,
+		ec.marshalOEvent2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent,
 		true,
 		false,
 	)
@@ -3940,7 +4842,7 @@ func (ec *executionContext) _Query_events(ctx context.Context, field graphql.Col
 			return ec.resolvers.Query().Events(ctx, fc.Args["status"].(*EventStatus), fc.Args["first"].(*int), fc.Args["after"].(*string))
 		},
 		nil,
-		ec.marshalNEventConnection2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventConnection,
+		ec.marshalNEventConnection2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventConnection,
 		true,
 		true,
 	)
@@ -3988,7 +4890,7 @@ func (ec *executionContext) _Query_queueStats(ctx context.Context, field graphql
 			return ec.resolvers.Query().QueueStats(ctx)
 		},
 		nil,
-		ec.marshalNQueueStats2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐQueueStats,
+		ec.marshalNQueueStats2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐQueueStats,
 		true,
 		true,
 	)
@@ -4036,7 +4938,7 @@ func (ec *executionContext) _Query_endpoint(ctx context.Context, field graphql.C
 			return ec.resolvers.Query().Endpoint(ctx, fc.Args["id"].(string))
 		},
 		nil,
-		ec.marshalOEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
+		ec.marshalOEndpoint2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint,
 		true,
 		false,
 	)
@@ -4080,6 +4982,10 @@ func (ec *executionContext) fieldContext_Query_endpoint(ctx context.Context, fie
 				return ec.fieldContext_Endpoint_circuitResetMs(ctx, field)
 			case "customHeaders":
 				return ec.fieldContext_Endpoint_customHeaders(ctx, field)
+			case "hasCustomSecret":
+				return ec.fieldContext_Endpoint_hasCustomSecret(ctx, field)
+			case "secretRotatedAt":
+				return ec.fieldContext_Endpoint_secretRotatedAt(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Endpoint_createdAt(ctx, field)
 			case "updatedAt":
@@ -4117,7 +5023,7 @@ func (ec *executionContext) _Query_endpoints(ctx context.Context, field graphql.
 			return ec.resolvers.Query().Endpoints(ctx, fc.Args["status"].(*EndpointStatus), fc.Args["first"].(*int), fc.Args["after"].(*string))
 		},
 		nil,
-		ec.marshalNEndpointConnection2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointConnection,
+		ec.marshalNEndpointConnection2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointConnection,
 		true,
 		true,
 	)
@@ -6171,7 +7077,7 @@ func (ec *executionContext) unmarshalInputUpdateEndpointInput(ctx context.Contex
 			it.EventTypes = data
 		case "status":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("status"))
-			data, err := ec.unmarshalOEndpointStatus2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx, v)
+			data, err := ec.unmarshalOEndpointStatus2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -6252,6 +7158,104 @@ func (ec *executionContext) unmarshalInputUpdateEndpointInput(ctx context.Contex
 // endregion ************************** interface.gotpl ***************************
 
 // region    **************************** object.gotpl ****************************
+
+var batchRetryErrorImplementors = []string{"BatchRetryError"}
+
+func (ec *executionContext) _BatchRetryError(ctx context.Context, sel ast.SelectionSet, obj *BatchRetryError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, batchRetryErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("BatchRetryError")
+		case "eventId":
+			out.Values[i] = ec._BatchRetryError_eventId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "error":
+			out.Values[i] = ec._BatchRetryError_error(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var batchRetryResultImplementors = []string{"BatchRetryResult"}
+
+func (ec *executionContext) _BatchRetryResult(ctx context.Context, sel ast.SelectionSet, obj *BatchRetryResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, batchRetryResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("BatchRetryResult")
+		case "succeeded":
+			out.Values[i] = ec._BatchRetryResult_succeeded(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "failed":
+			out.Values[i] = ec._BatchRetryResult_failed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalRequested":
+			out.Values[i] = ec._BatchRetryResult_totalRequested(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalSucceeded":
+			out.Values[i] = ec._BatchRetryResult_totalSucceeded(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
 
 var deliveryAttemptImplementors = []string{"DeliveryAttempt"}
 
@@ -6398,6 +7402,13 @@ func (ec *executionContext) _Endpoint(ctx context.Context, sel ast.SelectionSet,
 			}
 		case "customHeaders":
 			out.Values[i] = ec._Endpoint_customHeaders(ctx, field, obj)
+		case "hasCustomSecret":
+			out.Values[i] = ec._Endpoint_hasCustomSecret(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "secretRotatedAt":
+			out.Values[i] = ec._Endpoint_secretRotatedAt(ctx, field, obj)
 		case "createdAt":
 			out.Values[i] = ec._Endpoint_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -6570,6 +7581,50 @@ func (ec *executionContext) _EndpointEdge(ctx context.Context, sel ast.Selection
 			}
 		case "cursor":
 			out.Values[i] = ec._EndpointEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var endpointSecretRotationImplementors = []string{"EndpointSecretRotation"}
+
+func (ec *executionContext) _EndpointSecretRotation(ctx context.Context, sel ast.SelectionSet, obj *EndpointSecretRotation) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, endpointSecretRotationImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("EndpointSecretRotation")
+		case "endpoint":
+			out.Values[i] = ec._EndpointSecretRotation_endpoint(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "newSecret":
+			out.Values[i] = ec._EndpointSecretRotation_newSecret(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -6953,6 +8008,27 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "retryEvents":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_retryEvents(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "retryEventsByStatus":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_retryEventsByStatus(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "retryEventsByEndpoint":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_retryEventsByEndpoint(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "createEndpoint":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createEndpoint(ctx, field)
@@ -6984,6 +8060,20 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "resumeEndpoint":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_resumeEndpoint(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "rotateEndpointSecret":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_rotateEndpointSecret(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "clearPreviousSecret":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_clearPreviousSecret(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -7622,6 +8712,68 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 
 // region    ***************************** type.gotpl *****************************
 
+func (ec *executionContext) marshalNBatchRetryError2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐBatchRetryError(ctx context.Context, sel ast.SelectionSet, v BatchRetryError) graphql.Marshaler {
+	return ec._BatchRetryError(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNBatchRetryError2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐBatchRetryErrorᚄ(ctx context.Context, sel ast.SelectionSet, v []BatchRetryError) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNBatchRetryError2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐBatchRetryError(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNBatchRetryResult2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐBatchRetryResult(ctx context.Context, sel ast.SelectionSet, v BatchRetryResult) graphql.Marshaler {
+	return ec._BatchRetryResult(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNBatchRetryResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐBatchRetryResult(ctx context.Context, sel ast.SelectionSet, v *BatchRetryResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._BatchRetryResult(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNBoolean2bool(ctx context.Context, v any) (bool, error) {
 	res, err := graphql.UnmarshalBoolean(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -7638,12 +8790,12 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
-func (ec *executionContext) unmarshalNCreateEndpointInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEndpointInput(ctx context.Context, v any) (CreateEndpointInput, error) {
+func (ec *executionContext) unmarshalNCreateEndpointInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEndpointInput(ctx context.Context, v any) (CreateEndpointInput, error) {
 	res, err := ec.unmarshalInputCreateEndpointInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) unmarshalNCreateEventInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEventInput(ctx context.Context, v any) (CreateEventInput, error) {
+func (ec *executionContext) unmarshalNCreateEventInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEventInput(ctx context.Context, v any) (CreateEventInput, error) {
 	res, err := ec.unmarshalInputCreateEventInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
@@ -7664,11 +8816,11 @@ func (ec *executionContext) marshalNDateTime2timeᚐTime(ctx context.Context, se
 	return res
 }
 
-func (ec *executionContext) marshalNDeliveryAttempt2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐDeliveryAttempt(ctx context.Context, sel ast.SelectionSet, v DeliveryAttempt) graphql.Marshaler {
+func (ec *executionContext) marshalNDeliveryAttempt2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐDeliveryAttempt(ctx context.Context, sel ast.SelectionSet, v DeliveryAttempt) graphql.Marshaler {
 	return ec._DeliveryAttempt(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNDeliveryAttempt2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐDeliveryAttemptᚄ(ctx context.Context, sel ast.SelectionSet, v []DeliveryAttempt) graphql.Marshaler {
+func (ec *executionContext) marshalNDeliveryAttempt2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐDeliveryAttemptᚄ(ctx context.Context, sel ast.SelectionSet, v []DeliveryAttempt) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -7692,7 +8844,7 @@ func (ec *executionContext) marshalNDeliveryAttempt2ᚕgithubᚗcomᚋrelayᚋin
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNDeliveryAttempt2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐDeliveryAttempt(ctx, sel, v[i])
+			ret[i] = ec.marshalNDeliveryAttempt2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐDeliveryAttempt(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -7712,11 +8864,11 @@ func (ec *executionContext) marshalNDeliveryAttempt2ᚕgithubᚗcomᚋrelayᚋin
 	return ret
 }
 
-func (ec *executionContext) marshalNEndpoint2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint(ctx context.Context, sel ast.SelectionSet, v Endpoint) graphql.Marshaler {
+func (ec *executionContext) marshalNEndpoint2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint(ctx context.Context, sel ast.SelectionSet, v Endpoint) graphql.Marshaler {
 	return ec._Endpoint(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint(ctx context.Context, sel ast.SelectionSet, v *Endpoint) graphql.Marshaler {
+func (ec *executionContext) marshalNEndpoint2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint(ctx context.Context, sel ast.SelectionSet, v *Endpoint) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -7726,11 +8878,11 @@ func (ec *executionContext) marshalNEndpoint2ᚖgithubᚗcomᚋrelayᚋinternal�
 	return ec._Endpoint(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNEndpointConnection2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointConnection(ctx context.Context, sel ast.SelectionSet, v EndpointConnection) graphql.Marshaler {
+func (ec *executionContext) marshalNEndpointConnection2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointConnection(ctx context.Context, sel ast.SelectionSet, v EndpointConnection) graphql.Marshaler {
 	return ec._EndpointConnection(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNEndpointConnection2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointConnection(ctx context.Context, sel ast.SelectionSet, v *EndpointConnection) graphql.Marshaler {
+func (ec *executionContext) marshalNEndpointConnection2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointConnection(ctx context.Context, sel ast.SelectionSet, v *EndpointConnection) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -7740,11 +8892,11 @@ func (ec *executionContext) marshalNEndpointConnection2ᚖgithubᚗcomᚋrelay�
 	return ec._EndpointConnection(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNEndpointEdge2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdge(ctx context.Context, sel ast.SelectionSet, v EndpointEdge) graphql.Marshaler {
+func (ec *executionContext) marshalNEndpointEdge2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdge(ctx context.Context, sel ast.SelectionSet, v EndpointEdge) graphql.Marshaler {
 	return ec._EndpointEdge(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNEndpointEdge2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []EndpointEdge) graphql.Marshaler {
+func (ec *executionContext) marshalNEndpointEdge2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []EndpointEdge) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -7768,7 +8920,7 @@ func (ec *executionContext) marshalNEndpointEdge2ᚕgithubᚗcomᚋrelayᚋinter
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNEndpointEdge2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdge(ctx, sel, v[i])
+			ret[i] = ec.marshalNEndpointEdge2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointEdge(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -7788,11 +8940,25 @@ func (ec *executionContext) marshalNEndpointEdge2ᚕgithubᚗcomᚋrelayᚋinter
 	return ret
 }
 
-func (ec *executionContext) marshalNEndpointStats2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStats(ctx context.Context, sel ast.SelectionSet, v EndpointStats) graphql.Marshaler {
+func (ec *executionContext) marshalNEndpointSecretRotation2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointSecretRotation(ctx context.Context, sel ast.SelectionSet, v EndpointSecretRotation) graphql.Marshaler {
+	return ec._EndpointSecretRotation(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNEndpointSecretRotation2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointSecretRotation(ctx context.Context, sel ast.SelectionSet, v *EndpointSecretRotation) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._EndpointSecretRotation(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNEndpointStats2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStats(ctx context.Context, sel ast.SelectionSet, v EndpointStats) graphql.Marshaler {
 	return ec._EndpointStats(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNEndpointStats2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStats(ctx context.Context, sel ast.SelectionSet, v *EndpointStats) graphql.Marshaler {
+func (ec *executionContext) marshalNEndpointStats2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStats(ctx context.Context, sel ast.SelectionSet, v *EndpointStats) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -7802,21 +8968,21 @@ func (ec *executionContext) marshalNEndpointStats2ᚖgithubᚗcomᚋrelayᚋinte
 	return ec._EndpointStats(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNEndpointStatus2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, v any) (EndpointStatus, error) {
+func (ec *executionContext) unmarshalNEndpointStatus2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, v any) (EndpointStatus, error) {
 	var res EndpointStatus
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNEndpointStatus2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, sel ast.SelectionSet, v EndpointStatus) graphql.Marshaler {
+func (ec *executionContext) marshalNEndpointStatus2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, sel ast.SelectionSet, v EndpointStatus) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNEvent2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx context.Context, sel ast.SelectionSet, v Event) graphql.Marshaler {
+func (ec *executionContext) marshalNEvent2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx context.Context, sel ast.SelectionSet, v Event) graphql.Marshaler {
 	return ec._Event(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNEvent2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventᚄ(ctx context.Context, sel ast.SelectionSet, v []Event) graphql.Marshaler {
+func (ec *executionContext) marshalNEvent2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventᚄ(ctx context.Context, sel ast.SelectionSet, v []Event) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -7840,7 +9006,7 @@ func (ec *executionContext) marshalNEvent2ᚕgithubᚗcomᚋrelayᚋinternalᚋa
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNEvent2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx, sel, v[i])
+			ret[i] = ec.marshalNEvent2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -7860,7 +9026,7 @@ func (ec *executionContext) marshalNEvent2ᚕgithubᚗcomᚋrelayᚋinternalᚋa
 	return ret
 }
 
-func (ec *executionContext) marshalNEvent2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx context.Context, sel ast.SelectionSet, v *Event) graphql.Marshaler {
+func (ec *executionContext) marshalNEvent2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx context.Context, sel ast.SelectionSet, v *Event) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -7870,11 +9036,11 @@ func (ec *executionContext) marshalNEvent2ᚖgithubᚗcomᚋrelayᚋinternalᚋa
 	return ec._Event(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNEventConnection2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventConnection(ctx context.Context, sel ast.SelectionSet, v EventConnection) graphql.Marshaler {
+func (ec *executionContext) marshalNEventConnection2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventConnection(ctx context.Context, sel ast.SelectionSet, v EventConnection) graphql.Marshaler {
 	return ec._EventConnection(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNEventConnection2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventConnection(ctx context.Context, sel ast.SelectionSet, v *EventConnection) graphql.Marshaler {
+func (ec *executionContext) marshalNEventConnection2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventConnection(ctx context.Context, sel ast.SelectionSet, v *EventConnection) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -7884,11 +9050,11 @@ func (ec *executionContext) marshalNEventConnection2ᚖgithubᚗcomᚋrelayᚋin
 	return ec._EventConnection(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNEventEdge2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventEdge(ctx context.Context, sel ast.SelectionSet, v EventEdge) graphql.Marshaler {
+func (ec *executionContext) marshalNEventEdge2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventEdge(ctx context.Context, sel ast.SelectionSet, v EventEdge) graphql.Marshaler {
 	return ec._EventEdge(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNEventEdge2ᚕgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []EventEdge) graphql.Marshaler {
+func (ec *executionContext) marshalNEventEdge2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []EventEdge) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -7912,7 +9078,7 @@ func (ec *executionContext) marshalNEventEdge2ᚕgithubᚗcomᚋrelayᚋinternal
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNEventEdge2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventEdge(ctx, sel, v[i])
+			ret[i] = ec.marshalNEventEdge2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventEdge(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -7932,13 +9098,13 @@ func (ec *executionContext) marshalNEventEdge2ᚕgithubᚗcomᚋrelayᚋinternal
 	return ret
 }
 
-func (ec *executionContext) unmarshalNEventStatus2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus(ctx context.Context, v any) (EventStatus, error) {
+func (ec *executionContext) unmarshalNEventStatus2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus(ctx context.Context, v any) (EventStatus, error) {
 	var res EventStatus
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNEventStatus2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus(ctx context.Context, sel ast.SelectionSet, v EventStatus) graphql.Marshaler {
+func (ec *executionContext) marshalNEventStatus2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus(ctx context.Context, sel ast.SelectionSet, v EventStatus) graphql.Marshaler {
 	return v
 }
 
@@ -7972,6 +9138,36 @@ func (ec *executionContext) marshalNID2string(ctx context.Context, sel ast.Selec
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNID2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNID2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNID2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNID2string(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v any) (int, error) {
@@ -8012,7 +9208,7 @@ func (ec *executionContext) marshalNJSON2map(ctx context.Context, sel ast.Select
 	return res
 }
 
-func (ec *executionContext) marshalNPageInfo2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐPageInfo(ctx context.Context, sel ast.SelectionSet, v *PageInfo) graphql.Marshaler {
+func (ec *executionContext) marshalNPageInfo2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐPageInfo(ctx context.Context, sel ast.SelectionSet, v *PageInfo) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -8022,11 +9218,11 @@ func (ec *executionContext) marshalNPageInfo2ᚖgithubᚗcomᚋrelayᚋinternal�
 	return ec._PageInfo(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNQueueStats2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐQueueStats(ctx context.Context, sel ast.SelectionSet, v QueueStats) graphql.Marshaler {
+func (ec *executionContext) marshalNQueueStats2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐQueueStats(ctx context.Context, sel ast.SelectionSet, v QueueStats) graphql.Marshaler {
 	return ec._QueueStats(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNQueueStats2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐQueueStats(ctx context.Context, sel ast.SelectionSet, v *QueueStats) graphql.Marshaler {
+func (ec *executionContext) marshalNQueueStats2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐQueueStats(ctx context.Context, sel ast.SelectionSet, v *QueueStats) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -8036,7 +9232,7 @@ func (ec *executionContext) marshalNQueueStats2ᚖgithubᚗcomᚋrelayᚋinterna
 	return ec._QueueStats(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNSendEventInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐSendEventInput(ctx context.Context, v any) (SendEventInput, error) {
+func (ec *executionContext) unmarshalNSendEventInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐSendEventInput(ctx context.Context, v any) (SendEventInput, error) {
 	res, err := ec.unmarshalInputSendEventInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
@@ -8087,7 +9283,7 @@ func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel
 	return ret
 }
 
-func (ec *executionContext) unmarshalNUpdateEndpointInput2githubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐUpdateEndpointInput(ctx context.Context, v any) (UpdateEndpointInput, error) {
+func (ec *executionContext) unmarshalNUpdateEndpointInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐUpdateEndpointInput(ctx context.Context, v any) (UpdateEndpointInput, error) {
 	res, err := ec.unmarshalInputUpdateEndpointInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
@@ -8393,14 +9589,14 @@ func (ec *executionContext) marshalODateTime2ᚖtimeᚐTime(ctx context.Context,
 	return res
 }
 
-func (ec *executionContext) marshalOEndpoint2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint(ctx context.Context, sel ast.SelectionSet, v *Endpoint) graphql.Marshaler {
+func (ec *executionContext) marshalOEndpoint2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpoint(ctx context.Context, sel ast.SelectionSet, v *Endpoint) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Endpoint(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOEndpointStatus2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, v any) (*EndpointStatus, error) {
+func (ec *executionContext) unmarshalOEndpointStatus2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, v any) (*EndpointStatus, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -8409,21 +9605,21 @@ func (ec *executionContext) unmarshalOEndpointStatus2ᚖgithubᚗcomᚋrelayᚋi
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOEndpointStatus2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, sel ast.SelectionSet, v *EndpointStatus) graphql.Marshaler {
+func (ec *executionContext) marshalOEndpointStatus2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEndpointStatus(ctx context.Context, sel ast.SelectionSet, v *EndpointStatus) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return v
 }
 
-func (ec *executionContext) marshalOEvent2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx context.Context, sel ast.SelectionSet, v *Event) graphql.Marshaler {
+func (ec *executionContext) marshalOEvent2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent(ctx context.Context, sel ast.SelectionSet, v *Event) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Event(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOEventStatus2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus(ctx context.Context, v any) (*EventStatus, error) {
+func (ec *executionContext) unmarshalOEventStatus2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus(ctx context.Context, v any) (*EventStatus, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -8432,7 +9628,7 @@ func (ec *executionContext) unmarshalOEventStatus2ᚖgithubᚗcomᚋrelayᚋinte
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOEventStatus2ᚖgithubᚗcomᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus(ctx context.Context, sel ast.SelectionSet, v *EventStatus) graphql.Marshaler {
+func (ec *executionContext) marshalOEventStatus2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventStatus(ctx context.Context, sel ast.SelectionSet, v *EventStatus) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}

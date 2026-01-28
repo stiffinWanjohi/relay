@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -419,12 +420,14 @@ func (s *Store) CreateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 			id, client_id, url, description, event_types, status,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
-			custom_headers, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			custom_headers, signing_secret, previous_secret, secret_rotated_at,
+			created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		RETURNING id, client_id, url, description, event_types, status,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
-			custom_headers, created_at, updated_at
+			custom_headers, signing_secret, previous_secret, secret_rotated_at,
+			created_at, updated_at
 	`
 
 	return s.scanEndpoint(s.pool.QueryRow(ctx, query,
@@ -443,6 +446,9 @@ func (s *Store) CreateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 		endpoint.CircuitThreshold,
 		endpoint.CircuitResetMs,
 		headersJSON,
+		nullString(endpoint.SigningSecret),
+		nullString(endpoint.PreviousSecret),
+		endpoint.SecretRotatedAt,
 		endpoint.CreatedAt,
 		endpoint.UpdatedAt,
 	))
@@ -460,12 +466,14 @@ func (s *Store) UpdateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 			url = $2, description = $3, event_types = $4, status = $5,
 			max_retries = $6, retry_backoff_ms = $7, retry_backoff_max = $8, retry_backoff_mult = $9,
 			timeout_ms = $10, rate_limit_per_sec = $11, circuit_threshold = $12, circuit_reset_ms = $13,
-			custom_headers = $14, updated_at = NOW()
+			custom_headers = $14, signing_secret = $15, previous_secret = $16, secret_rotated_at = $17,
+			updated_at = NOW()
 		WHERE id = $1
 		RETURNING id, client_id, url, description, event_types, status,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
-			custom_headers, created_at, updated_at
+			custom_headers, signing_secret, previous_secret, secret_rotated_at,
+			created_at, updated_at
 	`
 
 	updated, err := s.scanEndpoint(s.pool.QueryRow(ctx, query,
@@ -483,6 +491,9 @@ func (s *Store) UpdateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 		endpoint.CircuitThreshold,
 		endpoint.CircuitResetMs,
 		headersJSON,
+		nullString(endpoint.SigningSecret),
+		nullString(endpoint.PreviousSecret),
+		endpoint.SecretRotatedAt,
 	))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Endpoint{}, domain.ErrEndpointNotFound
@@ -496,7 +507,8 @@ func (s *Store) GetEndpointByID(ctx context.Context, id uuid.UUID) (domain.Endpo
 		SELECT id, client_id, url, description, event_types, status,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
-			custom_headers, created_at, updated_at
+			custom_headers, signing_secret, previous_secret, secret_rotated_at,
+			created_at, updated_at
 		FROM endpoints
 		WHERE id = $1
 	`
@@ -514,7 +526,8 @@ func (s *Store) ListEndpointsByClient(ctx context.Context, clientID string, limi
 		SELECT id, client_id, url, description, event_types, status,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
-			custom_headers, created_at, updated_at
+			custom_headers, signing_secret, previous_secret, secret_rotated_at,
+			created_at, updated_at
 		FROM endpoints
 		WHERE client_id = $1
 		ORDER BY created_at DESC
@@ -540,7 +553,8 @@ func (s *Store) FindActiveEndpointsByEventType(ctx context.Context, clientID, ev
 		SELECT id, client_id, url, description, event_types, status,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
-			custom_headers, created_at, updated_at
+			custom_headers, signing_secret, previous_secret, secret_rotated_at,
+			created_at, updated_at
 		FROM endpoints
 		WHERE client_id = $1
 		AND status = 'active'
@@ -721,6 +735,114 @@ type EndpointStats struct {
 	AvgLatencyMs float64
 }
 
+// BatchRetryResult represents the result of a batch retry operation.
+type BatchRetryResult struct {
+	Succeeded []domain.Event
+	Failed    []BatchRetryError
+}
+
+// BatchRetryError represents a single event that failed to retry.
+type BatchRetryError struct {
+	EventID uuid.UUID
+	Error   string
+}
+
+// RetryEventsByIDs retries multiple events by their IDs.
+// Returns a result containing succeeded and failed events.
+func (s *Store) RetryEventsByIDs(ctx context.Context, ids []uuid.UUID) (*BatchRetryResult, error) {
+	result := &BatchRetryResult{
+		Succeeded: make([]domain.Event, 0, len(ids)),
+		Failed:    make([]BatchRetryError, 0),
+	}
+
+	for _, id := range ids {
+		evt, err := s.GetByID(ctx, id)
+		if err != nil {
+			result.Failed = append(result.Failed, BatchRetryError{
+				EventID: id,
+				Error:   err.Error(),
+			})
+			continue
+		}
+
+		if evt.Status != domain.EventStatusFailed && evt.Status != domain.EventStatusDead {
+			result.Failed = append(result.Failed, BatchRetryError{
+				EventID: id,
+				Error:   "only failed or dead events can be retried",
+			})
+			continue
+		}
+
+		evt = evt.Replay()
+
+		updated, err := s.Update(ctx, evt)
+		if err != nil {
+			result.Failed = append(result.Failed, BatchRetryError{
+				EventID: id,
+				Error:   err.Error(),
+			})
+			continue
+		}
+
+		result.Succeeded = append(result.Succeeded, updated)
+	}
+
+	return result, nil
+}
+
+// RetryEventsByStatus retries all events with the given status up to the limit.
+// Only failed and dead events can be retried.
+func (s *Store) RetryEventsByStatus(ctx context.Context, status domain.EventStatus, limit int) (*BatchRetryResult, error) {
+	if status != domain.EventStatusFailed && status != domain.EventStatusDead {
+		return nil, fmt.Errorf("only failed or dead events can be retried")
+	}
+
+	events, err := s.ListByStatus(ctx, status, limit, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]uuid.UUID, len(events))
+	for i, evt := range events {
+		ids[i] = evt.ID
+	}
+
+	return s.RetryEventsByIDs(ctx, ids)
+}
+
+// RetryEventsByEndpoint retries all failed/dead events for a specific endpoint.
+func (s *Store) RetryEventsByEndpoint(ctx context.Context, endpointID uuid.UUID, status domain.EventStatus, limit int) (*BatchRetryResult, error) {
+	if status != domain.EventStatusFailed && status != domain.EventStatusDead {
+		return nil, fmt.Errorf("only failed or dead events can be retried")
+	}
+
+	query := `
+		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+		FROM events
+		WHERE endpoint_id = $1 AND status = $2
+		ORDER BY created_at DESC
+		LIMIT $3
+	`
+
+	rows, err := s.pool.Query(ctx, query, endpointID, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	events, err := s.scanEvents(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]uuid.UUID, len(events))
+	for i, evt := range events {
+		ids[i] = evt.ID
+	}
+
+	return s.RetryEventsByIDs(ctx, ids)
+}
+
 func (s *Store) scanEvent(row pgx.Row) (domain.Event, error) {
 	var event domain.Event
 	var headersJSON []byte
@@ -847,7 +969,7 @@ func (s *Store) scanDeliveryAttemptFromRows(rows pgx.Rows) (domain.DeliveryAttem
 func (s *Store) scanEndpoint(row pgx.Row) (domain.Endpoint, error) {
 	var endpoint domain.Endpoint
 	var headersJSON []byte
-	var description *string
+	var description, signingSecret, previousSecret *string
 
 	err := row.Scan(
 		&endpoint.ID,
@@ -865,6 +987,9 @@ func (s *Store) scanEndpoint(row pgx.Row) (domain.Endpoint, error) {
 		&endpoint.CircuitThreshold,
 		&endpoint.CircuitResetMs,
 		&headersJSON,
+		&signingSecret,
+		&previousSecret,
+		&endpoint.SecretRotatedAt,
 		&endpoint.CreatedAt,
 		&endpoint.UpdatedAt,
 	)
@@ -874,6 +999,12 @@ func (s *Store) scanEndpoint(row pgx.Row) (domain.Endpoint, error) {
 
 	if description != nil {
 		endpoint.Description = *description
+	}
+	if signingSecret != nil {
+		endpoint.SigningSecret = *signingSecret
+	}
+	if previousSecret != nil {
+		endpoint.PreviousSecret = *previousSecret
 	}
 
 	if len(headersJSON) > 0 {
@@ -893,7 +1024,7 @@ func (s *Store) scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 	for rows.Next() {
 		var endpoint domain.Endpoint
 		var headersJSON []byte
-		var description *string
+		var description, signingSecret, previousSecret *string
 
 		err := rows.Scan(
 			&endpoint.ID,
@@ -911,6 +1042,9 @@ func (s *Store) scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 			&endpoint.CircuitThreshold,
 			&endpoint.CircuitResetMs,
 			&headersJSON,
+			&signingSecret,
+			&previousSecret,
+			&endpoint.SecretRotatedAt,
 			&endpoint.CreatedAt,
 			&endpoint.UpdatedAt,
 		)
@@ -920,6 +1054,12 @@ func (s *Store) scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 
 		if description != nil {
 			endpoint.Description = *description
+		}
+		if signingSecret != nil {
+			endpoint.SigningSecret = *signingSecret
+		}
+		if previousSecret != nil {
+			endpoint.PreviousSecret = *previousSecret
 		}
 
 		if len(headersJSON) > 0 {

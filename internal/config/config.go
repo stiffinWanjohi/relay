@@ -32,13 +32,29 @@ const (
 
 // Config holds all application configuration.
 type Config struct {
-	Database DatabaseConfig
-	Redis    RedisConfig
-	API      APIConfig
-	Worker   WorkerConfig
-	Outbox   OutboxConfig
-	Auth     AuthConfig
-	Metrics  MetricsConfig
+	Database     DatabaseConfig
+	Redis        RedisConfig
+	API          APIConfig
+	Worker       WorkerConfig
+	Outbox       OutboxConfig
+	Auth         AuthConfig
+	Metrics      MetricsConfig
+	Notification NotificationConfig
+}
+
+// NotificationConfig holds notification service configuration.
+type NotificationConfig struct {
+	Enabled         bool
+	Async           bool
+	SlackWebhookURL string
+	SMTPHost        string
+	SMTPPort        int
+	SMTPUsername    string
+	SMTPPassword    string
+	EmailFrom       string
+	EmailTo         []string
+	NotifyOnTrip    bool
+	NotifyOnRecover bool
 }
 
 // MetricsConfig holds metrics/observability configuration.
@@ -170,6 +186,19 @@ func LoadConfig() (*Config, error) {
 	cfg.Metrics.ServiceName = getEnv("SERVICE_NAME", "relay")
 	cfg.Metrics.ServiceVersion = getEnv("SERVICE_VERSION", "1.0.0")
 	cfg.Metrics.Environment = getEnv("ENVIRONMENT", "development")
+
+	// Notification config
+	cfg.Notification.Enabled = getEnvBool("NOTIFICATION_ENABLED", false)
+	cfg.Notification.Async = getEnvBool("NOTIFICATION_ASYNC", true)
+	cfg.Notification.SlackWebhookURL = getEnv("NOTIFICATION_SLACK_WEBHOOK_URL", "")
+	cfg.Notification.SMTPHost = getEnv("NOTIFICATION_SMTP_HOST", "")
+	cfg.Notification.SMTPPort = getEnvInt("NOTIFICATION_SMTP_PORT", 587)
+	cfg.Notification.SMTPUsername = getEnv("NOTIFICATION_SMTP_USERNAME", "")
+	cfg.Notification.SMTPPassword = getEnv("NOTIFICATION_SMTP_PASSWORD", "")
+	cfg.Notification.EmailFrom = getEnv("NOTIFICATION_EMAIL_FROM", "")
+	cfg.Notification.EmailTo = getEnvStringSlice("NOTIFICATION_EMAIL_TO", nil)
+	cfg.Notification.NotifyOnTrip = getEnvBool("NOTIFICATION_ON_TRIP", true)
+	cfg.Notification.NotifyOnRecover = getEnvBool("NOTIFICATION_ON_RECOVER", true)
 
 	return cfg, nil
 }
@@ -334,4 +363,23 @@ func getEnvBool(key string, defaultValue bool) bool {
 		return defaultValue
 	}
 	return value == "true" || value == "1" || value == "yes"
+}
+
+func getEnvStringSlice(key string, defaultValue []string) []string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	if len(result) == 0 {
+		return defaultValue
+	}
+	return result
 }

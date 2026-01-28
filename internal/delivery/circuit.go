@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 )
 
@@ -82,12 +83,15 @@ type circuit struct {
 
 // CircuitBreaker manages circuit breakers per destination.
 type CircuitBreaker struct {
-	config      CircuitConfig
-	circuits    map[string]*circuit
-	mu          sync.Mutex // Use single Mutex to avoid race condition between RLock and Lock
-	ttl         time.Duration
-	cleanupStop chan struct{}
-	metrics     *observability.Metrics
+	config        CircuitConfig
+	circuits      map[string]*circuit
+	mu            sync.Mutex // Use single Mutex to avoid race condition between RLock and Lock
+	ttl           time.Duration
+	cleanupStop   chan struct{}
+	metrics       *observability.Metrics
+	notifier      *notification.Service
+	notifyTrip    bool
+	notifyRecover bool
 }
 
 const (
@@ -112,6 +116,14 @@ func NewCircuitBreaker(config CircuitConfig) *CircuitBreaker {
 // WithMetrics sets a metrics provider for the circuit breaker.
 func (cb *CircuitBreaker) WithMetrics(metrics *observability.Metrics) *CircuitBreaker {
 	cb.metrics = metrics
+	return cb
+}
+
+// WithNotifier sets a notification service for the circuit breaker.
+func (cb *CircuitBreaker) WithNotifier(notifier *notification.Service, notifyTrip, notifyRecover bool) *CircuitBreaker {
+	cb.notifier = notifier
+	cb.notifyTrip = notifyTrip
+	cb.notifyRecover = notifyRecover
 	return cb
 }
 
@@ -179,10 +191,10 @@ func (cb *CircuitBreaker) IsOpen(destination string) bool {
 // RecordSuccess records a successful delivery.
 func (cb *CircuitBreaker) RecordSuccess(destination string) {
 	cb.mu.Lock()
-	defer cb.mu.Unlock()
 
 	c, exists := cb.circuits[destination]
 	if !exists {
+		cb.mu.Unlock()
 		return
 	}
 
@@ -203,16 +215,27 @@ func (cb *CircuitBreaker) RecordSuccess(destination string) {
 		c.failures = 0
 	}
 
-	// Record metrics if state changed (recovered from half-open to closed)
-	if cb.metrics != nil && previousState != c.state {
-		cb.metrics.CircuitBreakerStateChange(context.Background(), destination, c.state.String())
+	stateChanged := previousState != c.state
+	newState := c.state
+
+	cb.mu.Unlock()
+
+	// Record metrics and send notifications after releasing the lock
+	if stateChanged {
+		if cb.metrics != nil {
+			cb.metrics.CircuitBreakerStateChange(context.Background(), destination, newState.String())
+		}
+
+		// Send recovery notification when transitioning from half-open to closed
+		if cb.notifier != nil && cb.notifyRecover && previousState == CircuitHalfOpen && newState == CircuitClosed {
+			cb.notifier.NotifyCircuitRecover(context.Background(), "", destination)
+		}
 	}
 }
 
 // RecordFailure records a failed delivery.
 func (cb *CircuitBreaker) RecordFailure(destination string) {
 	cb.mu.Lock()
-	defer cb.mu.Unlock()
 
 	now := time.Now()
 	c, exists := cb.circuits[destination]
@@ -243,10 +266,22 @@ func (cb *CircuitBreaker) RecordFailure(destination string) {
 		c.lastStateChange = now
 	}
 
-	// Record metrics if state changed to open (circuit tripped)
-	if cb.metrics != nil && previousState != CircuitOpen && c.state == CircuitOpen {
-		cb.metrics.CircuitBreakerTrip(context.Background(), destination)
-		cb.metrics.CircuitBreakerStateChange(context.Background(), destination, c.state.String())
+	tripped := previousState != CircuitOpen && c.state == CircuitOpen
+	failures := c.failures
+
+	cb.mu.Unlock()
+
+	// Record metrics and send notifications after releasing the lock
+	if tripped {
+		if cb.metrics != nil {
+			cb.metrics.CircuitBreakerTrip(context.Background(), destination)
+			cb.metrics.CircuitBreakerStateChange(context.Background(), destination, CircuitOpen.String())
+		}
+
+		// Send trip notification
+		if cb.notifier != nil && cb.notifyTrip {
+			cb.notifier.NotifyCircuitTrip(context.Background(), "", destination, failures)
+		}
 	}
 }
 

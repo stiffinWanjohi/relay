@@ -1165,3 +1165,451 @@ func TestNullString(t *testing.T) {
 func ptrString(s string) *string {
 	return &s
 }
+
+func TestStore_RetryEventsByIDs(t *testing.T) {
+	pool := skipIfNoDatabase(t)
+	defer pool.Close()
+
+	store := NewStore(pool)
+	ctx := context.Background()
+
+	var eventIDs []uuid.UUID
+
+	// Create failed events
+	for i := range 3 {
+		event := domain.NewEvent(
+			"test-retry-ids-"+uuid.New().String(),
+			"https://example.com/webhook",
+			json.RawMessage(`{"index": `+string(rune('0'+i))+`}`),
+			nil,
+		)
+		event.Status = domain.EventStatusFailed
+		eventIDs = append(eventIDs, event.ID)
+
+		_, err := store.Create(ctx, event)
+		if err != nil {
+			t.Fatalf("Create failed: %v", err)
+		}
+
+		// Update to failed status
+		event.Status = domain.EventStatusFailed
+		_, err = store.Update(ctx, event)
+		if err != nil {
+			t.Fatalf("Update failed: %v", err)
+		}
+	}
+
+	defer cleanupTestData(t, pool, eventIDs, nil)
+
+	result, err := store.RetryEventsByIDs(ctx, eventIDs)
+	if err != nil {
+		t.Fatalf("RetryEventsByIDs failed: %v", err)
+	}
+
+	if len(result.Succeeded) != 3 {
+		t.Errorf("expected 3 succeeded events, got %d", len(result.Succeeded))
+	}
+	if len(result.Failed) != 0 {
+		t.Errorf("expected 0 failed retries, got %d", len(result.Failed))
+	}
+
+	// Verify events are now queued
+	for _, event := range result.Succeeded {
+		if event.Status != domain.EventStatusQueued {
+			t.Errorf("expected status queued, got %s", event.Status)
+		}
+	}
+}
+
+func TestStore_RetryEventsByIDs_InvalidStatus(t *testing.T) {
+	pool := skipIfNoDatabase(t)
+	defer pool.Close()
+
+	store := NewStore(pool)
+	ctx := context.Background()
+
+	// Create a queued event (not retryable)
+	event := domain.NewEvent(
+		"test-retry-invalid-"+uuid.New().String(),
+		"https://example.com/webhook",
+		json.RawMessage(`{"test": "invalid"}`),
+		nil,
+	)
+
+	defer cleanupTestData(t, pool, []uuid.UUID{event.ID}, nil)
+
+	_, err := store.Create(ctx, event)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	result, err := store.RetryEventsByIDs(ctx, []uuid.UUID{event.ID})
+	if err != nil {
+		t.Fatalf("RetryEventsByIDs failed: %v", err)
+	}
+
+	if len(result.Succeeded) != 0 {
+		t.Errorf("expected 0 succeeded events, got %d", len(result.Succeeded))
+	}
+	if len(result.Failed) != 1 {
+		t.Errorf("expected 1 failed retry, got %d", len(result.Failed))
+	}
+	if len(result.Failed) > 0 && result.Failed[0].EventID != event.ID {
+		t.Errorf("expected failed event ID %v, got %v", event.ID, result.Failed[0].EventID)
+	}
+}
+
+func TestStore_RetryEventsByIDs_NotFound(t *testing.T) {
+	pool := skipIfNoDatabase(t)
+	defer pool.Close()
+
+	store := NewStore(pool)
+	ctx := context.Background()
+
+	nonexistentID := uuid.New()
+	result, err := store.RetryEventsByIDs(ctx, []uuid.UUID{nonexistentID})
+	if err != nil {
+		t.Fatalf("RetryEventsByIDs failed: %v", err)
+	}
+
+	if len(result.Succeeded) != 0 {
+		t.Errorf("expected 0 succeeded events, got %d", len(result.Succeeded))
+	}
+	if len(result.Failed) != 1 {
+		t.Errorf("expected 1 failed retry, got %d", len(result.Failed))
+	}
+}
+
+func TestStore_RetryEventsByStatus(t *testing.T) {
+	pool := skipIfNoDatabase(t)
+	defer pool.Close()
+
+	store := NewStore(pool)
+	ctx := context.Background()
+
+	var eventIDs []uuid.UUID
+
+	// Create dead events
+	for i := range 2 {
+		event := domain.NewEvent(
+			"test-retry-status-"+uuid.New().String(),
+			"https://example.com/webhook",
+			json.RawMessage(`{"index": `+string(rune('0'+i))+`}`),
+			nil,
+		)
+		eventIDs = append(eventIDs, event.ID)
+
+		_, err := store.Create(ctx, event)
+		if err != nil {
+			t.Fatalf("Create failed: %v", err)
+		}
+
+		// Update to dead status
+		event.Status = domain.EventStatusDead
+		_, err = store.Update(ctx, event)
+		if err != nil {
+			t.Fatalf("Update failed: %v", err)
+		}
+	}
+
+	defer cleanupTestData(t, pool, eventIDs, nil)
+
+	result, err := store.RetryEventsByStatus(ctx, domain.EventStatusDead, 10)
+	if err != nil {
+		t.Fatalf("RetryEventsByStatus failed: %v", err)
+	}
+
+	if len(result.Succeeded) < 2 {
+		t.Errorf("expected at least 2 succeeded events, got %d", len(result.Succeeded))
+	}
+
+	// Verify events are now queued
+	for _, event := range result.Succeeded {
+		if event.Status != domain.EventStatusQueued {
+			t.Errorf("expected status queued, got %s", event.Status)
+		}
+	}
+}
+
+func TestStore_RetryEventsByStatus_InvalidStatus(t *testing.T) {
+	pool := skipIfNoDatabase(t)
+	defer pool.Close()
+
+	store := NewStore(pool)
+	ctx := context.Background()
+
+	_, err := store.RetryEventsByStatus(ctx, domain.EventStatusQueued, 10)
+	if err == nil {
+		t.Error("expected error for invalid status, got nil")
+	}
+}
+
+func TestStore_RetryEventsByEndpoint(t *testing.T) {
+	pool := skipIfNoDatabase(t)
+	defer pool.Close()
+
+	store := NewStore(pool)
+	ctx := context.Background()
+
+	// Create a test client first
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
+
+	// Create endpoint
+	endpoint := domain.NewEndpoint(clientID, "https://example.com/webhook", []string{"*"})
+	_, err := store.CreateEndpoint(ctx, endpoint)
+	if err != nil {
+		t.Fatalf("CreateEndpoint failed: %v", err)
+	}
+
+	var eventIDs []uuid.UUID
+	defer func() {
+		cleanupTestData(t, pool, eventIDs, []uuid.UUID{endpoint.ID})
+	}()
+
+	// Create events with fanout
+	for range 2 {
+		events, err := store.CreateEventWithFanout(ctx, clientID, "test.event", "test-"+uuid.New().String(), json.RawMessage(`{}`), nil)
+		if err != nil {
+			t.Fatalf("CreateEventWithFanout failed: %v", err)
+		}
+		for _, e := range events {
+			eventIDs = append(eventIDs, e.ID)
+			// Mark as failed
+			e.Status = domain.EventStatusFailed
+			_, err = store.Update(ctx, e)
+			if err != nil {
+				t.Fatalf("Update failed: %v", err)
+			}
+		}
+	}
+
+	result, err := store.RetryEventsByEndpoint(ctx, endpoint.ID, domain.EventStatusFailed, 10)
+	if err != nil {
+		t.Fatalf("RetryEventsByEndpoint failed: %v", err)
+	}
+
+	if len(result.Succeeded) != 2 {
+		t.Errorf("expected 2 succeeded events, got %d", len(result.Succeeded))
+	}
+
+	// Verify events are now queued
+	for _, event := range result.Succeeded {
+		if event.Status != domain.EventStatusQueued {
+			t.Errorf("expected status queued, got %s", event.Status)
+		}
+	}
+}
+
+func TestStore_RetryEventsByEndpoint_NoMatchingEvents(t *testing.T) {
+	pool := skipIfNoDatabase(t)
+	defer pool.Close()
+
+	store := NewStore(pool)
+	ctx := context.Background()
+
+	result, err := store.RetryEventsByEndpoint(ctx, uuid.New(), domain.EventStatusFailed, 10)
+	// Should not error even with no matching events
+	if err != nil {
+		t.Fatalf("RetryEventsByEndpoint failed: %v", err)
+	}
+	if len(result.Succeeded) != 0 {
+		t.Errorf("expected 0 succeeded events, got %d", len(result.Succeeded))
+	}
+}
+
+func TestStore_EndpointSecretRotation(t *testing.T) {
+	pool := skipIfNoDatabase(t)
+	defer pool.Close()
+
+	store := NewStore(pool)
+	ctx := context.Background()
+
+	// Create a test client first
+	clientID := createTestClient(t, pool)
+	defer cleanupTestClient(t, pool, clientID)
+
+	// Create endpoint with signing secret
+	endpoint := domain.NewEndpoint(clientID, "https://example.com/webhook", []string{"*"})
+	endpoint.SigningSecret = "original-secret-key"
+
+	defer cleanupTestData(t, pool, nil, []uuid.UUID{endpoint.ID})
+
+	created, err := store.CreateEndpoint(ctx, endpoint)
+	if err != nil {
+		t.Fatalf("CreateEndpoint failed: %v", err)
+	}
+
+	if created.SigningSecret != "original-secret-key" {
+		t.Errorf("expected signing secret 'original-secret-key', got %s", created.SigningSecret)
+	}
+
+	// Rotate the secret
+	rotated := created.RotateSecret("new-secret-key")
+
+	updated, err := store.UpdateEndpoint(ctx, rotated)
+	if err != nil {
+		t.Fatalf("UpdateEndpoint failed: %v", err)
+	}
+
+	if updated.SigningSecret != "new-secret-key" {
+		t.Errorf("expected signing secret 'new-secret-key', got %s", updated.SigningSecret)
+	}
+	if updated.PreviousSecret != "original-secret-key" {
+		t.Errorf("expected previous secret 'original-secret-key', got %s", updated.PreviousSecret)
+	}
+	if updated.SecretRotatedAt == nil {
+		t.Error("expected secret_rotated_at to be set")
+	}
+
+	// Verify from database
+	retrieved, err := store.GetEndpointByID(ctx, endpoint.ID)
+	if err != nil {
+		t.Fatalf("GetEndpointByID failed: %v", err)
+	}
+
+	if retrieved.SigningSecret != "new-secret-key" {
+		t.Errorf("expected signing secret 'new-secret-key', got %s", retrieved.SigningSecret)
+	}
+	if retrieved.PreviousSecret != "original-secret-key" {
+		t.Errorf("expected previous secret 'original-secret-key', got %s", retrieved.PreviousSecret)
+	}
+
+	// Clear previous secret
+	cleared := retrieved.ClearPreviousSecret()
+	updated, err = store.UpdateEndpoint(ctx, cleared)
+	if err != nil {
+		t.Fatalf("UpdateEndpoint failed: %v", err)
+	}
+
+	if updated.PreviousSecret != "" {
+		t.Errorf("expected empty previous secret, got %s", updated.PreviousSecret)
+	}
+}
+
+func TestEndpoint_HasCustomSecret(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint domain.Endpoint
+		expected bool
+	}{
+		{
+			name:     "no secret",
+			endpoint: domain.Endpoint{},
+			expected: false,
+		},
+		{
+			name:     "with secret",
+			endpoint: domain.Endpoint{SigningSecret: "my-secret"},
+			expected: true,
+		},
+		{
+			name:     "empty secret",
+			endpoint: domain.Endpoint{SigningSecret: ""},
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.endpoint.HasCustomSecret()
+			if result != tc.expected {
+				t.Errorf("HasCustomSecret() = %v, expected %v", result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestEndpoint_GetSigningSecrets(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint domain.Endpoint
+		expected []string
+	}{
+		{
+			name:     "no secrets",
+			endpoint: domain.Endpoint{},
+			expected: nil,
+		},
+		{
+			name:     "current only",
+			endpoint: domain.Endpoint{SigningSecret: "current"},
+			expected: []string{"current"},
+		},
+		{
+			name:     "current and previous",
+			endpoint: domain.Endpoint{SigningSecret: "current", PreviousSecret: "previous"},
+			expected: []string{"current", "previous"},
+		},
+		{
+			name:     "previous only (edge case)",
+			endpoint: domain.Endpoint{PreviousSecret: "previous"},
+			expected: []string{"previous"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.endpoint.GetSigningSecrets()
+			if len(result) != len(tc.expected) {
+				t.Errorf("GetSigningSecrets() returned %d secrets, expected %d", len(result), len(tc.expected))
+				return
+			}
+			for i, secret := range result {
+				if secret != tc.expected[i] {
+					t.Errorf("GetSigningSecrets()[%d] = %s, expected %s", i, secret, tc.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestEndpoint_RotateSecret(t *testing.T) {
+	endpoint := domain.Endpoint{
+		ID:            uuid.New(),
+		SigningSecret: "old-secret",
+	}
+
+	rotated := endpoint.RotateSecret("new-secret")
+
+	if rotated.SigningSecret != "new-secret" {
+		t.Errorf("expected SigningSecret 'new-secret', got %s", rotated.SigningSecret)
+	}
+	if rotated.PreviousSecret != "old-secret" {
+		t.Errorf("expected PreviousSecret 'old-secret', got %s", rotated.PreviousSecret)
+	}
+	if rotated.SecretRotatedAt == nil {
+		t.Error("expected SecretRotatedAt to be set")
+	}
+	// Verify original not mutated
+	if endpoint.SigningSecret != "old-secret" {
+		t.Error("original endpoint was mutated")
+	}
+}
+
+func TestEndpoint_ClearPreviousSecret(t *testing.T) {
+	now := time.Now()
+	endpoint := domain.Endpoint{
+		ID:              uuid.New(),
+		SigningSecret:   "current",
+		PreviousSecret:  "previous",
+		SecretRotatedAt: &now,
+	}
+
+	cleared := endpoint.ClearPreviousSecret()
+
+	if cleared.PreviousSecret != "" {
+		t.Errorf("expected empty PreviousSecret, got %s", cleared.PreviousSecret)
+	}
+	// SecretRotatedAt is preserved for audit purposes
+	if cleared.SecretRotatedAt == nil {
+		t.Error("expected SecretRotatedAt to be preserved")
+	}
+	if cleared.SigningSecret != "current" {
+		t.Errorf("expected SigningSecret 'current', got %s", cleared.SigningSecret)
+	}
+	// Verify original not mutated
+	if endpoint.PreviousSecret != "previous" {
+		t.Error("original endpoint was mutated")
+	}
+}
