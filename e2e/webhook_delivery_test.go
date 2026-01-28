@@ -72,7 +72,7 @@ func createWebhookSiteToken(t *testing.T) (tokenUUID, webhookURL string) {
 	if err != nil {
 		t.Fatalf("Failed to create webhook.site token: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -825,7 +825,7 @@ func cleanupTestData(t *testing.T, dbURL, redisURL string) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr: redisURL,
 	})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 
 	_ = rdb.FlushDB(ctx)
 }

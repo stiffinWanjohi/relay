@@ -28,7 +28,7 @@ func setupTestQueue(t *testing.T) (*Queue, *miniredis.Miniredis, *redis.Client) 
 	})
 
 	t.Cleanup(func() {
-		client.Close()
+		_ = client.Close()
 		mr.Close()
 	})
 

@@ -101,7 +101,7 @@ func setupTestProcessor(t *testing.T) (*Processor, *pgxpool.Pool, *miniredis.Min
 	processor := NewProcessor(store, q, config, logger)
 
 	t.Cleanup(func() {
-		redisClient.Close()
+		_ = redisClient.Close()
 		mr.Close()
 		pool.Close()
 	})
@@ -204,7 +204,7 @@ func TestProcessor_StopAndWait_Timeout(t *testing.T) {
 	})
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -283,7 +283,7 @@ func TestProcessor_WorkerIDUnique(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)

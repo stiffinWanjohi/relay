@@ -25,7 +25,7 @@ func setupTestChecker(t *testing.T) (*Checker, *miniredis.Miniredis) {
 	})
 
 	t.Cleanup(func() {
-		client.Close()
+		_ = client.Close()
 		mr.Close()
 	})
 

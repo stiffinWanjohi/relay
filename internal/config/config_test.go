@@ -42,7 +42,7 @@ func TestLoadConfig_MissingDatabaseURL(t *testing.T) {
 
 func TestLoadConfig_MissingSigningKey(t *testing.T) {
 	clearEnv()
-	os.Setenv("DATABASE_URL", "postgres://localhost/relay")
+	_ = os.Setenv("DATABASE_URL", "postgres://localhost/relay")
 
 	cfg, err := LoadConfig()
 	if err != ErrSigningKeyRequired {
@@ -55,8 +55,8 @@ func TestLoadConfig_MissingSigningKey(t *testing.T) {
 
 func TestLoadConfig_SigningKeyTooShort(t *testing.T) {
 	clearEnv()
-	os.Setenv("DATABASE_URL", "postgres://localhost/relay")
-	os.Setenv("SIGNING_KEY", "short") // Less than 32 chars
+	_ = os.Setenv("DATABASE_URL", "postgres://localhost/relay")
+	_ = os.Setenv("SIGNING_KEY", "short") // Less than 32 chars
 
 	cfg, err := LoadConfig()
 	if err != ErrSigningKeyTooShort {
@@ -672,6 +672,6 @@ func clearEnv() {
 		"TEST_VAR", "TEST_INT", "TEST_DUR", "TEST_BOOL",
 	}
 	for _, v := range envVars {
-		os.Unsetenv(v)
+		_ = os.Unsetenv(v)
 	}
 }

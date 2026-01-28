@@ -1,6 +1,6 @@
 # Relay Performance Benchmarks
 
-Benchmarks run on Apple M4 Pro, Go 1.23+, Redis 7.x
+Benchmarks run on Apple M4 Pro, Go 1.23+, Redis 7.x+
 
 ## Summary
 

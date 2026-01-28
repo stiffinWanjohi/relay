@@ -141,7 +141,7 @@ func (c *Client) do(method, path string, body any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -248,7 +248,7 @@ func cmdSend(c *Client, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 
@@ -293,8 +293,8 @@ func cmdGet(c *Client, args []string) error {
 	if attempts, ok := event["deliveryAttempts"].([]any); ok && len(attempts) > 0 {
 		fmt.Printf("\nDelivery Attempts:\n")
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "#\tStatus\tDuration\tTime\tError")
-		fmt.Fprintln(w, "-\t------\t--------\t----\t-----")
+		_, _ = fmt.Fprintln(w, "#\tStatus\tDuration\tTime\tError")
+		_, _ = fmt.Fprintln(w, "-\t------\t--------\t----\t-----")
 		for _, a := range attempts {
 			attempt := a.(map[string]any)
 			num := int(attempt["attemptNumber"].(float64))
@@ -308,9 +308,9 @@ func cmdGet(c *Client, args []string) error {
 			if e, ok := attempt["error"].(string); ok && e != "" {
 				errMsg = e
 			}
-			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\n", num, statusCode, duration, timestamp[:19], errMsg)
+			_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\n", num, statusCode, duration, timestamp[:19], errMsg)
 		}
-		w.Flush()
+		_ = w.Flush()
 	}
 
 	return nil
@@ -363,8 +363,8 @@ func cmdList(c *Client, args []string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tStatus\tAttempts\tDestination\tCreated")
-	fmt.Fprintln(w, "--\t------\t--------\t-----------\t-------")
+	_, _ = fmt.Fprintln(w, "ID\tStatus\tAttempts\tDestination\tCreated")
+	_, _ = fmt.Fprintln(w, "--\t------\t--------\t-----------\t-------")
 
 	for _, e := range events {
 		event := e.(map[string]any)
@@ -376,9 +376,9 @@ func cmdList(c *Client, args []string) error {
 			dest = dest[:37] + "..."
 		}
 		created := event["createdAt"].(string)[:19]
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", id, status, attempts, dest, created)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", id, status, attempts, dest, created)
 	}
-	w.Flush()
+	_ = w.Flush()
 
 	if pagination, ok := resp["pagination"].(map[string]any); ok {
 		if hasMore, ok := pagination["hasMore"].(bool); ok && hasMore {
@@ -422,13 +422,13 @@ func cmdStats(c *Client) error {
 
 	fmt.Println("Queue Statistics:")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	
+
 	for _, key := range []string{"queued", "delivering", "delivered", "failed", "dead", "pending", "processing", "delayed"} {
 		if val, ok := stats[key]; ok {
-			fmt.Fprintf(w, "  %s:\t%v\n", key, val)
+			_, _ = fmt.Fprintf(w, "  %s:\t%v\n", key, val)
 		}
 	}
-	w.Flush()
+	_ = w.Flush()
 
 	return nil
 }
@@ -455,18 +455,18 @@ func cmdHealth(c *Client) error {
 
 func printEvent(event map[string]any) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "  ID:\t%s\n", event["id"])
-	fmt.Fprintf(w, "  Status:\t%s\n", event["status"])
-	fmt.Fprintf(w, "  Destination:\t%s\n", event["destination"])
-	fmt.Fprintf(w, "  Attempts:\t%v/%v\n", event["attempts"], event["maxAttempts"])
+	_, _ = fmt.Fprintf(w, "  ID:\t%s\n", event["id"])
+	_, _ = fmt.Fprintf(w, "  Status:\t%s\n", event["status"])
+	_, _ = fmt.Fprintf(w, "  Destination:\t%s\n", event["destination"])
+	_, _ = fmt.Fprintf(w, "  Attempts:\t%v/%v\n", event["attempts"], event["maxAttempts"])
 	if key, ok := event["idempotencyKey"]; ok {
-		fmt.Fprintf(w, "  Idempotency Key:\t%s\n", key)
+		_, _ = fmt.Fprintf(w, "  Idempotency Key:\t%s\n", key)
 	}
 	if created, ok := event["createdAt"]; ok {
-		fmt.Fprintf(w, "  Created:\t%s\n", created)
+		_, _ = fmt.Fprintf(w, "  Created:\t%s\n", created)
 	}
 	if delivered, ok := event["deliveredAt"]; ok && delivered != nil {
-		fmt.Fprintf(w, "  Delivered:\t%s\n", delivered)
+		_, _ = fmt.Fprintf(w, "  Delivered:\t%s\n", delivered)
 	}
-	w.Flush()
+	_ = w.Flush()
 }

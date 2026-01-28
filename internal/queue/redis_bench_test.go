@@ -26,7 +26,7 @@ func setupBenchRedis(b *testing.B) *redis.Client {
 	// Clean up test keys
 	b.Cleanup(func() {
 		client.Del(ctx, mainQueueKey, processingQueueKey, delayedQueueKey)
-		client.Close()
+		_ = client.Close()
 	})
 
 	return client

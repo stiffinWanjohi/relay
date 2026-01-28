@@ -88,7 +88,7 @@ func main() {
 		logger.Error("failed to initialize metrics provider", "provider", cfg.Metrics.Provider, "error", err)
 		os.Exit(1)
 	}
-	defer metricsProvider.Close(ctx)
+	defer func() { _ = metricsProvider.Close(ctx) }()
 
 	if cfg.Metrics.Provider != "" {
 		logger.Info("metrics enabled", "provider", cfg.Metrics.Provider, "endpoint", cfg.Metrics.Endpoint)
