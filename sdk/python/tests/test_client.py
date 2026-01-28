@@ -295,13 +295,13 @@ class TestEndpointOperations:
                     "createdAt": "2024-01-01T00:00:00Z",
                     "updatedAt": "2024-01-01T00:00:00Z",
                 },
-                "newSecret": "whsec_new_secret_123",
+                "newSecret": "test_secret_for_unit_tests",
             }
         )
 
         result = client.rotate_endpoint_secret("ep_123")
 
-        assert result.new_secret == "whsec_new_secret_123"
+        assert result.new_secret == "test_secret_for_unit_tests"
         assert result.endpoint.has_custom_secret is True
 
 
