@@ -15,6 +15,7 @@ import (
 	"github.com/stiffinWanjohi/relay/internal/config"
 	"github.com/stiffinWanjohi/relay/internal/delivery"
 	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 	_ "github.com/stiffinWanjohi/relay/internal/observability/otel" // Register OTel provider
 	"github.com/stiffinWanjohi/relay/internal/queue"
@@ -95,6 +96,29 @@ func main() {
 	}
 	metrics := observability.NewMetrics(metricsProvider, cfg.Metrics.ServiceName)
 
+	// Initialize notification service
+	notificationService := notification.NewService(notification.Config{
+		Enabled:         cfg.Notification.Enabled,
+		Async:           cfg.Notification.Async,
+		SlackWebhookURL: cfg.Notification.SlackWebhookURL,
+		SMTPHost:        cfg.Notification.SMTPHost,
+		SMTPPort:        cfg.Notification.SMTPPort,
+		SMTPUsername:    cfg.Notification.SMTPUsername,
+		SMTPPassword:    cfg.Notification.SMTPPassword,
+		EmailFrom:       cfg.Notification.EmailFrom,
+		EmailTo:         cfg.Notification.EmailTo,
+		NotifyOnTrip:    cfg.Notification.NotifyOnTrip,
+		NotifyOnRecover: cfg.Notification.NotifyOnRecover,
+	}, logger)
+	defer func() { _ = notificationService.Close() }()
+
+	if cfg.Notification.Enabled {
+		logger.Info("notifications enabled",
+			"slack", cfg.Notification.SlackWebhookURL != "",
+			"email", cfg.Notification.SMTPHost != "",
+		)
+	}
+
 	// Initialize components
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient).WithMetrics(metrics)
@@ -102,12 +126,15 @@ func main() {
 
 	// Create worker configuration
 	workerConfig := delivery.WorkerConfig{
-		Concurrency:    cfg.Worker.Concurrency,
-		VisibilityTime: cfg.Worker.VisibilityTimeout,
-		SigningKey:     cfg.Worker.SigningKey,
-		CircuitConfig:  delivery.DefaultCircuitConfig(),
-		Metrics:        metrics,
-		RateLimiter:    rateLimiter,
+		Concurrency:         cfg.Worker.Concurrency,
+		VisibilityTime:      cfg.Worker.VisibilityTimeout,
+		SigningKey:          cfg.Worker.SigningKey,
+		CircuitConfig:       delivery.DefaultCircuitConfig(),
+		Metrics:             metrics,
+		RateLimiter:         rateLimiter,
+		NotificationService: notificationService,
+		NotifyOnTrip:        cfg.Notification.NotifyOnTrip,
+		NotifyOnRecover:     cfg.Notification.NotifyOnRecover,
 	}
 
 	// Create and start worker

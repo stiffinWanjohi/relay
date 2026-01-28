@@ -10,6 +10,7 @@ import (
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 )
@@ -41,12 +42,15 @@ type Worker struct {
 
 // WorkerConfig holds worker configuration.
 type WorkerConfig struct {
-	Concurrency    int
-	VisibilityTime time.Duration
-	SigningKey     string
-	CircuitConfig  CircuitConfig
-	Metrics        *observability.Metrics
-	RateLimiter    *RateLimiter
+	Concurrency         int
+	VisibilityTime      time.Duration
+	SigningKey          string
+	CircuitConfig       CircuitConfig
+	Metrics             *observability.Metrics
+	RateLimiter         *RateLimiter
+	NotificationService *notification.Service
+	NotifyOnTrip        bool
+	NotifyOnRecover     bool
 }
 
 // DefaultWorkerConfig returns the default worker configuration.
@@ -60,11 +64,16 @@ func DefaultWorkerConfig() WorkerConfig {
 
 // NewWorker creates a new delivery worker.
 func NewWorker(q *queue.Queue, store *event.Store, config WorkerConfig, logger *slog.Logger) *Worker {
+	circuit := NewCircuitBreaker(config.CircuitConfig)
+	if config.NotificationService != nil {
+		circuit.WithNotifier(config.NotificationService, config.NotifyOnTrip, config.NotifyOnRecover)
+	}
+
 	return &Worker{
 		queue:          q,
 		store:          store,
 		sender:         NewSender(config.SigningKey),
-		circuit:        NewCircuitBreaker(config.CircuitConfig),
+		circuit:        circuit,
 		retry:          NewRetryPolicy(),
 		rateLimiter:    config.RateLimiter,
 		logger:         logger,
@@ -211,14 +220,8 @@ func (w *Worker) processOne(ctx context.Context, logger *slog.Logger) error {
 		logger.Error("failed to update event status", "error", err)
 	}
 
-	// Determine timeout (use endpoint config if available)
-	timeout := defaultTimeout
-	if endpoint != nil && endpoint.TimeoutMs > 0 {
-		timeout = endpoint.GetTimeoutDuration()
-	}
-
-	// Attempt delivery with endpoint-specific timeout
-	result := w.sender.SendWithTimeout(ctx, evt, timeout)
+	// Attempt delivery with endpoint-specific configuration (timeout, signing secret)
+	result := w.sender.SendWithEndpoint(ctx, evt, endpoint)
 
 	// Create delivery attempt record
 	attempt := domain.NewDeliveryAttempt(evt.ID, evt.Attempts)

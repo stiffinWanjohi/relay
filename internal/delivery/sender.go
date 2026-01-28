@@ -76,8 +76,22 @@ func (s *Sender) Send(ctx context.Context, event domain.Event) domain.DeliveryRe
 	return s.SendWithTimeout(ctx, event, defaultTimeout)
 }
 
+// SendWithEndpoint delivers a webhook event using endpoint-specific configuration.
+func (s *Sender) SendWithEndpoint(ctx context.Context, event domain.Event, endpoint *domain.Endpoint) domain.DeliveryResult {
+	timeout := defaultTimeout
+	if endpoint != nil && endpoint.TimeoutMs > 0 {
+		timeout = endpoint.GetTimeoutDuration()
+	}
+	return s.sendWithConfig(ctx, event, endpoint, timeout)
+}
+
 // SendWithTimeout delivers a webhook event with a custom timeout.
 func (s *Sender) SendWithTimeout(ctx context.Context, event domain.Event, timeout time.Duration) domain.DeliveryResult {
+	return s.sendWithConfig(ctx, event, nil, timeout)
+}
+
+// sendWithConfig delivers a webhook event with optional endpoint configuration.
+func (s *Sender) sendWithConfig(ctx context.Context, event domain.Event, endpoint *domain.Endpoint, timeout time.Duration) domain.DeliveryResult {
 	start := time.Now()
 
 	// Ensure we have a deadline for the request
@@ -103,9 +117,11 @@ func (s *Sender) SendWithTimeout(ctx context.Context, event domain.Event, timeou
 		req.Header.Set(key, value)
 	}
 
-	// Sign the request
+	// Sign the request using endpoint-specific secret if available
 	timestamp := time.Now().Unix()
-	sig := s.signer.Sign(timestamp, event.Payload)
+	signingKey := s.getSigningKey(endpoint)
+	signer := signature.NewSigner(signingKey)
+	sig := signer.Sign(timestamp, event.Payload)
 
 	req.Header.Set(signature.HeaderSignature, sig)
 	req.Header.Set(signature.HeaderTimestamp, signature.FormatTimestamp(timestamp))
@@ -133,4 +149,13 @@ func (s *Sender) SendWithTimeout(ctx context.Context, event domain.Event, timeou
 
 	// Return failure for non-2xx
 	return domain.NewFailureResult(resp.StatusCode, string(body), nil, durationMs)
+}
+
+// getSigningKey returns the signing key to use for an endpoint.
+// Uses endpoint-specific secret if available, otherwise falls back to global key.
+func (s *Sender) getSigningKey(endpoint *domain.Endpoint) string {
+	if endpoint != nil && endpoint.HasCustomSecret() {
+		return endpoint.SigningSecret
+	}
+	return s.signingKey
 }
