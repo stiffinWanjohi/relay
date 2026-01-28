@@ -42,14 +42,14 @@ func (h *Handler) Router() chi.Router {
 }
 
 func (h *Handler) serveOpenAPISpec(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/yaml")
-	http.ServeFile(w, r, "api/openapi.yaml")
+	w.Header().Set("Content-Type", "application/x-yaml")
+	http.ServeFile(w, r, "cmd/relay/openapi.yaml")
 }
 
 func (h *Handler) serveOpenAPISpecJSON(w http.ResponseWriter, r *http.Request) {
 	// For now, serve YAML. Could convert to JSON if needed.
-	w.Header().Set("Content-Type", "application/yaml")
-	http.ServeFile(w, r, "api/openapi.yaml")
+	w.Header().Set("Content-Type", "application/x-yaml")
+	http.ServeFile(w, r, "cmd/relay/openapi.yaml")
 }
 
 func (h *Handler) serveSwaggerUI(w http.ResponseWriter, r *http.Request) {

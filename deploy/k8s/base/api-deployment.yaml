@@ -20,8 +20,9 @@ spec:
       serviceAccountName: relay
       containers:
         - name: api
-          image: relay-api:latest
+          image: relay:latest
           imagePullPolicy: IfNotPresent
+          command: ["/app/relay", "serve"]
           ports:
             - name: http
               containerPort: 8080

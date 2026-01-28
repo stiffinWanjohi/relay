@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
@@ -31,4 +31,8 @@ COPY --from=builder /relay /app/relay
 RUN adduser -D -g '' appuser
 USER appuser
 
-ENTRYPOINT ["/app/relay", "worker"]
+EXPOSE 8080
+
+# Default to serve, can be overridden with "worker" or "all"
+ENTRYPOINT ["/app/relay"]
+CMD ["serve"]

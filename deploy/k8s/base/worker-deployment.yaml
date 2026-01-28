@@ -20,8 +20,9 @@ spec:
       serviceAccountName: relay
       containers:
         - name: worker
-          image: relay-worker:latest
+          image: relay:latest
           imagePullPolicy: IfNotPresent
+          command: ["/app/relay", "worker"]
           envFrom:
             - configMapRef:
                 name: relay-config

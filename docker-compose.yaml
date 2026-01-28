@@ -50,8 +50,9 @@ services:
   api:
     build:
       context: .
-      dockerfile: deploy/docker/Dockerfile.api
+      dockerfile: deploy/docker/Dockerfile
     container_name: relay-api
+    command: ["serve"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,8 +76,9 @@ services:
   worker:
     build:
       context: .
-      dockerfile: deploy/docker/Dockerfile.worker
+      dockerfile: deploy/docker/Dockerfile
     container_name: relay-worker
+    command: ["worker"]
     depends_on:
       postgres:
         condition: service_healthy
