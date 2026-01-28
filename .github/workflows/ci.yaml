@@ -133,23 +133,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build API image
+      - name: Build Relay image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: deploy/docker/Dockerfile.api
+          file: deploy/docker/Dockerfile
           push: false
-          tags: relay-api:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build Worker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: deploy/docker/Dockerfile.worker
-          push: false
-          tags: relay-worker:${{ github.sha }}
+          tags: relay:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
