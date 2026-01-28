@@ -3,26 +3,25 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/stiffinWanjohi/relay/internal/api"
-	"github.com/stiffinWanjohi/relay/internal/auth"
 	"github.com/stiffinWanjohi/relay/internal/config"
-	"github.com/stiffinWanjohi/relay/internal/dedup"
+	"github.com/stiffinWanjohi/relay/internal/delivery"
 	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 	_ "github.com/stiffinWanjohi/relay/internal/observability/otel" // Register OTel provider
-	"github.com/stiffinWanjohi/relay/internal/outbox"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
-func main() {
+func runWorker() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
@@ -97,70 +96,112 @@ func main() {
 	}
 	metrics := observability.NewMetrics(metricsProvider, cfg.Metrics.ServiceName)
 
+	// Initialize notification service
+	notificationService := notification.NewService(notification.Config{
+		Enabled:         cfg.Notification.Enabled,
+		Async:           cfg.Notification.Async,
+		SlackWebhookURL: cfg.Notification.SlackWebhookURL,
+		SMTPHost:        cfg.Notification.SMTPHost,
+		SMTPPort:        cfg.Notification.SMTPPort,
+		SMTPUsername:    cfg.Notification.SMTPUsername,
+		SMTPPassword:    cfg.Notification.SMTPPassword,
+		EmailFrom:       cfg.Notification.EmailFrom,
+		EmailTo:         cfg.Notification.EmailTo,
+		NotifyOnTrip:    cfg.Notification.NotifyOnTrip,
+		NotifyOnRecover: cfg.Notification.NotifyOnRecover,
+	}, logger)
+	defer func() { _ = notificationService.Close() }()
+
+	if cfg.Notification.Enabled {
+		logger.Info("notifications enabled",
+			"slack", cfg.Notification.SlackWebhookURL != "",
+			"email", cfg.Notification.SMTPHost != "",
+		)
+	}
+
 	// Initialize components
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient).WithMetrics(metrics)
-	dedupChecker := dedup.NewChecker(redisClient)
+	rateLimiter := delivery.NewRateLimiter(redisClient)
 
-	// Initialize auth store
-	authStore := auth.NewStore(pool)
-
-	// Create and start outbox processor
-	outboxProcessor := outbox.NewProcessor(store, q, outbox.ProcessorConfig{
-		PollInterval:    cfg.Outbox.PollInterval,
-		BatchSize:       cfg.Outbox.BatchSize,
-		CleanupInterval: cfg.Outbox.CleanupInterval,
-		RetentionPeriod: cfg.Outbox.RetentionPeriod,
-	}, logger).WithMetrics(metrics)
-	outboxProcessor.Start(ctx)
-
-	// Create server
-	serverCfg := api.ServerConfig{
-		EnableAuth:       cfg.Auth.Enabled,
-		EnablePlayground: cfg.Auth.EnablePlayground,
-	}
-	server := api.NewServer(store, q, dedupChecker, authStore, serverCfg, logger)
-
-	// Create HTTP server with proper timeouts
-	httpServer := &http.Server{
-		Addr:         cfg.API.Addr,
-		Handler:      server.Handler(),
-		ReadTimeout:  cfg.API.ReadTimeout,
-		WriteTimeout: cfg.API.WriteTimeout,
-		IdleTimeout:  cfg.API.IdleTimeout,
+	// Create worker configuration
+	workerConfig := delivery.WorkerConfig{
+		Concurrency:         cfg.Worker.Concurrency,
+		VisibilityTime:      cfg.Worker.VisibilityTimeout,
+		SigningKey:          cfg.Worker.SigningKey,
+		CircuitConfig:       delivery.DefaultCircuitConfig(),
+		Metrics:             metrics,
+		RateLimiter:         rateLimiter,
+		NotificationService: notificationService,
+		NotifyOnTrip:        cfg.Notification.NotifyOnTrip,
+		NotifyOnRecover:     cfg.Notification.NotifyOnRecover,
 	}
 
-	// Start server in goroutine
+	// Create and start worker
+	worker := delivery.NewWorker(q, store, workerConfig, logger)
+
+	// Create cancellable context
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// WaitGroup for graceful shutdown
+	var wg sync.WaitGroup
+
+	// Start worker
+	worker.Start(ctx)
+
+	// Start stale message recovery goroutine
+	wg.Add(1)
 	go func() {
-		logger.Info("starting API server", "addr", cfg.API.Addr)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("server error", "error", err)
-			os.Exit(1)
+		defer wg.Done()
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				recovered, err := q.RecoverStaleMessages(ctx, 5*time.Minute)
+				if err != nil {
+					logger.Error("failed to recover stale messages", "error", err)
+				} else if recovered > 0 {
+					logger.Info("recovered stale messages", "count", recovered)
+				}
+			}
 		}
 	}()
+
+	logger.Info("worker started", "concurrency", cfg.Worker.Concurrency)
 
 	// Wait for shutdown signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("shutting down server")
+	logger.Info("shutting down worker")
 
-	// Graceful shutdown with timeout
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.API.ShutdownTimeout)
-	defer cancel()
+	// Cancel context first to signal all goroutines
+	cancel()
 
-	// Stop HTTP server first to stop accepting new requests
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		logger.Error("server shutdown error", "error", err)
+	// Stop worker and wait for completion
+	if err := worker.StopAndWait(cfg.Worker.ShutdownTimeout); err != nil {
+		logger.Warn("worker shutdown timed out", "error", err)
+	} else {
+		logger.Info("worker stopped gracefully")
 	}
-	logger.Info("HTTP server stopped")
 
-	// Then stop outbox processor to ensure all pending events are processed
-	if err := outboxProcessor.StopAndWait(cfg.API.ShutdownTimeout); err != nil {
-		logger.Error("outbox processor shutdown error", "error", err)
+	// Wait for recovery goroutine
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		logger.Info("all goroutines stopped")
+	case <-time.After(5 * time.Second):
+		logger.Warn("some goroutines did not stop in time")
 	}
-	logger.Info("outbox processor stopped")
-
-	logger.Info("server stopped")
 }

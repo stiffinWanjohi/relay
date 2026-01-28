@@ -37,17 +37,34 @@ Client → API → PostgreSQL → Outbox Processor → Redis Queue → Workers �
 [Full architecture →](docs/architecture.md)
 
 ## Quick Start
+
+### Docker Compose
 ```bash
 docker compose up -d
 # GraphQL Playground: http://localhost:8080/playground
 ```
-```graphql
-mutation {
-  createEvent(
-    input: { destination: "https://example.com/hook", payload: { order: 123 } }
-    idempotencyKey: "order-123"
-  ) { id status }
-}
+
+### Binary
+```bash
+# Start API server
+relay serve
+
+# Start worker (separate terminal)
+relay worker
+
+# Or both together (development)
+relay all
+```
+
+### Send a Webhook
+```bash
+# CLI
+relay send --dest https://example.com/hook --payload '{"order": 123}' --key order-123
+
+# GraphQL
+curl -X POST http://localhost:8080/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "mutation { createEvent(input: { destination: \"https://example.com/hook\", payload: { order: 123 } }, idempotencyKey: \"order-123\") { id status } }"}'
 ```
 
 ## Verify Signatures
@@ -76,6 +93,22 @@ kubectl apply -k deploy/k8s/overlays/production
 ```
 
 [Deployment guide →](docs/deployment.md)
+
+## CLI
+
+```bash
+relay serve      # Start API server
+relay worker     # Start background worker
+relay all        # Start both (development)
+
+relay send       # Send a webhook event
+relay get <id>   # Get event details
+relay list       # List events
+relay replay <id># Replay failed event
+relay stats      # Queue statistics
+relay health     # Health check
+relay openapi    # View OpenAPI spec
+```
 
 ## Docs
 

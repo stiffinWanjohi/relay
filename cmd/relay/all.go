@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -12,19 +13,27 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/stiffinWanjohi/relay/internal/api"
+	"github.com/stiffinWanjohi/relay/internal/auth"
 	"github.com/stiffinWanjohi/relay/internal/config"
+	"github.com/stiffinWanjohi/relay/internal/dedup"
 	"github.com/stiffinWanjohi/relay/internal/delivery"
 	"github.com/stiffinWanjohi/relay/internal/event"
 	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 	_ "github.com/stiffinWanjohi/relay/internal/observability/otel" // Register OTel provider
+	"github.com/stiffinWanjohi/relay/internal/outbox"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
-func main() {
+// runAll starts both the API server and worker in the same process.
+// This is intended for development and testing purposes.
+func runAll() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
+
+	logger.Info("starting relay in combined mode (API + Worker)")
 
 	// Load configuration
 	cfg, err := config.LoadConfig()
@@ -119,12 +128,53 @@ func main() {
 		)
 	}
 
-	// Initialize components
+	// Initialize shared components
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient).WithMetrics(metrics)
+	dedupChecker := dedup.NewChecker(redisClient)
+	authStore := auth.NewStore(pool)
 	rateLimiter := delivery.NewRateLimiter(redisClient)
 
-	// Create worker configuration
+	// Create cancellable context
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var wg sync.WaitGroup
+
+	// --- Start Outbox Processor ---
+	outboxProcessor := outbox.NewProcessor(store, q, outbox.ProcessorConfig{
+		PollInterval:    cfg.Outbox.PollInterval,
+		BatchSize:       cfg.Outbox.BatchSize,
+		CleanupInterval: cfg.Outbox.CleanupInterval,
+		RetentionPeriod: cfg.Outbox.RetentionPeriod,
+	}, logger).WithMetrics(metrics)
+	outboxProcessor.Start(ctx)
+
+	// --- Start API Server ---
+	serverCfg := api.ServerConfig{
+		EnableAuth:       cfg.Auth.Enabled,
+		EnablePlayground: cfg.Auth.EnablePlayground,
+	}
+	server := api.NewServer(store, q, dedupChecker, authStore, serverCfg, logger)
+
+	httpServer := &http.Server{
+		Addr:         cfg.API.Addr,
+		Handler:      server.Handler(),
+		ReadTimeout:  cfg.API.ReadTimeout,
+		WriteTimeout: cfg.API.WriteTimeout,
+		IdleTimeout:  cfg.API.IdleTimeout,
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		logger.Info("starting API server", "addr", cfg.API.Addr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("server error", "error", err)
+		}
+	}()
+
+	// --- Start Worker ---
 	workerConfig := delivery.WorkerConfig{
 		Concurrency:         cfg.Worker.Concurrency,
 		VisibilityTime:      cfg.Worker.VisibilityTimeout,
@@ -137,20 +187,11 @@ func main() {
 		NotifyOnRecover:     cfg.Notification.NotifyOnRecover,
 	}
 
-	// Create and start worker
 	worker := delivery.NewWorker(q, store, workerConfig, logger)
-
-	// Create cancellable context
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// WaitGroup for graceful shutdown
-	var wg sync.WaitGroup
-
-	// Start worker
 	worker.Start(ctx)
+	logger.Info("worker started", "concurrency", cfg.Worker.Concurrency)
 
-	// Start stale message recovery goroutine
+	// --- Start Stale Message Recovery ---
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -172,26 +213,40 @@ func main() {
 		}
 	}()
 
-	logger.Info("worker started", "concurrency", cfg.Worker.Concurrency)
-
 	// Wait for shutdown signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("shutting down worker")
+	logger.Info("shutting down relay")
 
-	// Cancel context first to signal all goroutines
+	// Cancel context to signal all goroutines
 	cancel()
 
-	// Stop worker and wait for completion
+	// Graceful shutdown with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.API.ShutdownTimeout)
+	defer shutdownCancel()
+
+	// Stop HTTP server
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		logger.Error("server shutdown error", "error", err)
+	}
+	logger.Info("HTTP server stopped")
+
+	// Stop worker
 	if err := worker.StopAndWait(cfg.Worker.ShutdownTimeout); err != nil {
 		logger.Warn("worker shutdown timed out", "error", err)
 	} else {
 		logger.Info("worker stopped gracefully")
 	}
 
-	// Wait for recovery goroutine
+	// Stop outbox processor
+	if err := outboxProcessor.StopAndWait(cfg.API.ShutdownTimeout); err != nil {
+		logger.Error("outbox processor shutdown error", "error", err)
+	}
+	logger.Info("outbox processor stopped")
+
+	// Wait for remaining goroutines
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -204,4 +259,6 @@ func main() {
 	case <-time.After(5 * time.Second):
 		logger.Warn("some goroutines did not stop in time")
 	}
+
+	logger.Info("relay stopped")
 }
