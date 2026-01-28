@@ -216,14 +216,15 @@ query {
 }
 ```
 
-## Go SDK
+## SDKs
 
-Official Go client library for Relay:
+### Go SDK
+
+Official Go client library:
 
 ```go
 import "github.com/stiffinWanjohi/relay/sdk/go"
 
-// Create client
 client := relay.NewClient("http://localhost:8080", "rly_xxx")
 
 // Send event
@@ -236,8 +237,31 @@ event, err := client.CreateEvent(ctx, "order-123", relay.CreateEventRequest{
 result, err := client.BatchRetryByStatus(ctx, relay.EventStatusFailed, 100)
 
 // Verify incoming webhooks
-verifier := relay.NewWebhookVerifier("whsec_your_secret")
-err := verifier.Verify(payload, signature, timestamp)
+err := relay.VerifySignature(payload, signature, timestamp, "whsec_secret")
 ```
 
-[SDK Documentation →](../sdk/go/README.md)
+[Go SDK Documentation →](../sdk/go/README.md)
+
+### TypeScript SDK
+
+Official TypeScript/JavaScript client library:
+
+```typescript
+import { RelayClient, verifySignature } from '@relay/sdk';
+
+const client = new RelayClient('http://localhost:8080', 'rly_xxx');
+
+// Send event
+const event = await client.createEvent(
+  { destination: 'https://example.com/webhook', payload: { order_id: 123 } },
+  'order-123'
+);
+
+// Batch retry failed events
+const result = await client.batchRetry({ status: 'failed', limit: 100 });
+
+// Verify incoming webhooks
+verifySignature(payload, signature, timestamp, 'whsec_secret');
+```
+
+[TypeScript SDK Documentation →](../sdk/typescript/README.md)
