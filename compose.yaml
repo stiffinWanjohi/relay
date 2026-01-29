@@ -47,12 +47,12 @@ services:
         "up",
       ]
 
-  api:
+  relay:
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile
-    container_name: relay-api
-    command: ["serve"]
+    container_name: relay-app
+    command: ["start"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,32 +67,11 @@ services:
       API_ADDR: ":8080"
       AUTH_ENABLED: "false"
       ENABLE_PLAYGROUND: "true"
-      ENVIRONMENT: development
-      SERVICE_NAME: relay-api
-    ports:
-      - "8088:8080"
-    restart: unless-stopped
-
-  worker:
-    build:
-      context: .
-      dockerfile: deploy/docker/Dockerfile
-    container_name: relay-worker
-    command: ["worker"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      DATABASE_URL: postgres://relay:relay@postgres:5432/relay?sslmode=disable
-      REDIS_URL: redis:6379
-      SIGNING_KEY: this-is-a-development-signing-key-min-32-chars
       WORKER_CONCURRENCY: "10"
       ENVIRONMENT: development
-      SERVICE_NAME: relay-worker
+      SERVICE_NAME: relay
+    ports:
+      - "8088:8080"
     restart: unless-stopped
 
 volumes:
