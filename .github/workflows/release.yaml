@@ -69,46 +69,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata for API image
-        id: meta-api
+      - name: Extract metadata for Relay image
+        id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
 
-      - name: Build and push API image
+      - name: Build and push Relay image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: deploy/docker/Dockerfile.api
+          file: deploy/docker/Dockerfile
           push: true
-          tags: ${{ steps.meta-api.outputs.tags }}
-          labels: ${{ steps.meta-api.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Extract metadata for Worker image
-        id: meta-worker
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-worker
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
-
-      - name: Build and push Worker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: deploy/docker/Dockerfile.worker
-          push: true
-          tags: ${{ steps.meta-worker.outputs.tags }}
-          labels: ${{ steps.meta-worker.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
