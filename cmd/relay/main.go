@@ -16,12 +16,8 @@ func main() {
 	cmd := os.Args[1]
 
 	switch cmd {
-	case "serve", "server", "api":
-		runServe()
-	case "worker":
-		runWorker()
-	case "all":
-		runAll()
+	case "start", "all":
+		runStart()
 	case "send", "create":
 		runCLI("send", os.Args[2:])
 	case "get":
@@ -34,8 +30,11 @@ func main() {
 		runCLI("stats", os.Args[2:])
 	case "health":
 		runCLI("health", os.Args[2:])
-	case "openapi":
-		runCLI("openapi", os.Args[2:])
+	case "apikey":
+		if err := cmdAPIKey(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	case "version", "-v", "--version":
 		fmt.Printf("relay version %s\n", version)
 	case "help", "-h", "--help":
@@ -53,52 +52,68 @@ func printUsage() {
 Usage:
   relay <command> [arguments]
 
-Server Commands:
-  serve     Start the API server
-  worker    Start the background worker
-  all       Start both API server and worker (for development)
+Getting Started:
+  relay start --docker      Start with Docker (easiest, no setup required)
+  relay start               Start with existing PostgreSQL/Redis
 
-CLI Commands:
-  send      Create and send a webhook event
-  get       Get event details by ID
-  list      List events (optionally filtered by status)
-  replay    Replay a failed/dead event
-  stats     Show queue statistics
-  health    Check service health
-  openapi   Show or serve OpenAPI specification
+Commands:
+  start           Start Relay (API server + worker)
+                  --docker    Auto-start PostgreSQL and Redis containers
 
-Other:
-  version   Show version information
-  help      Show this help message
+  send            Send a webhook event
+                  --dest      Destination URL (required)
+                  --payload   JSON payload (required)
+                  --key       Idempotency key (optional)
+                  --header    Custom header (can repeat)
+
+  get <id>        Get event details by ID
+
+  list            List events
+                  --status    Filter by status (queued/delivered/failed/dead)
+                  --limit     Max results (default: 20)
+
+  replay <id>     Replay a failed or dead event
+
+  stats           Show queue statistics
+
+  health          Check service health
+
+  apikey          Manage API keys
+                  create      Create a new API key
+                  list        List API keys for a client
+                  revoke      Revoke an API key
+
+  version         Show version
+  help            Show this help
 
 Environment Variables:
-  DATABASE_URL     PostgreSQL connection string
+  DATABASE_URL     PostgreSQL connection string (required unless --docker)
   REDIS_URL        Redis address (default: localhost:6379)
-  SIGNING_KEY      Webhook signing key (min 32 chars)
+  SIGNING_KEY      Webhook signing key (auto-generated if not set)
   API_ADDR         API server address (default: :8080)
-  RELAY_URL        Base URL for CLI commands (default: http://localhost:8080)
+  RELAY_URL        Base URL for CLI (default: http://localhost:8080)
   RELAY_API_KEY    API key for CLI authentication
 
 Examples:
-  # Start the API server
-  relay serve
+  # Start with Docker (easiest)
+  relay start --docker
 
-  # Start the worker
-  relay worker
+  # Start with existing database
+  export DATABASE_URL="postgres://user:pass@localhost:5432/relay"
+  relay start
 
-  # Start both (development)
-  relay all
-
-  # Send a webhook via CLI
-  relay send --dest https://example.com/webhook --payload '{"order_id": 123}'
+  # Send a webhook
+  relay send --dest https://example.com/webhook --payload '{"order": 123}'
 
   # List failed events
   relay list --status failed
 
-  # Check queue stats
-  relay stats
+  # Replay a failed event
+  relay replay abc123
 
-Documentation:
-  https://github.com/stiffinWanjohi/relay
+  # Create an API key
+  relay apikey create --client myapp --name "Production"
+
+Documentation: https://github.com/stiffinWanjohi/relay
 `)
 }

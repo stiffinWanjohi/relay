@@ -23,6 +23,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: relay-api
+                name: relay
                 port:
                   number: 80

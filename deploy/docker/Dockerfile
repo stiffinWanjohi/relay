@@ -33,6 +33,6 @@ USER appuser
 
 EXPOSE 8080
 
-# Default to serve, can be overridden with "worker" or "all"
+# Run relay (API + workers together)
 ENTRYPOINT ["/app/relay"]
-CMD ["serve"]
+CMD ["start"]

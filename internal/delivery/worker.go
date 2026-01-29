@@ -86,7 +86,7 @@ func NewWorker(q *queue.Queue, store *event.Store, config WorkerConfig, logger *
 
 // Start begins processing events.
 func (w *Worker) Start(ctx context.Context) {
-	w.logger.Info("starting worker", "concurrency", w.concurrency)
+	w.logger.Info("workers started", "count", w.concurrency)
 
 	for i := 0; i < w.concurrency; i++ {
 		w.wg.Add(1)
@@ -128,17 +128,15 @@ func (w *Worker) StopAndWait(timeout time.Duration) error {
 
 func (w *Worker) processLoop(ctx context.Context, workerID int) {
 	logger := w.logger.With("worker_id", workerID)
-	logger.Info("worker started")
+	// Individual worker start logs removed for cleaner output
 
 	backoff := minEmptyQueueBackoff
 
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("worker stopped (context cancelled)")
 			return
 		case <-w.stopCh:
-			logger.Info("worker stopped (stop signal)")
 			return
 		default:
 			err := w.processOne(ctx, logger)

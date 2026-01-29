@@ -45,10 +45,10 @@ func NewDRRScheduler(client *redis.Client, config DRRConfig) *DRRScheduler {
 }
 
 const (
-	drrDeficitKey   = "relay:drr:deficit"    // Hash: client_id -> deficit
-	drrActiveKey    = "relay:drr:active"     // Set: active client_ids
-	drrLastServed   = "relay:drr:lastserved" // String: last served client_id
-	drrDeficitTTL   = 1 * time.Hour          // TTL for deficit entries
+	drrDeficitKey = "relay:drr:deficit"    // Hash: client_id -> deficit
+	drrActiveKey  = "relay:drr:active"     // Set: active client_ids
+	drrLastServed = "relay:drr:lastserved" // String: last served client_id
+	drrDeficitTTL = 1 * time.Hour          // TTL for deficit entries
 )
 
 // RegisterClient marks a client as active for scheduling.

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+
+	"github.com/stiffinWanjohi/relay/internal/config"
 )
 
 const defaultBaseURL = "http://localhost:8080"
@@ -24,12 +26,23 @@ type Client struct {
 func newClient() *Client {
 	baseURL := os.Getenv("RELAY_URL")
 	if baseURL == "" {
-		baseURL = defaultBaseURL
+		// Try to detect from compose.yaml
+		if cfg, err := loadDockerConfig(); err == nil {
+			if cfg.APIPort != "" {
+				baseURL = "http://localhost:" + cfg.APIPort
+			}
+		}
+		if baseURL == "" {
+			baseURL = defaultBaseURL
+		}
 	}
+
+	// Get API key: env var > saved file
+	apiKey := config.GetSavedAPIKey()
 
 	return &Client{
 		baseURL: baseURL,
-		apiKey:  os.Getenv("RELAY_API_KEY"),
+		apiKey:  apiKey,
 		http:    &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -51,8 +64,6 @@ func runCLI(cmd string, args []string) {
 		err = cmdStats(client)
 	case "health":
 		err = cmdHealth(client)
-	case "openapi":
-		err = cmdOpenAPI(args)
 	}
 
 	if err != nil {
