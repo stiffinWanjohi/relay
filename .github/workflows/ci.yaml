@@ -155,9 +155,14 @@ jobs:
 
       - name: Wait for API to be healthy
         run: |
+          # Read port from compose.yaml
+          API_PORT=$(grep -A1 'ports:' compose.yaml | grep -oE '[0-9]+:8080' | head -1 | cut -d: -f1)
+          API_PORT=${API_PORT:-8888}
+          echo "API_PORT=$API_PORT" >> $GITHUB_ENV
+
           for i in {1..30}; do
-            if curl -s http://localhost:8088/health | grep -q "ok"; then
-              echo "API is healthy"
+            if curl -s http://localhost:$API_PORT/health | grep -q "ok"; then
+              echo "API is healthy on port $API_PORT"
               exit 0
             fi
             echo "Waiting for API... ($i/30)"
@@ -168,12 +173,18 @@ jobs:
           exit 1
 
       - name: Run E2E tests
-        env:
-          DATABASE_URL: postgres://relay:relay@localhost:5434/relay?sslmode=disable
-          REDIS_URL: localhost:6381
-          SIGNING_KEY: this-is-a-development-signing-key-min-32-chars
-          API_URL: http://localhost:8088
-        run: go test -v -count=1 ./e2e/...
+        run: |
+          # Read config from compose.yaml
+          API_PORT=$(grep -A1 'ports:' compose.yaml | grep -oE '[0-9]+:8080' | head -1 | cut -d: -f1)
+          PG_PORT=$(grep -A1 'postgres:' compose.yaml | grep -oE '[0-9]+:5432' | head -1 | cut -d: -f1 || echo "5434")
+          REDIS_PORT=$(grep -A1 'redis:' compose.yaml | grep -oE '[0-9]+:6379' | head -1 | cut -d: -f1 || echo "6381")
+
+          export DATABASE_URL="postgres://relay:relay@localhost:${PG_PORT:-5434}/relay?sslmode=disable"
+          export REDIS_URL="localhost:${REDIS_PORT:-6381}"
+          export SIGNING_KEY="this-is-a-development-signing-key-min-32-chars"
+          export API_URL="http://localhost:${API_PORT:-8888}"
+
+          go test -v -count=1 ./e2e/...
 
       - name: Show logs on failure
         if: failure()

@@ -90,10 +90,10 @@ func loadDockerConfig() (*dockerConfig, error) {
 		cfg.RedisPort = parseHostPort(redis.Ports[0])
 	}
 
-	// Parse api service for port
-	if api, ok := compose.Services["api"]; ok {
-		if len(api.Ports) > 0 {
-			cfg.APIPort = parseHostPort(api.Ports[0])
+	// Parse relay service for port
+	if relay, ok := compose.Services["relay"]; ok {
+		if len(relay.Ports) > 0 {
+			cfg.APIPort = parseHostPort(relay.Ports[0])
 		}
 	}
 
@@ -287,9 +287,8 @@ func startDockerServices() error {
 		return err
 	}
 
-	// Stop containerized api/worker if running (we'll run them locally)
-	stopContainerIfRunning("relay-api")
-	stopContainerIfRunning("relay-worker")
+	// Stop containerized relay if running (we'll run it locally)
+	stopContainerIfRunning("relay-app")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
