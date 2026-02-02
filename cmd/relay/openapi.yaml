@@ -33,6 +33,8 @@ tags:
     description: Webhook event operations
   - name: Endpoints
     description: Webhook endpoint management
+  - name: EventTypes
+    description: Event type catalog and schema management
   - name: Health
     description: Service health checks
 
@@ -345,6 +347,163 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/event-types:
+    post:
+      tags:
+        - EventTypes
+      summary: Create an event type
+      description: |
+        Creates a new event type with optional JSONSchema for payload validation.
+        Event types allow you to define and document the structure of webhooks
+        you send, and optionally validate payloads against the schema.
+      operationId: createEventType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEventTypeRequest"
+      responses:
+        "201":
+          description: Event type created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventType"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Event type with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      tags:
+        - EventTypes
+      summary: List event types
+      description: Returns a paginated list of event types
+      operationId: listEventTypes
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of event types to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of event types to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: List of event types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventTypeList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/event-types/{eventTypeId}:
+    get:
+      tags:
+        - EventTypes
+      summary: Get event type by ID
+      description: Returns a single event type with its schema
+      operationId: getEventType
+      parameters:
+        - $ref: "#/components/parameters/EventTypeId"
+      responses:
+        "200":
+          description: Event type details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventType"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      tags:
+        - EventTypes
+      summary: Update an event type
+      description: Updates event type description and/or schema
+      operationId: updateEventType
+      parameters:
+        - $ref: "#/components/parameters/EventTypeId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEventTypeRequest"
+      responses:
+        "200":
+          description: Event type updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventType"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags:
+        - EventTypes
+      summary: Delete an event type
+      description: Deletes an event type from the catalog
+      operationId: deleteEventType
+      parameters:
+        - $ref: "#/components/parameters/EventTypeId"
+      responses:
+        "204":
+          description: Event type deleted successfully
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/event-types/by-name/{eventTypeName}:
+    get:
+      tags:
+        - EventTypes
+      summary: Get event type by name
+      description: Returns an event type by its name
+      operationId: getEventTypeByName
+      parameters:
+        - name: eventTypeName
+          in: path
+          required: true
+          description: Event type name (e.g., "order.created")
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event type details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventType"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -368,6 +527,15 @@ components:
       in: path
       required: true
       description: Endpoint UUID
+      schema:
+        type: string
+        format: uuid
+
+    EventTypeId:
+      name: eventTypeId
+      in: path
+      required: true
+      description: Event type UUID
       schema:
         type: string
         format: uuid
@@ -598,6 +766,8 @@ components:
             type: string
         status:
           $ref: "#/components/schemas/EndpointStatus"
+        filter:
+          $ref: "#/components/schemas/Filter"
         maxRetries:
           type: integer
         retryBackoffMs:
@@ -670,6 +840,63 @@ components:
         - paused
         - disabled
 
+    Filter:
+      type: object
+      description: |
+        Content-based routing filter for endpoints. Events are only delivered
+        if they match the filter conditions. Supports JSONPath expressions
+        and logical combinators (and, or, not).
+      properties:
+        rule:
+          $ref: "#/components/schemas/FilterRule"
+        and:
+          type: array
+          description: All conditions must match (logical AND)
+          items:
+            $ref: "#/components/schemas/Filter"
+        or:
+          type: array
+          description: At least one condition must match (logical OR)
+          items:
+            $ref: "#/components/schemas/Filter"
+        not:
+          $ref: "#/components/schemas/Filter"
+          description: Negates the nested filter condition
+
+    FilterRule:
+      type: object
+      description: A single filter condition using JSONPath
+      properties:
+        path:
+          type: string
+          description: JSONPath expression (e.g., "$.data.amount")
+          example: "$.data.status"
+        operator:
+          type: string
+          description: Comparison operator
+          enum:
+            - eq
+            - ne
+            - gt
+            - gte
+            - lt
+            - lte
+            - contains
+            - startsWith
+            - endsWith
+            - exists
+            - regex
+        value:
+          description: Value to compare against
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+      required:
+        - path
+        - operator
+        - value
+
     CreateEndpointRequest:
       type: object
       properties:
@@ -683,6 +910,8 @@ components:
           items:
             type: string
           minItems: 1
+        filter:
+          $ref: "#/components/schemas/Filter"
         maxRetries:
           type: integer
           minimum: 0
@@ -737,6 +966,8 @@ components:
             type: string
         status:
           $ref: "#/components/schemas/EndpointStatus"
+        filter:
+          $ref: "#/components/schemas/Filter"
         maxRetries:
           type: integer
         retryBackoffMs:
@@ -778,6 +1009,88 @@ components:
           type: integer
         delayed:
           type: integer
+
+    EventType:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        clientId:
+          type: string
+        name:
+          type: string
+          description: Event type name (e.g., "order.created")
+        description:
+          type: string
+          nullable: true
+        schema:
+          type: object
+          nullable: true
+          description: JSONSchema for payload validation
+        schemaVersion:
+          type: string
+          nullable: true
+          description: Schema version (e.g., "1.0")
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - clientId
+        - name
+        - createdAt
+        - updatedAt
+
+    CreateEventTypeRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Event type name (e.g., "order.created")
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          description: Human-readable description of this event type
+        schema:
+          type: object
+          description: JSONSchema for payload validation (optional)
+        schemaVersion:
+          type: string
+          description: Version of the schema (e.g., "1.0")
+      required:
+        - name
+
+    UpdateEventTypeRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          description: Human-readable description of this event type
+        schema:
+          type: object
+          nullable: true
+          description: JSONSchema for payload validation (set to null to remove)
+        schemaVersion:
+          type: string
+          description: Version of the schema
+
+    EventTypeList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventType"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required:
+        - data
+        - pagination
 
     Pagination:
       type: object

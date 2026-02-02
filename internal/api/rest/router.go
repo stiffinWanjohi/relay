@@ -24,6 +24,14 @@ func (h *Handler) Router() chi.Router {
 		r.Post("/events/{eventId}/replay", h.ReplayEvent)
 		r.Post("/events/batch/retry", h.BatchRetry)
 
+		// Event Types
+		r.Post("/event-types", h.CreateEventType)
+		r.Get("/event-types", h.ListEventTypes)
+		r.Get("/event-types/{eventTypeId}", h.GetEventType)
+		r.Get("/event-types/by-name/{name}", h.GetEventTypeByName)
+		r.Put("/event-types/{eventTypeId}", h.UpdateEventType)
+		r.Delete("/event-types/{eventTypeId}", h.DeleteEventType)
+
 		// Stats
 		r.Get("/stats", h.GetStats)
 	})

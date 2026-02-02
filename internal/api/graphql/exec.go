@@ -80,6 +80,7 @@ type ComplexityRoot struct {
 		CustomHeaders    func(childComplexity int) int
 		Description      func(childComplexity int) int
 		EventTypes       func(childComplexity int) int
+		Filter           func(childComplexity int) int
 		HasCustomSecret  func(childComplexity int) int
 		ID               func(childComplexity int) int
 		MaxRetries       func(childComplexity int) int
@@ -152,11 +153,35 @@ type ComplexityRoot struct {
 		Node   func(childComplexity int) int
 	}
 
+	EventType struct {
+		ClientID      func(childComplexity int) int
+		CreatedAt     func(childComplexity int) int
+		Description   func(childComplexity int) int
+		ID            func(childComplexity int) int
+		Name          func(childComplexity int) int
+		Schema        func(childComplexity int) int
+		SchemaVersion func(childComplexity int) int
+		UpdatedAt     func(childComplexity int) int
+	}
+
+	EventTypeConnection struct {
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	EventTypeEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
+	}
+
 	Mutation struct {
 		ClearPreviousSecret   func(childComplexity int, id string) int
 		CreateEndpoint        func(childComplexity int, input CreateEndpointInput) int
 		CreateEvent           func(childComplexity int, input CreateEventInput, idempotencyKey string) int
+		CreateEventType       func(childComplexity int, input CreateEventTypeInput) int
 		DeleteEndpoint        func(childComplexity int, id string) int
+		DeleteEventType       func(childComplexity int, id string) int
 		PauseEndpoint         func(childComplexity int, id string) int
 		ReplayEvent           func(childComplexity int, id string) int
 		ResumeEndpoint        func(childComplexity int, id string) int
@@ -166,6 +191,7 @@ type ComplexityRoot struct {
 		RotateEndpointSecret  func(childComplexity int, id string) int
 		SendEvent             func(childComplexity int, input SendEventInput, idempotencyKey string) int
 		UpdateEndpoint        func(childComplexity int, id string, input UpdateEndpointInput) int
+		UpdateEventType       func(childComplexity int, id string, input UpdateEventTypeInput) int
 	}
 
 	PageInfo struct {
@@ -176,11 +202,14 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		Endpoint   func(childComplexity int, id string) int
-		Endpoints  func(childComplexity int, status *EndpointStatus, first *int, after *string) int
-		Event      func(childComplexity int, id string) int
-		Events     func(childComplexity int, status *EventStatus, first *int, after *string) int
-		QueueStats func(childComplexity int) int
+		Endpoint        func(childComplexity int, id string) int
+		Endpoints       func(childComplexity int, status *EndpointStatus, first *int, after *string) int
+		Event           func(childComplexity int, id string) int
+		EventType       func(childComplexity int, id string) int
+		EventTypeByName func(childComplexity int, name string) int
+		EventTypes      func(childComplexity int, first *int, after *string) int
+		Events          func(childComplexity int, status *EventStatus, first *int, after *string) int
+		QueueStats      func(childComplexity int) int
 	}
 
 	QueueStats struct {
@@ -217,6 +246,9 @@ type MutationResolver interface {
 	ResumeEndpoint(ctx context.Context, id string) (*Endpoint, error)
 	RotateEndpointSecret(ctx context.Context, id string) (*EndpointSecretRotation, error)
 	ClearPreviousSecret(ctx context.Context, id string) (*Endpoint, error)
+	CreateEventType(ctx context.Context, input CreateEventTypeInput) (*EventType, error)
+	UpdateEventType(ctx context.Context, id string, input UpdateEventTypeInput) (*EventType, error)
+	DeleteEventType(ctx context.Context, id string) (bool, error)
 }
 type QueryResolver interface {
 	Event(ctx context.Context, id string) (*Event, error)
@@ -224,6 +256,9 @@ type QueryResolver interface {
 	QueueStats(ctx context.Context) (*QueueStats, error)
 	Endpoint(ctx context.Context, id string) (*Endpoint, error)
 	Endpoints(ctx context.Context, status *EndpointStatus, first *int, after *string) (*EndpointConnection, error)
+	EventType(ctx context.Context, id string) (*EventType, error)
+	EventTypeByName(ctx context.Context, name string) (*EventType, error)
+	EventTypes(ctx context.Context, first *int, after *string) (*EventTypeConnection, error)
 }
 
 type executableSchema struct {
@@ -374,6 +409,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Endpoint.EventTypes(childComplexity), true
+	case "Endpoint.filter":
+		if e.complexity.Endpoint.Filter == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.Filter(childComplexity), true
 	case "Endpoint.hasCustomSecret":
 		if e.complexity.Endpoint.HasCustomSecret == nil {
 			break
@@ -681,6 +722,87 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.EventEdge.Node(childComplexity), true
 
+	case "EventType.clientId":
+		if e.complexity.EventType.ClientID == nil {
+			break
+		}
+
+		return e.complexity.EventType.ClientID(childComplexity), true
+	case "EventType.createdAt":
+		if e.complexity.EventType.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.EventType.CreatedAt(childComplexity), true
+	case "EventType.description":
+		if e.complexity.EventType.Description == nil {
+			break
+		}
+
+		return e.complexity.EventType.Description(childComplexity), true
+	case "EventType.id":
+		if e.complexity.EventType.ID == nil {
+			break
+		}
+
+		return e.complexity.EventType.ID(childComplexity), true
+	case "EventType.name":
+		if e.complexity.EventType.Name == nil {
+			break
+		}
+
+		return e.complexity.EventType.Name(childComplexity), true
+	case "EventType.schema":
+		if e.complexity.EventType.Schema == nil {
+			break
+		}
+
+		return e.complexity.EventType.Schema(childComplexity), true
+	case "EventType.schemaVersion":
+		if e.complexity.EventType.SchemaVersion == nil {
+			break
+		}
+
+		return e.complexity.EventType.SchemaVersion(childComplexity), true
+	case "EventType.updatedAt":
+		if e.complexity.EventType.UpdatedAt == nil {
+			break
+		}
+
+		return e.complexity.EventType.UpdatedAt(childComplexity), true
+
+	case "EventTypeConnection.edges":
+		if e.complexity.EventTypeConnection.Edges == nil {
+			break
+		}
+
+		return e.complexity.EventTypeConnection.Edges(childComplexity), true
+	case "EventTypeConnection.pageInfo":
+		if e.complexity.EventTypeConnection.PageInfo == nil {
+			break
+		}
+
+		return e.complexity.EventTypeConnection.PageInfo(childComplexity), true
+	case "EventTypeConnection.totalCount":
+		if e.complexity.EventTypeConnection.TotalCount == nil {
+			break
+		}
+
+		return e.complexity.EventTypeConnection.TotalCount(childComplexity), true
+
+	case "EventTypeEdge.cursor":
+		if e.complexity.EventTypeEdge.Cursor == nil {
+			break
+		}
+
+		return e.complexity.EventTypeEdge.Cursor(childComplexity), true
+	case "EventTypeEdge.node":
+		if e.complexity.EventTypeEdge.Node == nil {
+			break
+		}
+
+		return e.complexity.EventTypeEdge.Node(childComplexity), true
+
 	case "Mutation.clearPreviousSecret":
 		if e.complexity.Mutation.ClearPreviousSecret == nil {
 			break
@@ -714,6 +836,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.CreateEvent(childComplexity, args["input"].(CreateEventInput), args["idempotencyKey"].(string)), true
+	case "Mutation.createEventType":
+		if e.complexity.Mutation.CreateEventType == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createEventType_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.CreateEventType(childComplexity, args["input"].(CreateEventTypeInput)), true
 	case "Mutation.deleteEndpoint":
 		if e.complexity.Mutation.DeleteEndpoint == nil {
 			break
@@ -725,6 +858,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.DeleteEndpoint(childComplexity, args["id"].(string)), true
+	case "Mutation.deleteEventType":
+		if e.complexity.Mutation.DeleteEventType == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_deleteEventType_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.DeleteEventType(childComplexity, args["id"].(string)), true
 	case "Mutation.pauseEndpoint":
 		if e.complexity.Mutation.PauseEndpoint == nil {
 			break
@@ -824,6 +968,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.UpdateEndpoint(childComplexity, args["id"].(string), args["input"].(UpdateEndpointInput)), true
+	case "Mutation.updateEventType":
+		if e.complexity.Mutation.UpdateEventType == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_updateEventType_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.UpdateEventType(childComplexity, args["id"].(string), args["input"].(UpdateEventTypeInput)), true
 
 	case "PageInfo.endCursor":
 		if e.complexity.PageInfo.EndCursor == nil {
@@ -883,6 +1038,39 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.Event(childComplexity, args["id"].(string)), true
+	case "Query.eventType":
+		if e.complexity.Query.EventType == nil {
+			break
+		}
+
+		args, err := ec.field_Query_eventType_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.EventType(childComplexity, args["id"].(string)), true
+	case "Query.eventTypeByName":
+		if e.complexity.Query.EventTypeByName == nil {
+			break
+		}
+
+		args, err := ec.field_Query_eventTypeByName_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.EventTypeByName(childComplexity, args["name"].(string)), true
+	case "Query.eventTypes":
+		if e.complexity.Query.EventTypes == nil {
+			break
+		}
+
+		args, err := ec.field_Query_eventTypes_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.EventTypes(childComplexity, args["first"].(*int), args["after"].(*string)), true
 	case "Query.events":
 		if e.complexity.Query.Events == nil {
 			break
@@ -960,8 +1148,10 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
 		ec.unmarshalInputCreateEndpointInput,
 		ec.unmarshalInputCreateEventInput,
+		ec.unmarshalInputCreateEventTypeInput,
 		ec.unmarshalInputSendEventInput,
 		ec.unmarshalInputUpdateEndpointInput,
+		ec.unmarshalInputUpdateEventTypeInput,
 	)
 	first := true
 
@@ -1111,6 +1301,17 @@ func (ec *executionContext) field_Mutation_createEndpoint_args(ctx context.Conte
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_createEventType_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNCreateEventTypeInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEventTypeInput)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_createEvent_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1128,6 +1329,17 @@ func (ec *executionContext) field_Mutation_createEvent_args(ctx context.Context,
 }
 
 func (ec *executionContext) field_Mutation_deleteEndpoint_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_deleteEventType_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
@@ -1262,6 +1474,22 @@ func (ec *executionContext) field_Mutation_updateEndpoint_args(ctx context.Conte
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_updateEventType_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNUpdateEventTypeInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐUpdateEventTypeInput)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg1
+	return args, nil
+}
+
 func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1302,6 +1530,44 @@ func (ec *executionContext) field_Query_endpoints_args(ctx context.Context, rawA
 		return nil, err
 	}
 	args["after"] = arg2
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_eventTypeByName_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "name", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["name"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_eventType_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_eventTypes_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "first", ec.unmarshalOInt2ᚖint)
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "after", ec.unmarshalOString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg1
 	return args, nil
 }
 
@@ -2011,6 +2277,35 @@ func (ec *executionContext) fieldContext_Endpoint_status(_ context.Context, fiel
 	return fc, nil
 }
 
+func (ec *executionContext) _Endpoint_filter(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_filter,
+		func(ctx context.Context) (any, error) {
+			return obj.Filter, nil
+		},
+		nil,
+		ec.marshalOJSON2map,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_filter(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type JSON does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Endpoint_maxRetries(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2647,6 +2942,8 @@ func (ec *executionContext) fieldContext_EndpointEdge_node(_ context.Context, fi
 				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
 			case "status":
 				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "filter":
+				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -2749,6 +3046,8 @@ func (ec *executionContext) fieldContext_EndpointSecretRotation_endpoint(_ conte
 				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
 			case "status":
 				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "filter":
+				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -3507,6 +3806,8 @@ func (ec *executionContext) fieldContext_Event_endpoint(_ context.Context, field
 				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
 			case "status":
 				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "filter":
+				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -3731,6 +4032,417 @@ func (ec *executionContext) _EventEdge_cursor(ctx context.Context, field graphql
 func (ec *executionContext) fieldContext_EventEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "EventEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventType_id(ctx context.Context, field graphql.CollectedField, obj *EventType) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventType_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventType_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventType",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventType_clientId(ctx context.Context, field graphql.CollectedField, obj *EventType) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventType_clientId,
+		func(ctx context.Context) (any, error) {
+			return obj.ClientID, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventType_clientId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventType",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventType_name(ctx context.Context, field graphql.CollectedField, obj *EventType) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventType_name,
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventType_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventType",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventType_description(ctx context.Context, field graphql.CollectedField, obj *EventType) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventType_description,
+		func(ctx context.Context) (any, error) {
+			return obj.Description, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventType_description(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventType",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventType_schema(ctx context.Context, field graphql.CollectedField, obj *EventType) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventType_schema,
+		func(ctx context.Context) (any, error) {
+			return obj.Schema, nil
+		},
+		nil,
+		ec.marshalOJSON2map,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventType_schema(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventType",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type JSON does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventType_schemaVersion(ctx context.Context, field graphql.CollectedField, obj *EventType) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventType_schemaVersion,
+		func(ctx context.Context) (any, error) {
+			return obj.SchemaVersion, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventType_schemaVersion(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventType",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventType_createdAt(ctx context.Context, field graphql.CollectedField, obj *EventType) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventType_createdAt,
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		ec.marshalNDateTime2timeᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventType_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventType",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type DateTime does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventType_updatedAt(ctx context.Context, field graphql.CollectedField, obj *EventType) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventType_updatedAt,
+		func(ctx context.Context) (any, error) {
+			return obj.UpdatedAt, nil
+		},
+		nil,
+		ec.marshalNDateTime2timeᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventType_updatedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventType",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type DateTime does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventTypeConnection_edges(ctx context.Context, field graphql.CollectedField, obj *EventTypeConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventTypeConnection_edges,
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		ec.marshalNEventTypeEdge2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventTypeEdgeᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventTypeConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventTypeConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "node":
+				return ec.fieldContext_EventTypeEdge_node(ctx, field)
+			case "cursor":
+				return ec.fieldContext_EventTypeEdge_cursor(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EventTypeEdge", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventTypeConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *EventTypeConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventTypeConnection_pageInfo,
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		ec.marshalNPageInfo2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐPageInfo,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventTypeConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventTypeConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "hasNextPage":
+				return ec.fieldContext_PageInfo_hasNextPage(ctx, field)
+			case "hasPreviousPage":
+				return ec.fieldContext_PageInfo_hasPreviousPage(ctx, field)
+			case "startCursor":
+				return ec.fieldContext_PageInfo_startCursor(ctx, field)
+			case "endCursor":
+				return ec.fieldContext_PageInfo_endCursor(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PageInfo", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventTypeConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *EventTypeConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventTypeConnection_totalCount,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventTypeConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventTypeConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventTypeEdge_node(ctx context.Context, field graphql.CollectedField, obj *EventTypeEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventTypeEdge_node,
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		ec.marshalNEventType2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventType,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventTypeEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventTypeEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_EventType_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_EventType_clientId(ctx, field)
+			case "name":
+				return ec.fieldContext_EventType_name(ctx, field)
+			case "description":
+				return ec.fieldContext_EventType_description(ctx, field)
+			case "schema":
+				return ec.fieldContext_EventType_schema(ctx, field)
+			case "schemaVersion":
+				return ec.fieldContext_EventType_schemaVersion(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_EventType_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_EventType_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EventType", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EventTypeEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *EventTypeEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_EventTypeEdge_cursor,
+		func(ctx context.Context) (any, error) {
+			return obj.Cursor, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_EventTypeEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EventTypeEdge",
 		Field:      field,
 		IsMethod:   false,
 		IsResolver: false,
@@ -4162,6 +4874,8 @@ func (ec *executionContext) fieldContext_Mutation_createEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
 			case "status":
 				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "filter":
+				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -4247,6 +4961,8 @@ func (ec *executionContext) fieldContext_Mutation_updateEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
 			case "status":
 				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "filter":
+				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -4373,6 +5089,8 @@ func (ec *executionContext) fieldContext_Mutation_pauseEndpoint(ctx context.Cont
 				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
 			case "status":
 				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "filter":
+				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -4458,6 +5176,8 @@ func (ec *executionContext) fieldContext_Mutation_resumeEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
 			case "status":
 				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "filter":
+				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -4590,6 +5310,8 @@ func (ec *executionContext) fieldContext_Mutation_clearPreviousSecret(ctx contex
 				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
 			case "status":
 				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "filter":
+				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -4632,6 +5354,165 @@ func (ec *executionContext) fieldContext_Mutation_clearPreviousSecret(ctx contex
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_clearPreviousSecret_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createEventType(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_createEventType,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().CreateEventType(ctx, fc.Args["input"].(CreateEventTypeInput))
+		},
+		nil,
+		ec.marshalNEventType2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventType,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_createEventType(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_EventType_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_EventType_clientId(ctx, field)
+			case "name":
+				return ec.fieldContext_EventType_name(ctx, field)
+			case "description":
+				return ec.fieldContext_EventType_description(ctx, field)
+			case "schema":
+				return ec.fieldContext_EventType_schema(ctx, field)
+			case "schemaVersion":
+				return ec.fieldContext_EventType_schemaVersion(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_EventType_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_EventType_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EventType", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createEventType_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_updateEventType(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_updateEventType,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().UpdateEventType(ctx, fc.Args["id"].(string), fc.Args["input"].(UpdateEventTypeInput))
+		},
+		nil,
+		ec.marshalNEventType2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventType,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_updateEventType(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_EventType_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_EventType_clientId(ctx, field)
+			case "name":
+				return ec.fieldContext_EventType_name(ctx, field)
+			case "description":
+				return ec.fieldContext_EventType_description(ctx, field)
+			case "schema":
+				return ec.fieldContext_EventType_schema(ctx, field)
+			case "schemaVersion":
+				return ec.fieldContext_EventType_schemaVersion(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_EventType_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_EventType_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EventType", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_updateEventType_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_deleteEventType(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_deleteEventType,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().DeleteEventType(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_deleteEventType(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_deleteEventType_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -4964,6 +5845,8 @@ func (ec *executionContext) fieldContext_Query_endpoint(ctx context.Context, fie
 				return ec.fieldContext_Endpoint_eventTypes(ctx, field)
 			case "status":
 				return ec.fieldContext_Endpoint_status(ctx, field)
+			case "filter":
+				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -5055,6 +5938,173 @@ func (ec *executionContext) fieldContext_Query_endpoints(ctx context.Context, fi
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_endpoints_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_eventType(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_eventType,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().EventType(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalOEventType2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventType,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_eventType(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_EventType_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_EventType_clientId(ctx, field)
+			case "name":
+				return ec.fieldContext_EventType_name(ctx, field)
+			case "description":
+				return ec.fieldContext_EventType_description(ctx, field)
+			case "schema":
+				return ec.fieldContext_EventType_schema(ctx, field)
+			case "schemaVersion":
+				return ec.fieldContext_EventType_schemaVersion(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_EventType_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_EventType_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EventType", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_eventType_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_eventTypeByName(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_eventTypeByName,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().EventTypeByName(ctx, fc.Args["name"].(string))
+		},
+		nil,
+		ec.marshalOEventType2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventType,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_eventTypeByName(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_EventType_id(ctx, field)
+			case "clientId":
+				return ec.fieldContext_EventType_clientId(ctx, field)
+			case "name":
+				return ec.fieldContext_EventType_name(ctx, field)
+			case "description":
+				return ec.fieldContext_EventType_description(ctx, field)
+			case "schema":
+				return ec.fieldContext_EventType_schema(ctx, field)
+			case "schemaVersion":
+				return ec.fieldContext_EventType_schemaVersion(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_EventType_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_EventType_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EventType", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_eventTypeByName_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_eventTypes(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_eventTypes,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().EventTypes(ctx, fc.Args["first"].(*int), fc.Args["after"].(*string))
+		},
+		nil,
+		ec.marshalNEventTypeConnection2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventTypeConnection,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_eventTypes(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "edges":
+				return ec.fieldContext_EventTypeConnection_edges(ctx, field)
+			case "pageInfo":
+				return ec.fieldContext_EventTypeConnection_pageInfo(ctx, field)
+			case "totalCount":
+				return ec.fieldContext_EventTypeConnection_totalCount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EventTypeConnection", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_eventTypes_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -6854,7 +7904,7 @@ func (ec *executionContext) unmarshalInputCreateEndpointInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"url", "description", "eventTypes", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
+	fieldsInOrder := [...]string{"url", "description", "eventTypes", "filter", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -6882,6 +7932,13 @@ func (ec *executionContext) unmarshalInputCreateEndpointInput(ctx context.Contex
 				return it, err
 			}
 			it.EventTypes = data
+		case "filter":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
+			data, err := ec.unmarshalOJSON2map(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Filter = data
 		case "maxRetries":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("maxRetries"))
 			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
@@ -6999,6 +8056,54 @@ func (ec *executionContext) unmarshalInputCreateEventInput(ctx context.Context, 
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputCreateEventTypeInput(ctx context.Context, obj any) (CreateEventTypeInput, error) {
+	var it CreateEventTypeInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"name", "description", "schema", "schemaVersion"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "name":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Name = data
+		case "description":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("description"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Description = data
+		case "schema":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("schema"))
+			data, err := ec.unmarshalOJSON2map(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Schema = data
+		case "schemaVersion":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("schemaVersion"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SchemaVersion = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputSendEventInput(ctx context.Context, obj any) (SendEventInput, error) {
 	var it SendEventInput
 	asMap := map[string]any{}
@@ -7047,7 +8152,7 @@ func (ec *executionContext) unmarshalInputUpdateEndpointInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"url", "description", "eventTypes", "status", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
+	fieldsInOrder := [...]string{"url", "description", "eventTypes", "status", "filter", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -7082,6 +8187,13 @@ func (ec *executionContext) unmarshalInputUpdateEndpointInput(ctx context.Contex
 				return it, err
 			}
 			it.Status = data
+		case "filter":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("filter"))
+			data, err := ec.unmarshalOJSON2map(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Filter = data
 		case "maxRetries":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("maxRetries"))
 			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
@@ -7145,6 +8257,47 @@ func (ec *executionContext) unmarshalInputUpdateEndpointInput(ctx context.Contex
 				return it, err
 			}
 			it.CustomHeaders = data
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputUpdateEventTypeInput(ctx context.Context, obj any) (UpdateEventTypeInput, error) {
+	var it UpdateEventTypeInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"description", "schema", "schemaVersion"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "description":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("description"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Description = data
+		case "schema":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("schema"))
+			data, err := ec.unmarshalOJSON2map(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Schema = data
+		case "schemaVersion":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("schemaVersion"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SchemaVersion = data
 		}
 	}
 
@@ -7360,6 +8513,8 @@ func (ec *executionContext) _Endpoint(ctx context.Context, sel ast.SelectionSet,
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "filter":
+			out.Values[i] = ec._Endpoint_filter(ctx, field, obj)
 		case "maxRetries":
 			out.Values[i] = ec._Endpoint_maxRetries(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -7968,6 +9123,164 @@ func (ec *executionContext) _EventEdge(ctx context.Context, sel ast.SelectionSet
 	return out
 }
 
+var eventTypeImplementors = []string{"EventType"}
+
+func (ec *executionContext) _EventType(ctx context.Context, sel ast.SelectionSet, obj *EventType) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, eventTypeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("EventType")
+		case "id":
+			out.Values[i] = ec._EventType_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "clientId":
+			out.Values[i] = ec._EventType_clientId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "name":
+			out.Values[i] = ec._EventType_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "description":
+			out.Values[i] = ec._EventType_description(ctx, field, obj)
+		case "schema":
+			out.Values[i] = ec._EventType_schema(ctx, field, obj)
+		case "schemaVersion":
+			out.Values[i] = ec._EventType_schemaVersion(ctx, field, obj)
+		case "createdAt":
+			out.Values[i] = ec._EventType_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "updatedAt":
+			out.Values[i] = ec._EventType_updatedAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var eventTypeConnectionImplementors = []string{"EventTypeConnection"}
+
+func (ec *executionContext) _EventTypeConnection(ctx context.Context, sel ast.SelectionSet, obj *EventTypeConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, eventTypeConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("EventTypeConnection")
+		case "edges":
+			out.Values[i] = ec._EventTypeConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._EventTypeConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._EventTypeConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var eventTypeEdgeImplementors = []string{"EventTypeEdge"}
+
+func (ec *executionContext) _EventTypeEdge(ctx context.Context, sel ast.SelectionSet, obj *EventTypeEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, eventTypeEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("EventTypeEdge")
+		case "node":
+			out.Values[i] = ec._EventTypeEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "cursor":
+			out.Values[i] = ec._EventTypeEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var mutationImplementors = []string{"Mutation"}
 
 func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
@@ -8074,6 +9387,27 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "clearPreviousSecret":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_clearPreviousSecret(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createEventType":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createEventType(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "updateEventType":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_updateEventType(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "deleteEventType":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_deleteEventType(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -8260,6 +9594,66 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_endpoints(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "eventType":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_eventType(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "eventTypeByName":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_eventTypeByName(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "eventTypes":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_eventTypes(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -8800,6 +10194,11 @@ func (ec *executionContext) unmarshalNCreateEventInput2githubᚗcomᚋstiffinWan
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalNCreateEventTypeInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐCreateEventTypeInput(ctx context.Context, v any) (CreateEventTypeInput, error) {
+	res, err := ec.unmarshalInputCreateEventTypeInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNDateTime2timeᚐTime(ctx context.Context, v any) (time.Time, error) {
 	res, err := graphql.UnmarshalTime(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -9108,6 +10507,82 @@ func (ec *executionContext) marshalNEventStatus2githubᚗcomᚋstiffinWanjohiᚋ
 	return v
 }
 
+func (ec *executionContext) marshalNEventType2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventType(ctx context.Context, sel ast.SelectionSet, v EventType) graphql.Marshaler {
+	return ec._EventType(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNEventType2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventType(ctx context.Context, sel ast.SelectionSet, v *EventType) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._EventType(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNEventTypeConnection2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventTypeConnection(ctx context.Context, sel ast.SelectionSet, v EventTypeConnection) graphql.Marshaler {
+	return ec._EventTypeConnection(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNEventTypeConnection2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventTypeConnection(ctx context.Context, sel ast.SelectionSet, v *EventTypeConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._EventTypeConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNEventTypeEdge2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventTypeEdge(ctx context.Context, sel ast.SelectionSet, v EventTypeEdge) graphql.Marshaler {
+	return ec._EventTypeEdge(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNEventTypeEdge2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventTypeEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []EventTypeEdge) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNEventTypeEdge2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventTypeEdge(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalNFloat2float64(ctx context.Context, v any) (float64, error) {
 	res, err := graphql.UnmarshalFloatContext(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -9285,6 +10760,11 @@ func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel
 
 func (ec *executionContext) unmarshalNUpdateEndpointInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐUpdateEndpointInput(ctx context.Context, v any) (UpdateEndpointInput, error) {
 	res, err := ec.unmarshalInputUpdateEndpointInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNUpdateEventTypeInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐUpdateEventTypeInput(ctx context.Context, v any) (UpdateEventTypeInput, error) {
+	res, err := ec.unmarshalInputUpdateEventTypeInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
@@ -9633,6 +11113,13 @@ func (ec *executionContext) marshalOEventStatus2ᚖgithubᚗcomᚋstiffinWanjohi
 		return graphql.Null
 	}
 	return v
+}
+
+func (ec *executionContext) marshalOEventType2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEventType(ctx context.Context, sel ast.SelectionSet, v *EventType) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._EventType(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOFloat2ᚖfloat64(ctx context.Context, v any) (*float64, error) {

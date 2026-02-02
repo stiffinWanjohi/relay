@@ -54,6 +54,18 @@ var (
 
 	// ErrConnectionFailed is returned when a connection cannot be established.
 	ErrConnectionFailed = errors.New("connection failed")
+
+	// ErrEventTypeNotFound is returned when an event type cannot be found.
+	ErrEventTypeNotFound = errors.New("event type not found")
+
+	// ErrDuplicateEventType is returned when an event type with the same name exists.
+	ErrDuplicateEventType = errors.New("event type already exists")
+
+	// ErrInvalidJSONSchema is returned when a JSON schema is invalid.
+	ErrInvalidJSONSchema = errors.New("invalid JSON schema")
+
+	// ErrPayloadValidation is returned when a payload fails schema validation.
+	ErrPayloadValidation = errors.New("payload validation failed")
 )
 
 // ValidationError represents a validation error with field details.

@@ -106,6 +106,12 @@ func domainEndpointToGQL(ep domain.Endpoint) *Endpoint {
 		description = &ep.Description
 	}
 
+	// Convert filter bytes to JSON map
+	var filter map[string]any
+	if len(ep.Filter) > 0 {
+		_ = json.Unmarshal(ep.Filter, &filter)
+	}
+
 	return &Endpoint{
 		ID:               ep.ID.String(),
 		ClientID:         ep.ClientID,
@@ -113,6 +119,7 @@ func domainEndpointToGQL(ep domain.Endpoint) *Endpoint {
 		Description:      description,
 		EventTypes:       ep.EventTypes,
 		Status:           domainEndpointStatusToGQL(ep.Status),
+		Filter:           filter,
 		MaxRetries:       ep.MaxRetries,
 		RetryBackoffMs:   ep.RetryBackoffMs,
 		RetryBackoffMax:  ep.RetryBackoffMax,
@@ -208,5 +215,31 @@ func storeBatchResultToGQL(result *event.BatchRetryResult) *BatchRetryResult {
 		Failed:         failed,
 		TotalRequested: len(result.Succeeded) + len(result.Failed),
 		TotalSucceeded: len(result.Succeeded),
+	}
+}
+
+func domainEventTypeToGQL(et domain.EventType) *EventType {
+	var description, schemaVersion *string
+	if et.Description != "" {
+		description = &et.Description
+	}
+	if et.SchemaVersion != "" {
+		schemaVersion = &et.SchemaVersion
+	}
+
+	var schema map[string]any
+	if len(et.Schema) > 0 {
+		_ = json.Unmarshal(et.Schema, &schema)
+	}
+
+	return &EventType{
+		ID:            et.ID.String(),
+		ClientID:      et.ClientID,
+		Name:          et.Name,
+		Description:   description,
+		Schema:        schema,
+		SchemaVersion: schemaVersion,
+		CreatedAt:     et.CreatedAt,
+		UpdatedAt:     et.UpdatedAt,
 	}
 }

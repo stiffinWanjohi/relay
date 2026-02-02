@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -8,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/santhosh-tekuri/jsonschema/v5"
+	"github.com/stiffinWanjohi/relay/internal/domain"
 )
 
 const (
@@ -244,6 +249,54 @@ func ValidateIdempotencyKey(key string) error {
 	if strings.TrimSpace(key) == "" {
 		return ErrInvalidIdempotencyKey
 	}
+	return nil
+}
+
+// ValidateJSONSchema validates that the given bytes represent a valid JSON Schema.
+func ValidateJSONSchema(schemaBytes []byte) error {
+	if len(schemaBytes) == 0 {
+		return nil // No schema is valid (schema is optional)
+	}
+
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("schema.json", bytes.NewReader(schemaBytes)); err != nil {
+		return fmt.Errorf("%w: %v", domain.ErrInvalidJSONSchema, err)
+	}
+
+	_, err := compiler.Compile("schema.json")
+	if err != nil {
+		return fmt.Errorf("%w: %v", domain.ErrInvalidJSONSchema, err)
+	}
+
+	return nil
+}
+
+// ValidatePayloadAgainstSchema validates a payload against a JSON Schema.
+// Returns nil if the schema is empty (validation skipped) or if the payload is valid.
+func ValidatePayloadAgainstSchema(payload, schemaBytes []byte) error {
+	if len(schemaBytes) == 0 {
+		return nil // No schema, skip validation
+	}
+
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("schema.json", bytes.NewReader(schemaBytes)); err != nil {
+		return fmt.Errorf("invalid schema: %w", err)
+	}
+
+	schema, err := compiler.Compile("schema.json")
+	if err != nil {
+		return fmt.Errorf("failed to compile schema: %w", err)
+	}
+
+	var v interface{}
+	if err := json.Unmarshal(payload, &v); err != nil {
+		return fmt.Errorf("%w: invalid JSON payload: %v", domain.ErrPayloadValidation, err)
+	}
+
+	if err := schema.Validate(v); err != nil {
+		return fmt.Errorf("%w: %v", domain.ErrPayloadValidation, err)
+	}
+
 	return nil
 }
 

@@ -13,6 +13,11 @@ type Query {
         first: Int
         after: String
     ): EndpointConnection!
+
+    # Event type queries
+    eventType(id: ID!): EventType
+    eventTypeByName(name: String!): EventType
+    eventTypes(first: Int, after: String): EventTypeConnection!
 }
 
 type Mutation {
@@ -43,6 +48,11 @@ type Mutation {
     # Secret rotation mutations
     rotateEndpointSecret(id: ID!): EndpointSecretRotation!
     clearPreviousSecret(id: ID!): Endpoint!
+
+    # Event type mutations
+    createEventType(input: CreateEventTypeInput!): EventType!
+    updateEventType(id: ID!, input: UpdateEventTypeInput!): EventType!
+    deleteEventType(id: ID!): Boolean!
 }
 
 type EndpointSecretRotation {
@@ -91,6 +101,10 @@ type Endpoint {
     eventTypes: [String!]!
     status: EndpointStatus!
 
+    # Content-based routing filter (optional)
+    # If set, events are only delivered if they match the filter conditions
+    filter: JSON
+
     # Retry configuration
     maxRetries: Int!
     retryBackoffMs: Int!
@@ -126,6 +140,28 @@ type EndpointStats {
     pending: Int!
     successRate: Float!
     avgLatencyMs: Float!
+}
+
+type EventType {
+    id: ID!
+    clientId: String!
+    name: String!
+    description: String
+    schema: JSON
+    schemaVersion: String
+    createdAt: DateTime!
+    updatedAt: DateTime!
+}
+
+type EventTypeConnection {
+    edges: [EventTypeEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+}
+
+type EventTypeEdge {
+    node: EventType!
+    cursor: String!
 }
 
 type EventConnection {
@@ -214,6 +250,11 @@ input CreateEndpointInput {
     description: String
     eventTypes: [String!]!
 
+    # Content-based routing filter (optional)
+    # JSON object with filter rules using JSONPath expressions
+    # Example: {"rule": {"path": "$.data.amount", "operator": "gt", "value": 100}}
+    filter: JSON
+
     # Optional configuration (uses defaults if not provided)
     maxRetries: Int
     retryBackoffMs: Int
@@ -231,6 +272,10 @@ input UpdateEndpointInput {
     description: String
     eventTypes: [String!]
     status: EndpointStatus
+
+    # Content-based routing filter (set to null to remove)
+    filter: JSON
+
     maxRetries: Int
     retryBackoffMs: Int
     retryBackoffMax: Int
@@ -240,4 +285,17 @@ input UpdateEndpointInput {
     circuitThreshold: Int
     circuitResetMs: Int
     customHeaders: JSON
+}
+
+input CreateEventTypeInput {
+    name: String!
+    description: String
+    schema: JSON
+    schemaVersion: String
+}
+
+input UpdateEventTypeInput {
+    description: String
+    schema: JSON
+    schemaVersion: String
 }

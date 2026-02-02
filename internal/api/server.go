@@ -16,6 +16,7 @@ import (
 	"github.com/stiffinWanjohi/relay/internal/auth"
 	"github.com/stiffinWanjohi/relay/internal/dedup"
 	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/eventtype"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
@@ -34,7 +35,7 @@ type Server struct {
 }
 
 // NewServer creates a new HTTP server.
-func NewServer(store *event.Store, q *queue.Queue, d *dedup.Checker, authValidator auth.APIKeyValidator, cfg ServerConfig, logger *slog.Logger) *Server {
+func NewServer(store *event.Store, eventTypeStore *eventtype.Store, q *queue.Queue, d *dedup.Checker, authValidator auth.APIKeyValidator, cfg ServerConfig, logger *slog.Logger) *Server {
 	r := chi.NewRouter()
 
 	// Middleware
@@ -45,7 +46,7 @@ func NewServer(store *event.Store, q *queue.Queue, d *dedup.Checker, authValidat
 	r.Use(loggingMiddleware(logger))
 
 	// Create resolver
-	resolver := graphql.NewResolver(store, q, d)
+	resolver := graphql.NewResolver(store, eventTypeStore, q, d)
 
 	// Create GraphQL server
 	srv := handler.NewDefaultServer(graphql.NewExecutableSchema(graphql.Config{
@@ -79,7 +80,7 @@ func NewServer(store *event.Store, q *queue.Queue, d *dedup.Checker, authValidat
 	}
 
 	// REST API and documentation
-	restHandler := rest.NewHandler(store, q, d)
+	restHandler := rest.NewHandler(store, eventTypeStore, q, d)
 	r.Mount("/", restHandler.Router())
 
 	return s

@@ -16,6 +16,7 @@ import (
 	"github.com/stiffinWanjohi/relay/internal/auth"
 	"github.com/stiffinWanjohi/relay/internal/dedup"
 	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/eventtype"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
@@ -65,6 +66,7 @@ func setupTestServer(t *testing.T, cfg ServerConfig, authValidator auth.APIKeyVa
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	store := event.NewStore(pool)
+	eventTypeStore := eventtype.NewStore(pool)
 	q := queue.NewQueue(redisClient)
 	d := dedup.NewChecker(redisClient)
 
@@ -76,7 +78,7 @@ func setupTestServer(t *testing.T, cfg ServerConfig, authValidator auth.APIKeyVa
 		pool.Close()
 	})
 
-	return NewServer(store, q, d, authValidator, cfg, logger)
+	return NewServer(store, eventTypeStore, q, d, authValidator, cfg, logger)
 }
 
 func TestNewServer(t *testing.T) {

@@ -26,6 +26,7 @@ type CreateEndpointInput struct {
 	URL              string         `json:"url"`
 	Description      *string        `json:"description,omitempty"`
 	EventTypes       []string       `json:"eventTypes"`
+	Filter           map[string]any `json:"filter,omitempty"`
 	MaxRetries       *int           `json:"maxRetries,omitempty"`
 	RetryBackoffMs   *int           `json:"retryBackoffMs,omitempty"`
 	RetryBackoffMax  *int           `json:"retryBackoffMax,omitempty"`
@@ -42,6 +43,13 @@ type CreateEventInput struct {
 	Payload     map[string]any `json:"payload"`
 	Headers     map[string]any `json:"headers,omitempty"`
 	MaxAttempts *int           `json:"maxAttempts,omitempty"`
+}
+
+type CreateEventTypeInput struct {
+	Name          string         `json:"name"`
+	Description   *string        `json:"description,omitempty"`
+	Schema        map[string]any `json:"schema,omitempty"`
+	SchemaVersion *string        `json:"schemaVersion,omitempty"`
 }
 
 type DeliveryAttempt struct {
@@ -62,6 +70,7 @@ type Endpoint struct {
 	Description      *string        `json:"description,omitempty"`
 	EventTypes       []string       `json:"eventTypes"`
 	Status           EndpointStatus `json:"status"`
+	Filter           map[string]any `json:"filter,omitempty"`
 	MaxRetries       int            `json:"maxRetries"`
 	RetryBackoffMs   int            `json:"retryBackoffMs"`
 	RetryBackoffMax  int            `json:"retryBackoffMax"`
@@ -135,6 +144,28 @@ type EventEdge struct {
 	Cursor string `json:"cursor"`
 }
 
+type EventType struct {
+	ID            string         `json:"id"`
+	ClientID      string         `json:"clientId"`
+	Name          string         `json:"name"`
+	Description   *string        `json:"description,omitempty"`
+	Schema        map[string]any `json:"schema,omitempty"`
+	SchemaVersion *string        `json:"schemaVersion,omitempty"`
+	CreatedAt     time.Time      `json:"createdAt"`
+	UpdatedAt     time.Time      `json:"updatedAt"`
+}
+
+type EventTypeConnection struct {
+	Edges      []EventTypeEdge `json:"edges"`
+	PageInfo   *PageInfo       `json:"pageInfo"`
+	TotalCount int             `json:"totalCount"`
+}
+
+type EventTypeEdge struct {
+	Node   *EventType `json:"node"`
+	Cursor string     `json:"cursor"`
+}
+
 type Mutation struct {
 }
 
@@ -170,6 +201,7 @@ type UpdateEndpointInput struct {
 	Description      *string         `json:"description,omitempty"`
 	EventTypes       []string        `json:"eventTypes,omitempty"`
 	Status           *EndpointStatus `json:"status,omitempty"`
+	Filter           map[string]any  `json:"filter,omitempty"`
 	MaxRetries       *int            `json:"maxRetries,omitempty"`
 	RetryBackoffMs   *int            `json:"retryBackoffMs,omitempty"`
 	RetryBackoffMax  *int            `json:"retryBackoffMax,omitempty"`
@@ -179,6 +211,12 @@ type UpdateEndpointInput struct {
 	CircuitThreshold *int            `json:"circuitThreshold,omitempty"`
 	CircuitResetMs   *int            `json:"circuitResetMs,omitempty"`
 	CustomHeaders    map[string]any  `json:"customHeaders,omitempty"`
+}
+
+type UpdateEventTypeInput struct {
+	Description   *string        `json:"description,omitempty"`
+	Schema        map[string]any `json:"schema,omitempty"`
+	SchemaVersion *string        `json:"schemaVersion,omitempty"`
 }
 
 type EndpointStatus string

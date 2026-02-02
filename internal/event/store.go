@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,12 +17,27 @@ import (
 
 // Store provides persistence for events and delivery attempts.
 type Store struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	logger *slog.Logger
 }
 
 // NewStore creates a new event store.
 func NewStore(pool *pgxpool.Pool) *Store {
-	return &Store{pool: pool}
+	return &Store{
+		pool:   pool,
+		logger: slog.Default(),
+	}
+}
+
+// NewStoreWithLogger creates a new event store with a custom logger.
+func NewStoreWithLogger(pool *pgxpool.Pool, logger *slog.Logger) *Store {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Store{
+		pool:   pool,
+		logger: logger,
+	}
 }
 
 // Create persists a new event (without outbox - use CreateWithOutbox for reliable publishing).
@@ -417,13 +433,13 @@ func (s *Store) CreateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 
 	query := `
 		INSERT INTO endpoints (
-			id, client_id, url, description, event_types, status,
+			id, client_id, url, description, event_types, status, filter,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
 			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-		RETURNING id, client_id, url, description, event_types, status,
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+		RETURNING id, client_id, url, description, event_types, status, filter,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -437,6 +453,7 @@ func (s *Store) CreateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 		endpoint.Description,
 		endpoint.EventTypes,
 		endpoint.Status,
+		endpoint.Filter,
 		endpoint.MaxRetries,
 		endpoint.RetryBackoffMs,
 		endpoint.RetryBackoffMax,
@@ -463,13 +480,13 @@ func (s *Store) UpdateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 
 	query := `
 		UPDATE endpoints SET
-			url = $2, description = $3, event_types = $4, status = $5,
-			max_retries = $6, retry_backoff_ms = $7, retry_backoff_max = $8, retry_backoff_mult = $9,
-			timeout_ms = $10, rate_limit_per_sec = $11, circuit_threshold = $12, circuit_reset_ms = $13,
-			custom_headers = $14, signing_secret = $15, previous_secret = $16, secret_rotated_at = $17,
+			url = $2, description = $3, event_types = $4, status = $5, filter = $6,
+			max_retries = $7, retry_backoff_ms = $8, retry_backoff_max = $9, retry_backoff_mult = $10,
+			timeout_ms = $11, rate_limit_per_sec = $12, circuit_threshold = $13, circuit_reset_ms = $14,
+			custom_headers = $15, signing_secret = $16, previous_secret = $17, secret_rotated_at = $18,
 			updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, client_id, url, description, event_types, status,
+		RETURNING id, client_id, url, description, event_types, status, filter,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -482,6 +499,7 @@ func (s *Store) UpdateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 		endpoint.Description,
 		endpoint.EventTypes,
 		endpoint.Status,
+		endpoint.Filter,
 		endpoint.MaxRetries,
 		endpoint.RetryBackoffMs,
 		endpoint.RetryBackoffMax,
@@ -504,7 +522,7 @@ func (s *Store) UpdateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 // GetEndpointByID retrieves an endpoint by ID.
 func (s *Store) GetEndpointByID(ctx context.Context, id uuid.UUID) (domain.Endpoint, error) {
 	query := `
-		SELECT id, client_id, url, description, event_types, status,
+		SELECT id, client_id, url, description, event_types, status, filter,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -523,7 +541,7 @@ func (s *Store) GetEndpointByID(ctx context.Context, id uuid.UUID) (domain.Endpo
 // ListEndpointsByClient retrieves all endpoints for a client.
 func (s *Store) ListEndpointsByClient(ctx context.Context, clientID string, limit, offset int) ([]domain.Endpoint, error) {
 	query := `
-		SELECT id, client_id, url, description, event_types, status,
+		SELECT id, client_id, url, description, event_types, status, filter,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -550,7 +568,7 @@ func (s *Store) FindActiveEndpointsByEventType(ctx context.Context, clientID, ev
 	// 2. event_types array contains '*' (wildcard), OR
 	// 3. event_types array is empty (subscribe to all)
 	query := `
-		SELECT id, client_id, url, description, event_types, status,
+		SELECT id, client_id, url, description, event_types, status, filter,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -598,6 +616,7 @@ func (s *Store) CountEndpointsByClient(ctx context.Context, clientID string) (in
 
 // CreateEventWithFanout creates events for all endpoints subscribed to the event type.
 // Returns the list of created events (one per matching endpoint).
+// Endpoints with content-based filters will only receive events that match their filter.
 func (s *Store) CreateEventWithFanout(ctx context.Context, clientID, eventType, idempotencyKey string, payload json.RawMessage, headers map[string]string) ([]domain.Event, error) {
 	// Find all active endpoints subscribed to this event type
 	endpoints, err := s.FindActiveEndpointsByEventType(ctx, clientID, eventType)
@@ -609,6 +628,31 @@ func (s *Store) CreateEventWithFanout(ctx context.Context, clientID, eventType, 
 		return nil, domain.ErrNoSubscribedEndpoints
 	}
 
+	// Filter endpoints based on content-based routing filters
+	var matchingEndpoints []domain.Endpoint
+	for _, endpoint := range endpoints {
+		matches, err := endpoint.MatchesFilter(payload)
+		if err != nil {
+			// Log the filter evaluation error with context for debugging
+			// Skip this endpoint but continue processing others to avoid
+			// a single misconfigured filter from blocking all event delivery
+			s.logger.Warn("filter evaluation failed for endpoint",
+				slog.String("endpoint_id", endpoint.ID.String()),
+				slog.String("client_id", endpoint.ClientID),
+				slog.String("event_type", eventType),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		if matches {
+			matchingEndpoints = append(matchingEndpoints, endpoint)
+		}
+	}
+
+	if len(matchingEndpoints) == 0 {
+		return nil, domain.ErrNoSubscribedEndpoints
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -617,7 +661,7 @@ func (s *Store) CreateEventWithFanout(ctx context.Context, clientID, eventType, 
 
 	var createdEvents []domain.Event
 
-	for _, endpoint := range endpoints {
+	for _, endpoint := range matchingEndpoints {
 		// Create unique idempotency key per endpoint
 		endpointIdempotencyKey := idempotencyKey + ":" + endpoint.ID.String()
 
@@ -978,6 +1022,7 @@ func (s *Store) scanEndpoint(row pgx.Row) (domain.Endpoint, error) {
 		&description,
 		&endpoint.EventTypes,
 		&endpoint.Status,
+		&endpoint.Filter,
 		&endpoint.MaxRetries,
 		&endpoint.RetryBackoffMs,
 		&endpoint.RetryBackoffMax,
@@ -1033,6 +1078,7 @@ func (s *Store) scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 			&description,
 			&endpoint.EventTypes,
 			&endpoint.Status,
+			&endpoint.Filter,
 			&endpoint.MaxRetries,
 			&endpoint.RetryBackoffMs,
 			&endpoint.RetryBackoffMax,

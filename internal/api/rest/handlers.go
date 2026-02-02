@@ -8,25 +8,30 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/stiffinWanjohi/relay/internal/auth"
+	"github.com/stiffinWanjohi/relay/internal/config"
 	"github.com/stiffinWanjohi/relay/internal/dedup"
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/eventtype"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
 // Handler provides REST API handlers.
 type Handler struct {
-	store *event.Store
-	queue *queue.Queue
-	dedup *dedup.Checker
+	store          *event.Store
+	eventTypeStore *eventtype.Store
+	queue          *queue.Queue
+	dedup          *dedup.Checker
 }
 
 // NewHandler creates a new REST API handler.
-func NewHandler(store *event.Store, q *queue.Queue, d *dedup.Checker) *Handler {
+func NewHandler(store *event.Store, eventTypeStore *eventtype.Store, q *queue.Queue, d *dedup.Checker) *Handler {
 	return &Handler{
-		store: store,
-		queue: q,
-		dedup: d,
+		store:          store,
+		eventTypeStore: eventTypeStore,
+		queue:          q,
+		dedup:          d,
 	}
 }
 
@@ -368,4 +373,296 @@ func (h *Handler) BatchRetry(w http.ResponseWriter, r *http.Request) {
 		"totalRequested": len(result.Succeeded) + len(result.Failed),
 		"totalSucceeded": len(result.Succeeded),
 	})
+}
+
+// ============================================================================
+// Event Type Handlers
+// ============================================================================
+
+// CreateEventTypeRequest represents the request body for creating an event type.
+type CreateEventTypeRequest struct {
+	Name          string         `json:"name"`
+	Description   string         `json:"description,omitempty"`
+	Schema        map[string]any `json:"schema,omitempty"`
+	SchemaVersion string         `json:"schemaVersion,omitempty"`
+}
+
+// UpdateEventTypeRequest represents the request body for updating an event type.
+type UpdateEventTypeRequest struct {
+	Description   *string        `json:"description,omitempty"`
+	Schema        map[string]any `json:"schema,omitempty"`
+	SchemaVersion *string        `json:"schemaVersion,omitempty"`
+}
+
+// CreateEventType handles POST /api/v1/event-types
+func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
+	clientID, err := auth.RequireClientID(r.Context())
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "Authentication required", "UNAUTHORIZED")
+		return
+	}
+
+	var req CreateEventTypeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST")
+		return
+	}
+
+	if req.Name == "" {
+		respondError(w, http.StatusBadRequest, "Event type name is required", "VALIDATION_ERROR")
+		return
+	}
+
+	// Validate schema if provided
+	var schemaBytes []byte
+	if req.Schema != nil {
+		schemaBytes, err = json.Marshal(req.Schema)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid schema format", "VALIDATION_ERROR")
+			return
+		}
+		if err := config.ValidateJSONSchema(schemaBytes); err != nil {
+			respondError(w, http.StatusBadRequest, err.Error(), "INVALID_SCHEMA")
+			return
+		}
+	}
+
+	et := domain.NewEventType(clientID, req.Name, req.Description)
+	if len(schemaBytes) > 0 {
+		et = et.WithSchema(schemaBytes, req.SchemaVersion)
+	}
+
+	created, err := h.eventTypeStore.Create(r.Context(), et)
+	if err != nil {
+		if err == domain.ErrDuplicateEventType {
+			respondError(w, http.StatusConflict, "Event type already exists", "DUPLICATE")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "Failed to create event type", "INTERNAL_ERROR")
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, eventTypeToResponse(created))
+}
+
+// GetEventType handles GET /api/v1/event-types/{eventTypeId}
+func (h *Handler) GetEventType(w http.ResponseWriter, r *http.Request) {
+	clientID, err := auth.RequireClientID(r.Context())
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "Authentication required", "UNAUTHORIZED")
+		return
+	}
+
+	eventTypeID, err := uuid.Parse(chi.URLParam(r, "eventTypeId"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid event type ID", "BAD_REQUEST")
+		return
+	}
+
+	et, err := h.eventTypeStore.GetByID(r.Context(), eventTypeID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "Event type not found", "NOT_FOUND")
+		return
+	}
+
+	if et.ClientID != clientID {
+		respondError(w, http.StatusNotFound, "Event type not found", "NOT_FOUND")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, eventTypeToResponse(et))
+}
+
+// GetEventTypeByName handles GET /api/v1/event-types/by-name/{name}
+func (h *Handler) GetEventTypeByName(w http.ResponseWriter, r *http.Request) {
+	clientID, err := auth.RequireClientID(r.Context())
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "Authentication required", "UNAUTHORIZED")
+		return
+	}
+
+	name := chi.URLParam(r, "name")
+	if name == "" {
+		respondError(w, http.StatusBadRequest, "Event type name is required", "BAD_REQUEST")
+		return
+	}
+
+	et, err := h.eventTypeStore.GetByName(r.Context(), clientID, name)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "Event type not found", "NOT_FOUND")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, eventTypeToResponse(et))
+}
+
+// ListEventTypes handles GET /api/v1/event-types
+func (h *Handler) ListEventTypes(w http.ResponseWriter, r *http.Request) {
+	clientID, err := auth.RequireClientID(r.Context())
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "Authentication required", "UNAUTHORIZED")
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+
+	limit := 20
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	offset := 0
+	if offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	eventTypes, err := h.eventTypeStore.List(r.Context(), clientID, limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to list event types", "INTERNAL_ERROR")
+		return
+	}
+
+	response := make([]map[string]any, len(eventTypes))
+	for i, et := range eventTypes {
+		response[i] = eventTypeToResponse(et)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"data": response,
+		"pagination": map[string]any{
+			"hasMore": len(eventTypes) == limit,
+			"total":   len(eventTypes),
+			"offset":  offset,
+			"limit":   limit,
+		},
+	})
+}
+
+// UpdateEventType handles PUT /api/v1/event-types/{eventTypeId}
+func (h *Handler) UpdateEventType(w http.ResponseWriter, r *http.Request) {
+	clientID, err := auth.RequireClientID(r.Context())
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "Authentication required", "UNAUTHORIZED")
+		return
+	}
+
+	eventTypeID, err := uuid.Parse(chi.URLParam(r, "eventTypeId"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid event type ID", "BAD_REQUEST")
+		return
+	}
+
+	et, err := h.eventTypeStore.GetByID(r.Context(), eventTypeID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "Event type not found", "NOT_FOUND")
+		return
+	}
+
+	if et.ClientID != clientID {
+		respondError(w, http.StatusNotFound, "Event type not found", "NOT_FOUND")
+		return
+	}
+
+	var req UpdateEventTypeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST")
+		return
+	}
+
+	// Apply updates
+	if req.Description != nil {
+		et = et.WithDescription(*req.Description)
+	}
+
+	if req.Schema != nil {
+		schemaBytes, err := json.Marshal(req.Schema)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid schema format", "VALIDATION_ERROR")
+			return
+		}
+		if err := config.ValidateJSONSchema(schemaBytes); err != nil {
+			respondError(w, http.StatusBadRequest, err.Error(), "INVALID_SCHEMA")
+			return
+		}
+		version := et.SchemaVersion
+		if req.SchemaVersion != nil {
+			version = *req.SchemaVersion
+		}
+		et = et.WithSchema(schemaBytes, version)
+	} else if req.SchemaVersion != nil {
+		et = et.WithSchema(et.Schema, *req.SchemaVersion)
+	}
+
+	updated, err := h.eventTypeStore.Update(r.Context(), et)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to update event type", "INTERNAL_ERROR")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, eventTypeToResponse(updated))
+}
+
+// DeleteEventType handles DELETE /api/v1/event-types/{eventTypeId}
+func (h *Handler) DeleteEventType(w http.ResponseWriter, r *http.Request) {
+	clientID, err := auth.RequireClientID(r.Context())
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "Authentication required", "UNAUTHORIZED")
+		return
+	}
+
+	eventTypeID, err := uuid.Parse(chi.URLParam(r, "eventTypeId"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid event type ID", "BAD_REQUEST")
+		return
+	}
+
+	et, err := h.eventTypeStore.GetByID(r.Context(), eventTypeID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "Event type not found", "NOT_FOUND")
+		return
+	}
+
+	if et.ClientID != clientID {
+		respondError(w, http.StatusNotFound, "Event type not found", "NOT_FOUND")
+		return
+	}
+
+	if err := h.eventTypeStore.Delete(r.Context(), eventTypeID); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to delete event type", "INTERNAL_ERROR")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{"deleted": true})
+}
+
+func eventTypeToResponse(et domain.EventType) map[string]any {
+	resp := map[string]any{
+		"id":        et.ID.String(),
+		"clientId":  et.ClientID,
+		"name":      et.Name,
+		"createdAt": et.CreatedAt,
+		"updatedAt": et.UpdatedAt,
+	}
+
+	if et.Description != "" {
+		resp["description"] = et.Description
+	}
+
+	if len(et.Schema) > 0 {
+		var schema map[string]any
+		if err := json.Unmarshal(et.Schema, &schema); err == nil {
+			resp["schema"] = schema
+		}
+	}
+
+	if et.SchemaVersion != "" {
+		resp["schemaVersion"] = et.SchemaVersion
+	}
+
+	return resp
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/stiffinWanjohi/relay/internal/dedup"
 	"github.com/stiffinWanjohi/relay/internal/delivery"
 	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/eventtype"
 	_ "github.com/stiffinWanjohi/relay/internal/observability/otel"
 	"github.com/stiffinWanjohi/relay/internal/outbox"
 	"github.com/stiffinWanjohi/relay/internal/queue"
@@ -217,6 +218,7 @@ func runServer(svc *app.Services) {
 	fmt.Println()
 
 	store := event.NewStore(svc.Pool)
+	eventTypeStore := eventtype.NewStore(svc.Pool)
 	q := queue.NewQueue(svc.Redis).WithMetrics(svc.Metrics)
 	dedupChecker := dedup.NewChecker(svc.Redis)
 	authStore := auth.NewStore(svc.Pool)
@@ -234,7 +236,7 @@ func runServer(svc *app.Services) {
 		EnableAuth:       cfg.Auth.Enabled,
 		EnablePlayground: cfg.Auth.EnablePlayground,
 	}
-	server := api.NewServer(store, q, dedupChecker, authStore, serverCfg, logger)
+	server := api.NewServer(store, eventTypeStore, q, dedupChecker, authStore, serverCfg, logger)
 
 	httpServer := &http.Server{
 		Addr:         cfg.API.Addr,

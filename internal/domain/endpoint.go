@@ -37,6 +37,10 @@ type Endpoint struct {
 	EventTypes  []string // Event types this endpoint subscribes to
 	Status      EndpointStatus
 
+	// Content-based routing filter (optional)
+	// If set, events are only delivered if they match the filter conditions
+	Filter []byte // JSON-encoded Filter struct
+
 	// Retry configuration
 	MaxRetries       int     // Maximum delivery attempts
 	RetryBackoffMs   int     // Initial backoff delay in milliseconds
@@ -114,6 +118,7 @@ func (e Endpoint) Pause() Endpoint {
 		Description:      e.Description,
 		EventTypes:       e.EventTypes,
 		Status:           EndpointStatusPaused,
+		Filter:           e.Filter,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -123,6 +128,9 @@ func (e Endpoint) Pause() Endpoint {
 		CircuitThreshold: e.CircuitThreshold,
 		CircuitResetMs:   e.CircuitResetMs,
 		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    e.SigningSecret,
+		PreviousSecret:   e.PreviousSecret,
+		SecretRotatedAt:  e.SecretRotatedAt,
 		CreatedAt:        e.CreatedAt,
 		UpdatedAt:        time.Now().UTC(),
 	}
@@ -137,6 +145,7 @@ func (e Endpoint) Resume() Endpoint {
 		Description:      e.Description,
 		EventTypes:       e.EventTypes,
 		Status:           EndpointStatusActive,
+		Filter:           e.Filter,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -146,6 +155,9 @@ func (e Endpoint) Resume() Endpoint {
 		CircuitThreshold: e.CircuitThreshold,
 		CircuitResetMs:   e.CircuitResetMs,
 		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    e.SigningSecret,
+		PreviousSecret:   e.PreviousSecret,
+		SecretRotatedAt:  e.SecretRotatedAt,
 		CreatedAt:        e.CreatedAt,
 		UpdatedAt:        time.Now().UTC(),
 	}
@@ -160,6 +172,7 @@ func (e Endpoint) Disable() Endpoint {
 		Description:      e.Description,
 		EventTypes:       e.EventTypes,
 		Status:           EndpointStatusDisabled,
+		Filter:           e.Filter,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -169,6 +182,9 @@ func (e Endpoint) Disable() Endpoint {
 		CircuitThreshold: e.CircuitThreshold,
 		CircuitResetMs:   e.CircuitResetMs,
 		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    e.SigningSecret,
+		PreviousSecret:   e.PreviousSecret,
+		SecretRotatedAt:  e.SecretRotatedAt,
 		CreatedAt:        e.CreatedAt,
 		UpdatedAt:        time.Now().UTC(),
 	}
@@ -183,6 +199,7 @@ func (e Endpoint) WithRetryConfig(maxRetries, backoffMs, backoffMax int, backoff
 		Description:      e.Description,
 		EventTypes:       e.EventTypes,
 		Status:           e.Status,
+		Filter:           e.Filter,
 		MaxRetries:       maxRetries,
 		RetryBackoffMs:   backoffMs,
 		RetryBackoffMax:  backoffMax,
@@ -192,6 +209,9 @@ func (e Endpoint) WithRetryConfig(maxRetries, backoffMs, backoffMax int, backoff
 		CircuitThreshold: e.CircuitThreshold,
 		CircuitResetMs:   e.CircuitResetMs,
 		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    e.SigningSecret,
+		PreviousSecret:   e.PreviousSecret,
+		SecretRotatedAt:  e.SecretRotatedAt,
 		CreatedAt:        e.CreatedAt,
 		UpdatedAt:        time.Now().UTC(),
 	}
@@ -206,6 +226,7 @@ func (e Endpoint) WithTimeout(timeoutMs int) Endpoint {
 		Description:      e.Description,
 		EventTypes:       e.EventTypes,
 		Status:           e.Status,
+		Filter:           e.Filter,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -215,6 +236,9 @@ func (e Endpoint) WithTimeout(timeoutMs int) Endpoint {
 		CircuitThreshold: e.CircuitThreshold,
 		CircuitResetMs:   e.CircuitResetMs,
 		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    e.SigningSecret,
+		PreviousSecret:   e.PreviousSecret,
+		SecretRotatedAt:  e.SecretRotatedAt,
 		CreatedAt:        e.CreatedAt,
 		UpdatedAt:        time.Now().UTC(),
 	}
@@ -229,6 +253,7 @@ func (e Endpoint) WithRateLimit(rps int) Endpoint {
 		Description:      e.Description,
 		EventTypes:       e.EventTypes,
 		Status:           e.Status,
+		Filter:           e.Filter,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -238,6 +263,9 @@ func (e Endpoint) WithRateLimit(rps int) Endpoint {
 		CircuitThreshold: e.CircuitThreshold,
 		CircuitResetMs:   e.CircuitResetMs,
 		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    e.SigningSecret,
+		PreviousSecret:   e.PreviousSecret,
+		SecretRotatedAt:  e.SecretRotatedAt,
 		CreatedAt:        e.CreatedAt,
 		UpdatedAt:        time.Now().UTC(),
 	}
@@ -263,6 +291,7 @@ func (e Endpoint) RotateSecret(newSecret string) Endpoint {
 		Description:      e.Description,
 		EventTypes:       e.EventTypes,
 		Status:           e.Status,
+		Filter:           e.Filter,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -290,6 +319,7 @@ func (e Endpoint) ClearPreviousSecret() Endpoint {
 		Description:      e.Description,
 		EventTypes:       e.EventTypes,
 		Status:           e.Status,
+		Filter:           e.Filter,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -323,4 +353,60 @@ func (e Endpoint) GetSigningSecrets() []string {
 		secrets = append(secrets, e.PreviousSecret)
 	}
 	return secrets
+}
+
+// HasFilter returns true if the endpoint has a content-based filter configured.
+func (e Endpoint) HasFilter() bool {
+	return len(e.Filter) > 0
+}
+
+// GetFilter parses and returns the endpoint's filter.
+// Returns an empty filter if no filter is configured.
+func (e Endpoint) GetFilter() (Filter, error) {
+	if !e.HasFilter() {
+		return Filter{}, nil
+	}
+	return ParseFilter(e.Filter)
+}
+
+// MatchesFilter evaluates whether the given payload matches the endpoint's filter.
+// Returns true if no filter is configured or if the payload matches.
+func (e Endpoint) MatchesFilter(payload []byte) (bool, error) {
+	if !e.HasFilter() {
+		return true, nil // No filter means match everything
+	}
+
+	filter, err := e.GetFilter()
+	if err != nil {
+		return false, err
+	}
+
+	return filter.Evaluate(payload)
+}
+
+// WithFilter returns a new endpoint with the specified filter.
+func (e Endpoint) WithFilter(filter []byte) Endpoint {
+	return Endpoint{
+		ID:               e.ID,
+		ClientID:         e.ClientID,
+		URL:              e.URL,
+		Description:      e.Description,
+		EventTypes:       e.EventTypes,
+		Status:           e.Status,
+		Filter:           filter,
+		MaxRetries:       e.MaxRetries,
+		RetryBackoffMs:   e.RetryBackoffMs,
+		RetryBackoffMax:  e.RetryBackoffMax,
+		RetryBackoffMult: e.RetryBackoffMult,
+		TimeoutMs:        e.TimeoutMs,
+		RateLimitPerSec:  e.RateLimitPerSec,
+		CircuitThreshold: e.CircuitThreshold,
+		CircuitResetMs:   e.CircuitResetMs,
+		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    e.SigningSecret,
+		PreviousSecret:   e.PreviousSecret,
+		SecretRotatedAt:  e.SecretRotatedAt,
+		CreatedAt:        e.CreatedAt,
+		UpdatedAt:        time.Now().UTC(),
+	}
 }

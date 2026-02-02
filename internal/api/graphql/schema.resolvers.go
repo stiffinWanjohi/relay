@@ -189,6 +189,16 @@ func (r *mutationResolver) SendEvent(ctx context.Context, input SendEventInput, 
 		return nil, err
 	}
 
+	// Look up event type and validate payload against schema if defined
+	eventType, err := r.EventTypeStore.GetByName(ctx, clientID, input.EventType)
+	if err == nil && eventType.HasSchema() {
+		// Event type exists and has a schema - validate payload
+		if err := config.ValidatePayloadAgainstSchema(payload, eventType.Schema); err != nil {
+			return nil, fmt.Errorf("payload validation failed for event type %s: %w", input.EventType, err)
+		}
+	}
+	// If event type not found, we allow sending (event types are optional)
+
 	// Parse headers
 	var headers map[string]string
 	if input.Headers != nil {
@@ -418,6 +428,17 @@ func (r *mutationResolver) CreateEndpoint(ctx context.Context, input CreateEndpo
 			}
 		}
 	}
+	if input.Filter != nil {
+		filterBytes, err := json.Marshal(input.Filter)
+		if err != nil {
+			return nil, fmt.Errorf("invalid filter: %w", err)
+		}
+		// Validate the filter
+		if _, err := domain.ParseFilter(filterBytes); err != nil {
+			return nil, fmt.Errorf("invalid filter: %w", err)
+		}
+		endpoint.Filter = filterBytes
+	}
 
 	created, err := r.Store.CreateEndpoint(ctx, endpoint)
 	if err != nil {
@@ -497,6 +518,19 @@ func (r *mutationResolver) UpdateEndpoint(ctx context.Context, id string, input 
 				endpoint.CustomHeaders[k] = s
 			}
 		}
+	}
+	if input.Filter != nil {
+		filterBytes, err := json.Marshal(input.Filter)
+		if err != nil {
+			return nil, fmt.Errorf("invalid filter: %w", err)
+		}
+		// Validate the filter (empty filter is valid - clears the filter)
+		if len(filterBytes) > 2 { // More than just "{}"
+			if _, err := domain.ParseFilter(filterBytes); err != nil {
+				return nil, fmt.Errorf("invalid filter: %w", err)
+			}
+		}
+		endpoint.Filter = filterBytes
 	}
 
 	updated, err := r.Store.UpdateEndpoint(ctx, endpoint)
@@ -670,6 +704,137 @@ func (r *mutationResolver) ClearPreviousSecret(ctx context.Context, id string) (
 	}
 
 	return domainEndpointToGQL(updated), nil
+}
+
+// CreateEventType is the resolver for the createEventType field.
+func (r *mutationResolver) CreateEventType(ctx context.Context, input CreateEventTypeInput) (*EventType, error) {
+	clientID, err := auth.RequireClientID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate event type name
+	if input.Name == "" {
+		return nil, fmt.Errorf("event type name is required")
+	}
+
+	// Parse and validate schema if provided
+	var schemaBytes []byte
+	if input.Schema != nil {
+		schemaBytes, err = json.Marshal(input.Schema)
+		if err != nil {
+			return nil, fmt.Errorf("invalid schema: %w", err)
+		}
+		if err := config.ValidateJSONSchema(schemaBytes); err != nil {
+			return nil, err
+		}
+	}
+
+	// Create event type
+	description := ""
+	if input.Description != nil {
+		description = *input.Description
+	}
+
+	et := domain.NewEventType(clientID, input.Name, description)
+
+	if len(schemaBytes) > 0 {
+		version := ""
+		if input.SchemaVersion != nil {
+			version = *input.SchemaVersion
+		}
+		et = et.WithSchema(schemaBytes, version)
+	}
+
+	created, err := r.EventTypeStore.Create(ctx, et)
+	if err != nil {
+		return nil, err
+	}
+
+	return domainEventTypeToGQL(created), nil
+}
+
+// UpdateEventType is the resolver for the updateEventType field.
+func (r *mutationResolver) UpdateEventType(ctx context.Context, id string, input UpdateEventTypeInput) (*EventType, error) {
+	clientID, err := auth.RequireClientID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid event type ID: %w", err)
+	}
+
+	// Get existing event type
+	et, err := r.EventTypeStore.GetByID(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify ownership
+	if et.ClientID != clientID {
+		return nil, domain.ErrEventTypeNotFound
+	}
+
+	// Apply updates
+	if input.Description != nil {
+		et = et.WithDescription(*input.Description)
+	}
+
+	if input.Schema != nil {
+		schemaBytes, err := json.Marshal(input.Schema)
+		if err != nil {
+			return nil, fmt.Errorf("invalid schema: %w", err)
+		}
+		if err := config.ValidateJSONSchema(schemaBytes); err != nil {
+			return nil, err
+		}
+		version := et.SchemaVersion
+		if input.SchemaVersion != nil {
+			version = *input.SchemaVersion
+		}
+		et = et.WithSchema(schemaBytes, version)
+	} else if input.SchemaVersion != nil {
+		// Update version only if schema exists
+		et = et.WithSchema(et.Schema, *input.SchemaVersion)
+	}
+
+	updated, err := r.EventTypeStore.Update(ctx, et)
+	if err != nil {
+		return nil, err
+	}
+
+	return domainEventTypeToGQL(updated), nil
+}
+
+// DeleteEventType is the resolver for the deleteEventType field.
+func (r *mutationResolver) DeleteEventType(ctx context.Context, id string) (bool, error) {
+	clientID, err := auth.RequireClientID(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return false, fmt.Errorf("invalid event type ID: %w", err)
+	}
+
+	// Get existing event type to verify ownership
+	et, err := r.EventTypeStore.GetByID(ctx, uid)
+	if err != nil {
+		return false, err
+	}
+
+	if et.ClientID != clientID {
+		return false, domain.ErrEventTypeNotFound
+	}
+
+	if err := r.EventTypeStore.Delete(ctx, uid); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // Event is the resolver for the event field.
@@ -864,6 +1029,107 @@ func (r *queryResolver) Endpoints(ctx context.Context, status *EndpointStatus, f
 			EndCursor:       endCursor,
 		},
 		TotalCount: len(filtered),
+	}, nil
+}
+
+// EventType is the resolver for the eventType field.
+func (r *queryResolver) EventType(ctx context.Context, id string) (*EventType, error) {
+	clientID, err := auth.RequireClientID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid event type ID: %w", err)
+	}
+
+	et, err := r.EventTypeStore.GetByID(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify ownership
+	if et.ClientID != clientID {
+		return nil, domain.ErrEventTypeNotFound
+	}
+
+	return domainEventTypeToGQL(et), nil
+}
+
+// EventTypeByName is the resolver for the eventTypeByName field.
+func (r *queryResolver) EventTypeByName(ctx context.Context, name string) (*EventType, error) {
+	clientID, err := auth.RequireClientID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	et, err := r.EventTypeStore.GetByName(ctx, clientID, name)
+	if err != nil {
+		return nil, err
+	}
+
+	return domainEventTypeToGQL(et), nil
+}
+
+// EventTypes is the resolver for the eventTypes field.
+func (r *queryResolver) EventTypes(ctx context.Context, first *int, after *string) (*EventTypeConnection, error) {
+	clientID, err := auth.RequireClientID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	limit := 20
+	if first != nil && *first > 0 {
+		limit = *first
+		if limit > 100 {
+			limit = 100
+		}
+	}
+
+	offset := 0
+	if after != nil {
+		decoded, err := base64.StdEncoding.DecodeString(*after)
+		if err == nil {
+			offset, _ = strconv.Atoi(string(decoded))
+		}
+	}
+
+	// Fetch one extra to check for next page
+	eventTypes, err := r.EventTypeStore.List(ctx, clientID, limit+1, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	hasNextPage := len(eventTypes) > limit
+	if hasNextPage {
+		eventTypes = eventTypes[:limit]
+	}
+
+	edges := make([]EventTypeEdge, len(eventTypes))
+	for i, et := range eventTypes {
+		cursor := base64.StdEncoding.EncodeToString([]byte(strconv.Itoa(offset + i + 1)))
+		edges[i] = EventTypeEdge{
+			Node:   domainEventTypeToGQL(et),
+			Cursor: cursor,
+		}
+	}
+
+	var startCursor, endCursor *string
+	if len(edges) > 0 {
+		startCursor = &edges[0].Cursor
+		endCursor = &edges[len(edges)-1].Cursor
+	}
+
+	return &EventTypeConnection{
+		Edges: edges,
+		PageInfo: &PageInfo{
+			HasNextPage:     hasNextPage,
+			HasPreviousPage: offset > 0,
+			StartCursor:     startCursor,
+			EndCursor:       endCursor,
+		},
+		TotalCount: len(eventTypes),
 	}, nil
 }
 
