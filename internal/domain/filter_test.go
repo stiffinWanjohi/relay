@@ -13,33 +13,33 @@ func TestFilterRule_Evaluate_Equal(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:    "string equal match",
-			payload: `{"status": "active"}`,
-			rule:    FilterRule{Path: "$.status", Operator: FilterOpEqual, Value: "active"},
+			name:     "string equal match",
+			payload:  `{"status": "active"}`,
+			rule:     FilterRule{Path: "$.status", Operator: FilterOpEqual, Value: "active"},
 			expected: true,
 		},
 		{
-			name:    "string equal no match",
-			payload: `{"status": "inactive"}`,
-			rule:    FilterRule{Path: "$.status", Operator: FilterOpEqual, Value: "active"},
+			name:     "string equal no match",
+			payload:  `{"status": "inactive"}`,
+			rule:     FilterRule{Path: "$.status", Operator: FilterOpEqual, Value: "active"},
 			expected: false,
 		},
 		{
-			name:    "number equal match",
-			payload: `{"amount": 100}`,
-			rule:    FilterRule{Path: "$.amount", Operator: FilterOpEqual, Value: float64(100)},
+			name:     "number equal match",
+			payload:  `{"amount": 100}`,
+			rule:     FilterRule{Path: "$.amount", Operator: FilterOpEqual, Value: float64(100)},
 			expected: true,
 		},
 		{
-			name:    "boolean equal match",
-			payload: `{"enabled": true}`,
-			rule:    FilterRule{Path: "$.enabled", Operator: FilterOpEqual, Value: true},
+			name:     "boolean equal match",
+			payload:  `{"enabled": true}`,
+			rule:     FilterRule{Path: "$.enabled", Operator: FilterOpEqual, Value: true},
 			expected: true,
 		},
 		{
-			name:    "nested path equal match",
-			payload: `{"data": {"user": {"id": "123"}}}`,
-			rule:    FilterRule{Path: "$.data.user.id", Operator: FilterOpEqual, Value: "123"},
+			name:     "nested path equal match",
+			payload:  `{"data": {"user": {"id": "123"}}}`,
+			rule:     FilterRule{Path: "$.data.user.id", Operator: FilterOpEqual, Value: "123"},
 			expected: true,
 		},
 	}
@@ -66,15 +66,15 @@ func TestFilterRule_Evaluate_NotEqual(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:    "not equal match",
-			payload: `{"status": "inactive"}`,
-			rule:    FilterRule{Path: "$.status", Operator: FilterOpNotEqual, Value: "active"},
+			name:     "not equal match",
+			payload:  `{"status": "inactive"}`,
+			rule:     FilterRule{Path: "$.status", Operator: FilterOpNotEqual, Value: "active"},
 			expected: true,
 		},
 		{
-			name:    "not equal no match",
-			payload: `{"status": "active"}`,
-			rule:    FilterRule{Path: "$.status", Operator: FilterOpNotEqual, Value: "active"},
+			name:     "not equal no match",
+			payload:  `{"status": "active"}`,
+			rule:     FilterRule{Path: "$.status", Operator: FilterOpNotEqual, Value: "active"},
 			expected: false,
 		},
 	}
@@ -101,33 +101,33 @@ func TestFilterRule_Evaluate_Numeric(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:    "greater than match",
-			payload: `{"amount": 150}`,
-			rule:    FilterRule{Path: "$.amount", Operator: FilterOpGreater, Value: float64(100)},
+			name:     "greater than match",
+			payload:  `{"amount": 150}`,
+			rule:     FilterRule{Path: "$.amount", Operator: FilterOpGreater, Value: float64(100)},
 			expected: true,
 		},
 		{
-			name:    "greater than no match",
-			payload: `{"amount": 50}`,
-			rule:    FilterRule{Path: "$.amount", Operator: FilterOpGreater, Value: float64(100)},
+			name:     "greater than no match",
+			payload:  `{"amount": 50}`,
+			rule:     FilterRule{Path: "$.amount", Operator: FilterOpGreater, Value: float64(100)},
 			expected: false,
 		},
 		{
-			name:    "greater than equal match",
-			payload: `{"amount": 100}`,
-			rule:    FilterRule{Path: "$.amount", Operator: FilterOpGreaterEq, Value: float64(100)},
+			name:     "greater than equal match",
+			payload:  `{"amount": 100}`,
+			rule:     FilterRule{Path: "$.amount", Operator: FilterOpGreaterEq, Value: float64(100)},
 			expected: true,
 		},
 		{
-			name:    "less than match",
-			payload: `{"amount": 50}`,
-			rule:    FilterRule{Path: "$.amount", Operator: FilterOpLess, Value: float64(100)},
+			name:     "less than match",
+			payload:  `{"amount": 50}`,
+			rule:     FilterRule{Path: "$.amount", Operator: FilterOpLess, Value: float64(100)},
 			expected: true,
 		},
 		{
-			name:    "less than equal match",
-			payload: `{"amount": 100}`,
-			rule:    FilterRule{Path: "$.amount", Operator: FilterOpLessEq, Value: float64(100)},
+			name:     "less than equal match",
+			payload:  `{"amount": 100}`,
+			rule:     FilterRule{Path: "$.amount", Operator: FilterOpLessEq, Value: float64(100)},
 			expected: true,
 		},
 	}
@@ -154,27 +154,27 @@ func TestFilterRule_Evaluate_String(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:    "contains match",
-			payload: `{"message": "hello world"}`,
-			rule:    FilterRule{Path: "$.message", Operator: FilterOpContains, Value: "world"},
+			name:     "contains match",
+			payload:  `{"message": "hello world"}`,
+			rule:     FilterRule{Path: "$.message", Operator: FilterOpContains, Value: "world"},
 			expected: true,
 		},
 		{
-			name:    "contains no match",
-			payload: `{"message": "hello"}`,
-			rule:    FilterRule{Path: "$.message", Operator: FilterOpContains, Value: "world"},
+			name:     "contains no match",
+			payload:  `{"message": "hello"}`,
+			rule:     FilterRule{Path: "$.message", Operator: FilterOpContains, Value: "world"},
 			expected: false,
 		},
 		{
-			name:    "starts with match",
-			payload: `{"message": "hello world"}`,
-			rule:    FilterRule{Path: "$.message", Operator: FilterOpStartsWith, Value: "hello"},
+			name:     "starts with match",
+			payload:  `{"message": "hello world"}`,
+			rule:     FilterRule{Path: "$.message", Operator: FilterOpStartsWith, Value: "hello"},
 			expected: true,
 		},
 		{
-			name:    "ends with match",
-			payload: `{"message": "hello world"}`,
-			rule:    FilterRule{Path: "$.message", Operator: FilterOpEndsWith, Value: "world"},
+			name:     "ends with match",
+			payload:  `{"message": "hello world"}`,
+			rule:     FilterRule{Path: "$.message", Operator: FilterOpEndsWith, Value: "world"},
 			expected: true,
 		},
 	}
@@ -201,15 +201,15 @@ func TestFilterRule_Evaluate_Regex(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:    "regex match",
-			payload: `{"email": "test@example.com"}`,
-			rule:    FilterRule{Path: "$.email", Operator: FilterOpRegex, Value: `^[a-z]+@[a-z]+\.[a-z]+$`},
+			name:     "regex match",
+			payload:  `{"email": "test@example.com"}`,
+			rule:     FilterRule{Path: "$.email", Operator: FilterOpRegex, Value: `^[a-z]+@[a-z]+\.[a-z]+$`},
 			expected: true,
 		},
 		{
-			name:    "regex no match",
-			payload: `{"email": "invalid"}`,
-			rule:    FilterRule{Path: "$.email", Operator: FilterOpRegex, Value: `^[a-z]+@[a-z]+\.[a-z]+$`},
+			name:     "regex no match",
+			payload:  `{"email": "invalid"}`,
+			rule:     FilterRule{Path: "$.email", Operator: FilterOpRegex, Value: `^[a-z]+@[a-z]+\.[a-z]+$`},
 			expected: false,
 		},
 	}
@@ -236,27 +236,27 @@ func TestFilterRule_Evaluate_Exists(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:    "exists true - field present",
-			payload: `{"name": "John"}`,
-			rule:    FilterRule{Path: "$.name", Operator: FilterOpExists, Value: true},
+			name:     "exists true - field present",
+			payload:  `{"name": "John"}`,
+			rule:     FilterRule{Path: "$.name", Operator: FilterOpExists, Value: true},
 			expected: true,
 		},
 		{
-			name:    "exists true - field absent",
-			payload: `{"other": "value"}`,
-			rule:    FilterRule{Path: "$.name", Operator: FilterOpExists, Value: true},
+			name:     "exists true - field absent",
+			payload:  `{"other": "value"}`,
+			rule:     FilterRule{Path: "$.name", Operator: FilterOpExists, Value: true},
 			expected: false,
 		},
 		{
-			name:    "exists false - field absent",
-			payload: `{"other": "value"}`,
-			rule:    FilterRule{Path: "$.name", Operator: FilterOpExists, Value: false},
+			name:     "exists false - field absent",
+			payload:  `{"other": "value"}`,
+			rule:     FilterRule{Path: "$.name", Operator: FilterOpExists, Value: false},
 			expected: true,
 		},
 		{
-			name:    "exists false - field present",
-			payload: `{"name": "John"}`,
-			rule:    FilterRule{Path: "$.name", Operator: FilterOpExists, Value: false},
+			name:     "exists false - field present",
+			payload:  `{"name": "John"}`,
+			rule:     FilterRule{Path: "$.name", Operator: FilterOpExists, Value: false},
 			expected: false,
 		},
 	}

@@ -768,6 +768,24 @@ components:
           $ref: "#/components/schemas/EndpointStatus"
         filter:
           $ref: "#/components/schemas/Filter"
+        transformation:
+          type: string
+          description: |
+            JavaScript code to transform the webhook payload before delivery.
+            The code must define a `transform(webhook)` function that receives
+            the webhook object with method, url, headers, and payload properties,
+            and returns a transformed object with the same properties plus an
+            optional `cancel` boolean to skip delivery.
+          example: |
+            function transform(webhook) {
+              return {
+                method: 'POST',
+                url: webhook.url,
+                headers: { ...webhook.headers, 'X-Custom': 'value' },
+                payload: { wrapped: webhook.payload },
+                cancel: false
+              };
+            }
         maxRetries:
           type: integer
         retryBackoffMs:
@@ -912,6 +930,9 @@ components:
           minItems: 1
         filter:
           $ref: "#/components/schemas/Filter"
+        transformation:
+          type: string
+          description: JavaScript code to transform the webhook payload before delivery
         maxRetries:
           type: integer
           minimum: 0
@@ -968,6 +989,9 @@ components:
           $ref: "#/components/schemas/EndpointStatus"
         filter:
           $ref: "#/components/schemas/Filter"
+        transformation:
+          type: string
+          description: JavaScript code to transform the webhook payload (set to empty string to remove)
         maxRetries:
           type: integer
         retryBackoffMs:

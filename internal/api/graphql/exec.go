@@ -93,6 +93,7 @@ type ComplexityRoot struct {
 		Stats            func(childComplexity int) int
 		Status           func(childComplexity int) int
 		TimeoutMs        func(childComplexity int) int
+		Transformation   func(childComplexity int) int
 		URL              func(childComplexity int) int
 		UpdatedAt        func(childComplexity int) int
 	}
@@ -190,6 +191,7 @@ type ComplexityRoot struct {
 		RetryEventsByStatus   func(childComplexity int, status EventStatus, limit *int) int
 		RotateEndpointSecret  func(childComplexity int, id string) int
 		SendEvent             func(childComplexity int, input SendEventInput, idempotencyKey string) int
+		TestTransformation    func(childComplexity int, input TestTransformationInput) int
 		UpdateEndpoint        func(childComplexity int, id string, input UpdateEndpointInput) int
 		UpdateEventType       func(childComplexity int, id string, input UpdateEventTypeInput) int
 	}
@@ -222,6 +224,21 @@ type ComplexityRoot struct {
 		Processing func(childComplexity int) int
 		Queued     func(childComplexity int) int
 	}
+
+	TransformationResult struct {
+		Cancel  func(childComplexity int) int
+		Headers func(childComplexity int) int
+		Method  func(childComplexity int) int
+		Payload func(childComplexity int) int
+		URL     func(childComplexity int) int
+	}
+
+	TransformationTestResult struct {
+		Error       func(childComplexity int) int
+		ExecutionMs func(childComplexity int) int
+		Result      func(childComplexity int) int
+		Success     func(childComplexity int) int
+	}
 }
 
 type EndpointResolver interface {
@@ -249,6 +266,7 @@ type MutationResolver interface {
 	CreateEventType(ctx context.Context, input CreateEventTypeInput) (*EventType, error)
 	UpdateEventType(ctx context.Context, id string, input UpdateEventTypeInput) (*EventType, error)
 	DeleteEventType(ctx context.Context, id string) (bool, error)
+	TestTransformation(ctx context.Context, input TestTransformationInput) (*TransformationTestResult, error)
 }
 type QueryResolver interface {
 	Event(ctx context.Context, id string) (*Event, error)
@@ -492,6 +510,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Endpoint.TimeoutMs(childComplexity), true
+	case "Endpoint.transformation":
+		if e.complexity.Endpoint.Transformation == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.Transformation(childComplexity), true
 	case "Endpoint.url":
 		if e.complexity.Endpoint.URL == nil {
 			break
@@ -957,6 +981,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.SendEvent(childComplexity, args["input"].(SendEventInput), args["idempotencyKey"].(string)), true
+	case "Mutation.testTransformation":
+		if e.complexity.Mutation.TestTransformation == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_testTransformation_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.TestTransformation(childComplexity, args["input"].(TestTransformationInput)), true
 	case "Mutation.updateEndpoint":
 		if e.complexity.Mutation.UpdateEndpoint == nil {
 			break
@@ -1138,6 +1173,62 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.QueueStats.Queued(childComplexity), true
 
+	case "TransformationResult.cancel":
+		if e.complexity.TransformationResult.Cancel == nil {
+			break
+		}
+
+		return e.complexity.TransformationResult.Cancel(childComplexity), true
+	case "TransformationResult.headers":
+		if e.complexity.TransformationResult.Headers == nil {
+			break
+		}
+
+		return e.complexity.TransformationResult.Headers(childComplexity), true
+	case "TransformationResult.method":
+		if e.complexity.TransformationResult.Method == nil {
+			break
+		}
+
+		return e.complexity.TransformationResult.Method(childComplexity), true
+	case "TransformationResult.payload":
+		if e.complexity.TransformationResult.Payload == nil {
+			break
+		}
+
+		return e.complexity.TransformationResult.Payload(childComplexity), true
+	case "TransformationResult.url":
+		if e.complexity.TransformationResult.URL == nil {
+			break
+		}
+
+		return e.complexity.TransformationResult.URL(childComplexity), true
+
+	case "TransformationTestResult.error":
+		if e.complexity.TransformationTestResult.Error == nil {
+			break
+		}
+
+		return e.complexity.TransformationTestResult.Error(childComplexity), true
+	case "TransformationTestResult.executionMs":
+		if e.complexity.TransformationTestResult.ExecutionMs == nil {
+			break
+		}
+
+		return e.complexity.TransformationTestResult.ExecutionMs(childComplexity), true
+	case "TransformationTestResult.result":
+		if e.complexity.TransformationTestResult.Result == nil {
+			break
+		}
+
+		return e.complexity.TransformationTestResult.Result(childComplexity), true
+	case "TransformationTestResult.success":
+		if e.complexity.TransformationTestResult.Success == nil {
+			break
+		}
+
+		return e.complexity.TransformationTestResult.Success(childComplexity), true
+
 	}
 	return 0, false
 }
@@ -1150,8 +1241,10 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputCreateEventInput,
 		ec.unmarshalInputCreateEventTypeInput,
 		ec.unmarshalInputSendEventInput,
+		ec.unmarshalInputTestTransformationInput,
 		ec.unmarshalInputUpdateEndpointInput,
 		ec.unmarshalInputUpdateEventTypeInput,
+		ec.unmarshalInputWebhookInput,
 	)
 	first := true
 
@@ -1455,6 +1548,17 @@ func (ec *executionContext) field_Mutation_sendEvent_args(ctx context.Context, r
 		return nil, err
 	}
 	args["idempotencyKey"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_testTransformation_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNTestTransformationInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐTestTransformationInput)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
 	return args, nil
 }
 
@@ -2306,6 +2410,35 @@ func (ec *executionContext) fieldContext_Endpoint_filter(_ context.Context, fiel
 	return fc, nil
 }
 
+func (ec *executionContext) _Endpoint_transformation(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_transformation,
+		func(ctx context.Context) (any, error) {
+			return obj.Transformation, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_transformation(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Endpoint_maxRetries(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2944,6 +3077,8 @@ func (ec *executionContext) fieldContext_EndpointEdge_node(_ context.Context, fi
 				return ec.fieldContext_Endpoint_status(ctx, field)
 			case "filter":
 				return ec.fieldContext_Endpoint_filter(ctx, field)
+			case "transformation":
+				return ec.fieldContext_Endpoint_transformation(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -3048,6 +3183,8 @@ func (ec *executionContext) fieldContext_EndpointSecretRotation_endpoint(_ conte
 				return ec.fieldContext_Endpoint_status(ctx, field)
 			case "filter":
 				return ec.fieldContext_Endpoint_filter(ctx, field)
+			case "transformation":
+				return ec.fieldContext_Endpoint_transformation(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -3808,6 +3945,8 @@ func (ec *executionContext) fieldContext_Event_endpoint(_ context.Context, field
 				return ec.fieldContext_Endpoint_status(ctx, field)
 			case "filter":
 				return ec.fieldContext_Endpoint_filter(ctx, field)
+			case "transformation":
+				return ec.fieldContext_Endpoint_transformation(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -4876,6 +5015,8 @@ func (ec *executionContext) fieldContext_Mutation_createEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_status(ctx, field)
 			case "filter":
 				return ec.fieldContext_Endpoint_filter(ctx, field)
+			case "transformation":
+				return ec.fieldContext_Endpoint_transformation(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -4963,6 +5104,8 @@ func (ec *executionContext) fieldContext_Mutation_updateEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_status(ctx, field)
 			case "filter":
 				return ec.fieldContext_Endpoint_filter(ctx, field)
+			case "transformation":
+				return ec.fieldContext_Endpoint_transformation(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -5091,6 +5234,8 @@ func (ec *executionContext) fieldContext_Mutation_pauseEndpoint(ctx context.Cont
 				return ec.fieldContext_Endpoint_status(ctx, field)
 			case "filter":
 				return ec.fieldContext_Endpoint_filter(ctx, field)
+			case "transformation":
+				return ec.fieldContext_Endpoint_transformation(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -5178,6 +5323,8 @@ func (ec *executionContext) fieldContext_Mutation_resumeEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_status(ctx, field)
 			case "filter":
 				return ec.fieldContext_Endpoint_filter(ctx, field)
+			case "transformation":
+				return ec.fieldContext_Endpoint_transformation(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -5312,6 +5459,8 @@ func (ec *executionContext) fieldContext_Mutation_clearPreviousSecret(ctx contex
 				return ec.fieldContext_Endpoint_status(ctx, field)
 			case "filter":
 				return ec.fieldContext_Endpoint_filter(ctx, field)
+			case "transformation":
+				return ec.fieldContext_Endpoint_transformation(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -5513,6 +5662,57 @@ func (ec *executionContext) fieldContext_Mutation_deleteEventType(ctx context.Co
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_deleteEventType_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_testTransformation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_testTransformation,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().TestTransformation(ctx, fc.Args["input"].(TestTransformationInput))
+		},
+		nil,
+		ec.marshalNTransformationTestResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐTransformationTestResult,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_testTransformation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "success":
+				return ec.fieldContext_TransformationTestResult_success(ctx, field)
+			case "result":
+				return ec.fieldContext_TransformationTestResult_result(ctx, field)
+			case "error":
+				return ec.fieldContext_TransformationTestResult_error(ctx, field)
+			case "executionMs":
+				return ec.fieldContext_TransformationTestResult_executionMs(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type TransformationTestResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_testTransformation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -5847,6 +6047,8 @@ func (ec *executionContext) fieldContext_Query_endpoint(ctx context.Context, fie
 				return ec.fieldContext_Endpoint_status(ctx, field)
 			case "filter":
 				return ec.fieldContext_Endpoint_filter(ctx, field)
+			case "transformation":
+				return ec.fieldContext_Endpoint_transformation(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -6441,6 +6643,279 @@ func (ec *executionContext) _QueueStats_delayed(ctx context.Context, field graph
 func (ec *executionContext) fieldContext_QueueStats_delayed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "QueueStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TransformationResult_method(ctx context.Context, field graphql.CollectedField, obj *TransformationResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_TransformationResult_method,
+		func(ctx context.Context) (any, error) {
+			return obj.Method, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_TransformationResult_method(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TransformationResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TransformationResult_url(ctx context.Context, field graphql.CollectedField, obj *TransformationResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_TransformationResult_url,
+		func(ctx context.Context) (any, error) {
+			return obj.URL, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_TransformationResult_url(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TransformationResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TransformationResult_headers(ctx context.Context, field graphql.CollectedField, obj *TransformationResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_TransformationResult_headers,
+		func(ctx context.Context) (any, error) {
+			return obj.Headers, nil
+		},
+		nil,
+		ec.marshalOJSON2map,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_TransformationResult_headers(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TransformationResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type JSON does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TransformationResult_payload(ctx context.Context, field graphql.CollectedField, obj *TransformationResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_TransformationResult_payload,
+		func(ctx context.Context) (any, error) {
+			return obj.Payload, nil
+		},
+		nil,
+		ec.marshalOJSON2map,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_TransformationResult_payload(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TransformationResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type JSON does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TransformationResult_cancel(ctx context.Context, field graphql.CollectedField, obj *TransformationResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_TransformationResult_cancel,
+		func(ctx context.Context) (any, error) {
+			return obj.Cancel, nil
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_TransformationResult_cancel(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TransformationResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TransformationTestResult_success(ctx context.Context, field graphql.CollectedField, obj *TransformationTestResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_TransformationTestResult_success,
+		func(ctx context.Context) (any, error) {
+			return obj.Success, nil
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_TransformationTestResult_success(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TransformationTestResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TransformationTestResult_result(ctx context.Context, field graphql.CollectedField, obj *TransformationTestResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_TransformationTestResult_result,
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		ec.marshalOTransformationResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐTransformationResult,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_TransformationTestResult_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TransformationTestResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "method":
+				return ec.fieldContext_TransformationResult_method(ctx, field)
+			case "url":
+				return ec.fieldContext_TransformationResult_url(ctx, field)
+			case "headers":
+				return ec.fieldContext_TransformationResult_headers(ctx, field)
+			case "payload":
+				return ec.fieldContext_TransformationResult_payload(ctx, field)
+			case "cancel":
+				return ec.fieldContext_TransformationResult_cancel(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type TransformationResult", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TransformationTestResult_error(ctx context.Context, field graphql.CollectedField, obj *TransformationTestResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_TransformationTestResult_error,
+		func(ctx context.Context) (any, error) {
+			return obj.Error, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_TransformationTestResult_error(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TransformationTestResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TransformationTestResult_executionMs(ctx context.Context, field graphql.CollectedField, obj *TransformationTestResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_TransformationTestResult_executionMs,
+		func(ctx context.Context) (any, error) {
+			return obj.ExecutionMs, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_TransformationTestResult_executionMs(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TransformationTestResult",
 		Field:      field,
 		IsMethod:   false,
 		IsResolver: false,
@@ -7904,7 +8379,7 @@ func (ec *executionContext) unmarshalInputCreateEndpointInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"url", "description", "eventTypes", "filter", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
+	fieldsInOrder := [...]string{"url", "description", "eventTypes", "filter", "transformation", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -7939,6 +8414,13 @@ func (ec *executionContext) unmarshalInputCreateEndpointInput(ctx context.Contex
 				return it, err
 			}
 			it.Filter = data
+		case "transformation":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("transformation"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Transformation = data
 		case "maxRetries":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("maxRetries"))
 			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
@@ -8145,6 +8627,40 @@ func (ec *executionContext) unmarshalInputSendEventInput(ctx context.Context, ob
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputTestTransformationInput(ctx context.Context, obj any) (TestTransformationInput, error) {
+	var it TestTransformationInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"code", "webhook"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "code":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("code"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Code = data
+		case "webhook":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("webhook"))
+			data, err := ec.unmarshalNWebhookInput2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐWebhookInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Webhook = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputUpdateEndpointInput(ctx context.Context, obj any) (UpdateEndpointInput, error) {
 	var it UpdateEndpointInput
 	asMap := map[string]any{}
@@ -8152,7 +8668,7 @@ func (ec *executionContext) unmarshalInputUpdateEndpointInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"url", "description", "eventTypes", "status", "filter", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
+	fieldsInOrder := [...]string{"url", "description", "eventTypes", "status", "filter", "transformation", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -8194,6 +8710,13 @@ func (ec *executionContext) unmarshalInputUpdateEndpointInput(ctx context.Contex
 				return it, err
 			}
 			it.Filter = data
+		case "transformation":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("transformation"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Transformation = data
 		case "maxRetries":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("maxRetries"))
 			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
@@ -8298,6 +8821,54 @@ func (ec *executionContext) unmarshalInputUpdateEventTypeInput(ctx context.Conte
 				return it, err
 			}
 			it.SchemaVersion = data
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputWebhookInput(ctx context.Context, obj any) (WebhookInput, error) {
+	var it WebhookInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"method", "url", "headers", "payload"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "method":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("method"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Method = data
+		case "url":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("url"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.URL = data
+		case "headers":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("headers"))
+			data, err := ec.unmarshalOJSON2map(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Headers = data
+		case "payload":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("payload"))
+			data, err := ec.unmarshalNJSON2map(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Payload = data
 		}
 	}
 
@@ -8515,6 +9086,8 @@ func (ec *executionContext) _Endpoint(ctx context.Context, sel ast.SelectionSet,
 			}
 		case "filter":
 			out.Values[i] = ec._Endpoint_filter(ctx, field, obj)
+		case "transformation":
+			out.Values[i] = ec._Endpoint_transformation(ctx, field, obj)
 		case "maxRetries":
 			out.Values[i] = ec._Endpoint_maxRetries(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -9412,6 +9985,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "testTransformation":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_testTransformation(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9745,6 +10325,107 @@ func (ec *executionContext) _QueueStats(ctx context.Context, sel ast.SelectionSe
 			}
 		case "delayed":
 			out.Values[i] = ec._QueueStats_delayed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var transformationResultImplementors = []string{"TransformationResult"}
+
+func (ec *executionContext) _TransformationResult(ctx context.Context, sel ast.SelectionSet, obj *TransformationResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, transformationResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("TransformationResult")
+		case "method":
+			out.Values[i] = ec._TransformationResult_method(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "url":
+			out.Values[i] = ec._TransformationResult_url(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "headers":
+			out.Values[i] = ec._TransformationResult_headers(ctx, field, obj)
+		case "payload":
+			out.Values[i] = ec._TransformationResult_payload(ctx, field, obj)
+		case "cancel":
+			out.Values[i] = ec._TransformationResult_cancel(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var transformationTestResultImplementors = []string{"TransformationTestResult"}
+
+func (ec *executionContext) _TransformationTestResult(ctx context.Context, sel ast.SelectionSet, obj *TransformationTestResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, transformationTestResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("TransformationTestResult")
+		case "success":
+			out.Values[i] = ec._TransformationTestResult_success(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "result":
+			out.Values[i] = ec._TransformationTestResult_result(ctx, field, obj)
+		case "error":
+			out.Values[i] = ec._TransformationTestResult_error(ctx, field, obj)
+		case "executionMs":
+			out.Values[i] = ec._TransformationTestResult_executionMs(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -10758,6 +11439,25 @@ func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel
 	return ret
 }
 
+func (ec *executionContext) unmarshalNTestTransformationInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐTestTransformationInput(ctx context.Context, v any) (TestTransformationInput, error) {
+	res, err := ec.unmarshalInputTestTransformationInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNTransformationTestResult2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐTransformationTestResult(ctx context.Context, sel ast.SelectionSet, v TransformationTestResult) graphql.Marshaler {
+	return ec._TransformationTestResult(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNTransformationTestResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐTransformationTestResult(ctx context.Context, sel ast.SelectionSet, v *TransformationTestResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._TransformationTestResult(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNUpdateEndpointInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐUpdateEndpointInput(ctx context.Context, v any) (UpdateEndpointInput, error) {
 	res, err := ec.unmarshalInputUpdateEndpointInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -10766,6 +11466,11 @@ func (ec *executionContext) unmarshalNUpdateEndpointInput2githubᚗcomᚋstiffin
 func (ec *executionContext) unmarshalNUpdateEventTypeInput2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐUpdateEventTypeInput(ctx context.Context, v any) (UpdateEventTypeInput, error) {
 	res, err := ec.unmarshalInputUpdateEventTypeInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNWebhookInput2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐWebhookInput(ctx context.Context, v any) (*WebhookInput, error) {
+	res, err := ec.unmarshalInputWebhookInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalN__Directive2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐDirective(ctx context.Context, sel ast.SelectionSet, v introspection.Directive) graphql.Marshaler {
@@ -11245,6 +11950,13 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	_ = ctx
 	res := graphql.MarshalString(*v)
 	return res
+}
+
+func (ec *executionContext) marshalOTransformationResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐTransformationResult(ctx context.Context, sel ast.SelectionSet, v *TransformationResult) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._TransformationResult(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalO__EnumValue2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐEnumValueᚄ(ctx context.Context, sel ast.SelectionSet, v []introspection.EnumValue) graphql.Marshaler {

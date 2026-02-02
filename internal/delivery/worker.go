@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 	"github.com/stiffinWanjohi/relay/internal/queue"
+	"github.com/stiffinWanjohi/relay/internal/transform"
 )
 
 const (
@@ -32,6 +34,7 @@ type Worker struct {
 	circuit        *CircuitBreaker
 	retry          *RetryPolicy
 	rateLimiter    *RateLimiter
+	transformer    domain.TransformationExecutor
 	logger         *slog.Logger
 	metrics        *observability.Metrics
 	stopCh         chan struct{}
@@ -76,6 +79,7 @@ func NewWorker(q *queue.Queue, store *event.Store, config WorkerConfig, logger *
 		circuit:        circuit,
 		retry:          NewRetryPolicy(),
 		rateLimiter:    config.RateLimiter,
+		transformer:    transform.NewDefaultV8Executor(),
 		logger:         logger,
 		metrics:        config.Metrics,
 		stopCh:         make(chan struct{}),
@@ -218,6 +222,28 @@ func (w *Worker) processOne(ctx context.Context, logger *slog.Logger) error {
 		logger.Error("failed to update event status", "error", err)
 	}
 
+	// Apply transformation if configured
+	if endpoint != nil && endpoint.HasTransformation() {
+		transformedEvt, err := w.applyTransformation(ctx, evt, endpoint, logger)
+		if err != nil {
+			if errors.Is(err, domain.ErrTransformationCancelled) {
+				// Transformation requested cancellation - mark as delivered (no-op delivery)
+				logger.Info("delivery cancelled by transformation")
+				evt = evt.MarkDelivered()
+				if _, err := w.store.Update(ctx, evt); err != nil {
+					logger.Error("failed to update event status", "error", err)
+				}
+				return w.queue.Ack(ctx, msg)
+			}
+			// Transformation failed - log error but continue with original payload
+			logger.Warn("transformation failed, using original payload",
+				slog.String("error", err.Error()),
+			)
+		} else {
+			evt = transformedEvt
+		}
+	}
+
 	// Attempt delivery with endpoint-specific configuration (timeout, signing secret)
 	result := w.sender.SendWithEndpoint(ctx, evt, endpoint)
 
@@ -322,6 +348,53 @@ func (w *Worker) handleFailure(ctx context.Context, msg *queue.Message, evt doma
 // CircuitStats returns the current circuit breaker statistics.
 func (w *Worker) CircuitStats() CircuitStats {
 	return w.circuit.Stats()
+}
+
+// applyTransformation applies the endpoint's transformation to the event.
+// Returns the transformed event or an error if transformation fails.
+func (w *Worker) applyTransformation(ctx context.Context, evt domain.Event, endpoint *domain.Endpoint, logger *slog.Logger) (domain.Event, error) {
+	if endpoint == nil || !endpoint.HasTransformation() {
+		return evt, nil
+	}
+
+	// Build transformation input
+	input := domain.NewTransformationInput(
+		"POST",
+		evt.Destination,
+		evt.Headers,
+		evt.Payload,
+	)
+
+	// Execute transformation
+	result, err := w.transformer.Execute(ctx, endpoint.Transformation, input)
+	if err != nil {
+		return evt, err
+	}
+
+	// Apply transformation result to event
+	transformedEvt := evt
+
+	// Update destination URL if changed
+	if result.URL != evt.Destination {
+		transformedEvt.Destination = result.URL
+	}
+
+	// Update headers
+	if result.Headers != nil {
+		transformedEvt.Headers = result.Headers
+	}
+
+	// Update payload
+	if result.Payload != nil {
+		transformedEvt.Payload = json.RawMessage(result.Payload)
+	}
+
+	logger.Debug("transformation applied",
+		slog.String("original_url", evt.Destination),
+		slog.String("transformed_url", transformedEvt.Destination),
+	)
+
+	return transformedEvt, nil
 }
 
 // extractHost extracts the host from a URL for metrics tagging.

@@ -53,6 +53,37 @@ type Mutation {
     createEventType(input: CreateEventTypeInput!): EventType!
     updateEventType(id: ID!, input: UpdateEventTypeInput!): EventType!
     deleteEventType(id: ID!): Boolean!
+
+    # Transformation testing
+    testTransformation(input: TestTransformationInput!): TransformationTestResult!
+}
+
+# Transformation testing types
+input TestTransformationInput {
+    code: String!
+    webhook: WebhookInput!
+}
+
+input WebhookInput {
+    method: String
+    url: String!
+    headers: JSON
+    payload: JSON!
+}
+
+type TransformationTestResult {
+    success: Boolean!
+    result: TransformationResult
+    error: String
+    executionMs: Int!
+}
+
+type TransformationResult {
+    method: String!
+    url: String!
+    headers: JSON
+    payload: JSON
+    cancel: Boolean!
 }
 
 type EndpointSecretRotation {
@@ -104,6 +135,10 @@ type Endpoint {
     # Content-based routing filter (optional)
     # If set, events are only delivered if they match the filter conditions
     filter: JSON
+
+    # Payload transformation (optional)
+    # JavaScript code to transform webhook payload before delivery
+    transformation: String
 
     # Retry configuration
     maxRetries: Int!
@@ -255,6 +290,11 @@ input CreateEndpointInput {
     # Example: {"rule": {"path": "$.data.amount", "operator": "gt", "value": 100}}
     filter: JSON
 
+    # Payload transformation (optional)
+    # JavaScript code to transform webhook before delivery
+    # Example: function transform(webhook) { return { ...webhook, payload: { wrapped: webhook.payload } }; }
+    transformation: String
+
     # Optional configuration (uses defaults if not provided)
     maxRetries: Int
     retryBackoffMs: Int
@@ -275,6 +315,9 @@ input UpdateEndpointInput {
 
     # Content-based routing filter (set to null to remove)
     filter: JSON
+
+    # Payload transformation (set to null to remove)
+    transformation: String
 
     maxRetries: Int
     retryBackoffMs: Int

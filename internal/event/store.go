@@ -433,13 +433,13 @@ func (s *Store) CreateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 
 	query := `
 		INSERT INTO endpoints (
-			id, client_id, url, description, event_types, status, filter,
+			id, client_id, url, description, event_types, status, filter, transformation,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
 			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-		RETURNING id, client_id, url, description, event_types, status, filter,
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+		RETURNING id, client_id, url, description, event_types, status, filter, transformation,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -454,6 +454,7 @@ func (s *Store) CreateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 		endpoint.EventTypes,
 		endpoint.Status,
 		endpoint.Filter,
+		nullString(endpoint.Transformation),
 		endpoint.MaxRetries,
 		endpoint.RetryBackoffMs,
 		endpoint.RetryBackoffMax,
@@ -480,13 +481,13 @@ func (s *Store) UpdateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 
 	query := `
 		UPDATE endpoints SET
-			url = $2, description = $3, event_types = $4, status = $5, filter = $6,
-			max_retries = $7, retry_backoff_ms = $8, retry_backoff_max = $9, retry_backoff_mult = $10,
-			timeout_ms = $11, rate_limit_per_sec = $12, circuit_threshold = $13, circuit_reset_ms = $14,
-			custom_headers = $15, signing_secret = $16, previous_secret = $17, secret_rotated_at = $18,
+			url = $2, description = $3, event_types = $4, status = $5, filter = $6, transformation = $7,
+			max_retries = $8, retry_backoff_ms = $9, retry_backoff_max = $10, retry_backoff_mult = $11,
+			timeout_ms = $12, rate_limit_per_sec = $13, circuit_threshold = $14, circuit_reset_ms = $15,
+			custom_headers = $16, signing_secret = $17, previous_secret = $18, secret_rotated_at = $19,
 			updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, client_id, url, description, event_types, status, filter,
+		RETURNING id, client_id, url, description, event_types, status, filter, transformation,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -500,6 +501,7 @@ func (s *Store) UpdateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 		endpoint.EventTypes,
 		endpoint.Status,
 		endpoint.Filter,
+		nullString(endpoint.Transformation),
 		endpoint.MaxRetries,
 		endpoint.RetryBackoffMs,
 		endpoint.RetryBackoffMax,
@@ -522,7 +524,7 @@ func (s *Store) UpdateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 // GetEndpointByID retrieves an endpoint by ID.
 func (s *Store) GetEndpointByID(ctx context.Context, id uuid.UUID) (domain.Endpoint, error) {
 	query := `
-		SELECT id, client_id, url, description, event_types, status, filter,
+		SELECT id, client_id, url, description, event_types, status, filter, transformation,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -541,7 +543,7 @@ func (s *Store) GetEndpointByID(ctx context.Context, id uuid.UUID) (domain.Endpo
 // ListEndpointsByClient retrieves all endpoints for a client.
 func (s *Store) ListEndpointsByClient(ctx context.Context, clientID string, limit, offset int) ([]domain.Endpoint, error) {
 	query := `
-		SELECT id, client_id, url, description, event_types, status, filter,
+		SELECT id, client_id, url, description, event_types, status, filter, transformation,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -568,7 +570,7 @@ func (s *Store) FindActiveEndpointsByEventType(ctx context.Context, clientID, ev
 	// 2. event_types array contains '*' (wildcard), OR
 	// 3. event_types array is empty (subscribe to all)
 	query := `
-		SELECT id, client_id, url, description, event_types, status, filter,
+		SELECT id, client_id, url, description, event_types, status, filter, transformation,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -1013,7 +1015,7 @@ func (s *Store) scanDeliveryAttemptFromRows(rows pgx.Rows) (domain.DeliveryAttem
 func (s *Store) scanEndpoint(row pgx.Row) (domain.Endpoint, error) {
 	var endpoint domain.Endpoint
 	var headersJSON []byte
-	var description, signingSecret, previousSecret *string
+	var description, signingSecret, previousSecret, transformation *string
 
 	err := row.Scan(
 		&endpoint.ID,
@@ -1023,6 +1025,7 @@ func (s *Store) scanEndpoint(row pgx.Row) (domain.Endpoint, error) {
 		&endpoint.EventTypes,
 		&endpoint.Status,
 		&endpoint.Filter,
+		&transformation,
 		&endpoint.MaxRetries,
 		&endpoint.RetryBackoffMs,
 		&endpoint.RetryBackoffMax,
@@ -1044,6 +1047,9 @@ func (s *Store) scanEndpoint(row pgx.Row) (domain.Endpoint, error) {
 
 	if description != nil {
 		endpoint.Description = *description
+	}
+	if transformation != nil {
+		endpoint.Transformation = *transformation
 	}
 	if signingSecret != nil {
 		endpoint.SigningSecret = *signingSecret
@@ -1069,7 +1075,7 @@ func (s *Store) scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 	for rows.Next() {
 		var endpoint domain.Endpoint
 		var headersJSON []byte
-		var description, signingSecret, previousSecret *string
+		var description, signingSecret, previousSecret, transformation *string
 
 		err := rows.Scan(
 			&endpoint.ID,
@@ -1079,6 +1085,7 @@ func (s *Store) scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 			&endpoint.EventTypes,
 			&endpoint.Status,
 			&endpoint.Filter,
+			&transformation,
 			&endpoint.MaxRetries,
 			&endpoint.RetryBackoffMs,
 			&endpoint.RetryBackoffMax,
@@ -1100,6 +1107,9 @@ func (s *Store) scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 
 		if description != nil {
 			endpoint.Description = *description
+		}
+		if transformation != nil {
+			endpoint.Transformation = *transformation
 		}
 		if signingSecret != nil {
 			endpoint.SigningSecret = *signingSecret

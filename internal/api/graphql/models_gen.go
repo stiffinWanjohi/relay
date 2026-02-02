@@ -27,6 +27,7 @@ type CreateEndpointInput struct {
 	Description      *string        `json:"description,omitempty"`
 	EventTypes       []string       `json:"eventTypes"`
 	Filter           map[string]any `json:"filter,omitempty"`
+	Transformation   *string        `json:"transformation,omitempty"`
 	MaxRetries       *int           `json:"maxRetries,omitempty"`
 	RetryBackoffMs   *int           `json:"retryBackoffMs,omitempty"`
 	RetryBackoffMax  *int           `json:"retryBackoffMax,omitempty"`
@@ -71,6 +72,7 @@ type Endpoint struct {
 	EventTypes       []string       `json:"eventTypes"`
 	Status           EndpointStatus `json:"status"`
 	Filter           map[string]any `json:"filter,omitempty"`
+	Transformation   *string        `json:"transformation,omitempty"`
 	MaxRetries       int            `json:"maxRetries"`
 	RetryBackoffMs   int            `json:"retryBackoffMs"`
 	RetryBackoffMax  int            `json:"retryBackoffMax"`
@@ -196,12 +198,33 @@ type SendEventInput struct {
 	Headers   map[string]any `json:"headers,omitempty"`
 }
 
+type TestTransformationInput struct {
+	Code    string        `json:"code"`
+	Webhook *WebhookInput `json:"webhook"`
+}
+
+type TransformationResult struct {
+	Method  string         `json:"method"`
+	URL     string         `json:"url"`
+	Headers map[string]any `json:"headers,omitempty"`
+	Payload map[string]any `json:"payload,omitempty"`
+	Cancel  bool           `json:"cancel"`
+}
+
+type TransformationTestResult struct {
+	Success     bool                  `json:"success"`
+	Result      *TransformationResult `json:"result,omitempty"`
+	Error       *string               `json:"error,omitempty"`
+	ExecutionMs int                   `json:"executionMs"`
+}
+
 type UpdateEndpointInput struct {
 	URL              *string         `json:"url,omitempty"`
 	Description      *string         `json:"description,omitempty"`
 	EventTypes       []string        `json:"eventTypes,omitempty"`
 	Status           *EndpointStatus `json:"status,omitempty"`
 	Filter           map[string]any  `json:"filter,omitempty"`
+	Transformation   *string         `json:"transformation,omitempty"`
 	MaxRetries       *int            `json:"maxRetries,omitempty"`
 	RetryBackoffMs   *int            `json:"retryBackoffMs,omitempty"`
 	RetryBackoffMax  *int            `json:"retryBackoffMax,omitempty"`
@@ -217,6 +240,13 @@ type UpdateEventTypeInput struct {
 	Description   *string        `json:"description,omitempty"`
 	Schema        map[string]any `json:"schema,omitempty"`
 	SchemaVersion *string        `json:"schemaVersion,omitempty"`
+}
+
+type WebhookInput struct {
+	Method  *string        `json:"method,omitempty"`
+	URL     string         `json:"url"`
+	Headers map[string]any `json:"headers,omitempty"`
+	Payload map[string]any `json:"payload"`
 }
 
 type EndpointStatus string

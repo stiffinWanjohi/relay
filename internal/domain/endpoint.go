@@ -41,6 +41,10 @@ type Endpoint struct {
 	// If set, events are only delivered if they match the filter conditions
 	Filter []byte // JSON-encoded Filter struct
 
+	// Payload transformation (optional)
+	// JavaScript code to transform the webhook before delivery
+	Transformation string
+
 	// Retry configuration
 	MaxRetries       int     // Maximum delivery attempts
 	RetryBackoffMs   int     // Initial backoff delay in milliseconds
@@ -119,6 +123,7 @@ func (e Endpoint) Pause() Endpoint {
 		EventTypes:       e.EventTypes,
 		Status:           EndpointStatusPaused,
 		Filter:           e.Filter,
+		Transformation:   e.Transformation,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -146,6 +151,7 @@ func (e Endpoint) Resume() Endpoint {
 		EventTypes:       e.EventTypes,
 		Status:           EndpointStatusActive,
 		Filter:           e.Filter,
+		Transformation:   e.Transformation,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -173,6 +179,7 @@ func (e Endpoint) Disable() Endpoint {
 		EventTypes:       e.EventTypes,
 		Status:           EndpointStatusDisabled,
 		Filter:           e.Filter,
+		Transformation:   e.Transformation,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -200,6 +207,7 @@ func (e Endpoint) WithRetryConfig(maxRetries, backoffMs, backoffMax int, backoff
 		EventTypes:       e.EventTypes,
 		Status:           e.Status,
 		Filter:           e.Filter,
+		Transformation:   e.Transformation,
 		MaxRetries:       maxRetries,
 		RetryBackoffMs:   backoffMs,
 		RetryBackoffMax:  backoffMax,
@@ -227,6 +235,7 @@ func (e Endpoint) WithTimeout(timeoutMs int) Endpoint {
 		EventTypes:       e.EventTypes,
 		Status:           e.Status,
 		Filter:           e.Filter,
+		Transformation:   e.Transformation,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -254,6 +263,7 @@ func (e Endpoint) WithRateLimit(rps int) Endpoint {
 		EventTypes:       e.EventTypes,
 		Status:           e.Status,
 		Filter:           e.Filter,
+		Transformation:   e.Transformation,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -292,6 +302,7 @@ func (e Endpoint) RotateSecret(newSecret string) Endpoint {
 		EventTypes:       e.EventTypes,
 		Status:           e.Status,
 		Filter:           e.Filter,
+		Transformation:   e.Transformation,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -320,6 +331,7 @@ func (e Endpoint) ClearPreviousSecret() Endpoint {
 		EventTypes:       e.EventTypes,
 		Status:           e.Status,
 		Filter:           e.Filter,
+		Transformation:   e.Transformation,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -394,6 +406,40 @@ func (e Endpoint) WithFilter(filter []byte) Endpoint {
 		EventTypes:       e.EventTypes,
 		Status:           e.Status,
 		Filter:           filter,
+		Transformation:   e.Transformation,
+		MaxRetries:       e.MaxRetries,
+		RetryBackoffMs:   e.RetryBackoffMs,
+		RetryBackoffMax:  e.RetryBackoffMax,
+		RetryBackoffMult: e.RetryBackoffMult,
+		TimeoutMs:        e.TimeoutMs,
+		RateLimitPerSec:  e.RateLimitPerSec,
+		CircuitThreshold: e.CircuitThreshold,
+		CircuitResetMs:   e.CircuitResetMs,
+		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    e.SigningSecret,
+		PreviousSecret:   e.PreviousSecret,
+		SecretRotatedAt:  e.SecretRotatedAt,
+		CreatedAt:        e.CreatedAt,
+		UpdatedAt:        time.Now().UTC(),
+	}
+}
+
+// HasTransformation returns true if the endpoint has a payload transformation configured.
+func (e Endpoint) HasTransformation() bool {
+	return e.Transformation != ""
+}
+
+// WithTransformation returns a new endpoint with the specified transformation.
+func (e Endpoint) WithTransformation(transformation string) Endpoint {
+	return Endpoint{
+		ID:               e.ID,
+		ClientID:         e.ClientID,
+		URL:              e.URL,
+		Description:      e.Description,
+		EventTypes:       e.EventTypes,
+		Status:           e.Status,
+		Filter:           e.Filter,
+		Transformation:   transformation,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,

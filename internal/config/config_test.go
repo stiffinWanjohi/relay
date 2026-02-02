@@ -656,11 +656,11 @@ func TestErrors(t *testing.T) {
 
 func TestValidateJSONSchema_Valid(t *testing.T) {
 	validSchemas := [][]byte{
-		nil,                                                                        // Empty schema is valid
-		[]byte(`{}`),                                                               // Empty object
-		[]byte(`{"type": "object"}`),                                               // Simple schema
-		[]byte(`{"type": "object", "properties": {"name": {"type": "string"}}}`),   // With properties
-		[]byte(`{"type": "array", "items": {"type": "number"}}`),                   // Array schema
+		nil,                          // Empty schema is valid
+		[]byte(`{}`),                 // Empty object
+		[]byte(`{"type": "object"}`), // Simple schema
+		[]byte(`{"type": "object", "properties": {"name": {"type": "string"}}}`),                   // With properties
+		[]byte(`{"type": "array", "items": {"type": "number"}}`),                                   // Array schema
 		[]byte(`{"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}`), // With required
 	}
 
@@ -673,9 +673,9 @@ func TestValidateJSONSchema_Valid(t *testing.T) {
 
 func TestValidateJSONSchema_Invalid(t *testing.T) {
 	invalidSchemas := [][]byte{
-		[]byte(`not json`),                          // Not valid JSON
-		[]byte(`{"type": "invalid_type"}`),          // Invalid type
-		[]byte(`{"type": 123}`),                     // Type should be string
+		[]byte(`not json`),                 // Not valid JSON
+		[]byte(`{"type": "invalid_type"}`), // Invalid type
+		[]byte(`{"type": 123}`),            // Type should be string
 	}
 
 	for i, schema := range invalidSchemas {
@@ -719,8 +719,8 @@ func TestValidatePayloadAgainstSchema_Invalid(t *testing.T) {
 	}`)
 
 	invalidPayloads := [][]byte{
-		[]byte(`{}`),                                  // Missing required field
-		[]byte(`{"order_id": 123}`),                   // Wrong type for order_id
+		[]byte(`{}`),                // Missing required field
+		[]byte(`{"order_id": 123}`), // Wrong type for order_id
 		[]byte(`{"order_id": "abc", "amount": "str"}`), // Wrong type for amount
 	}
 

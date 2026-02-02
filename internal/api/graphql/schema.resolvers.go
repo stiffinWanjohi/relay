@@ -11,12 +11,40 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stiffinWanjohi/relay/internal/auth"
 	"github.com/stiffinWanjohi/relay/internal/config"
 	"github.com/stiffinWanjohi/relay/internal/domain"
 )
+
+// timeNow is a variable for testing purposes
+var timeNow = time.Now
+
+// mapStringToAny converts a map[string]string to map[string]any
+func mapStringToAny(m map[string]string) map[string]any {
+	if m == nil {
+		return nil
+	}
+	result := make(map[string]any, len(m))
+	for k, v := range m {
+		result[k] = v
+	}
+	return result
+}
+
+// jsonToMap converts json.RawMessage to map[string]any
+func jsonToMap(data json.RawMessage) map[string]any {
+	if data == nil {
+		return nil
+	}
+	var v map[string]any
+	if err := json.Unmarshal(data, &v); err != nil {
+		return nil
+	}
+	return v
+}
 
 // Stats is the resolver for the stats field.
 func (r *endpointResolver) Stats(ctx context.Context, obj *Endpoint) (*EndpointStats, error) {
@@ -439,6 +467,13 @@ func (r *mutationResolver) CreateEndpoint(ctx context.Context, input CreateEndpo
 		}
 		endpoint.Filter = filterBytes
 	}
+	if input.Transformation != nil && *input.Transformation != "" {
+		// Validate the transformation code
+		if err := r.Transformer.Validate(*input.Transformation); err != nil {
+			return nil, fmt.Errorf("invalid transformation: %w", err)
+		}
+		endpoint.Transformation = *input.Transformation
+	}
 
 	created, err := r.Store.CreateEndpoint(ctx, endpoint)
 	if err != nil {
@@ -531,6 +566,18 @@ func (r *mutationResolver) UpdateEndpoint(ctx context.Context, id string, input 
 			}
 		}
 		endpoint.Filter = filterBytes
+	}
+	if input.Transformation != nil {
+		if *input.Transformation == "" {
+			// Clear transformation
+			endpoint.Transformation = ""
+		} else {
+			// Validate the transformation code
+			if err := r.Transformer.Validate(*input.Transformation); err != nil {
+				return nil, fmt.Errorf("invalid transformation: %w", err)
+			}
+			endpoint.Transformation = *input.Transformation
+		}
 	}
 
 	updated, err := r.Store.UpdateEndpoint(ctx, endpoint)
@@ -835,6 +882,74 @@ func (r *mutationResolver) DeleteEventType(ctx context.Context, id string) (bool
 	}
 
 	return true, nil
+}
+
+// TestTransformation is the resolver for the testTransformation field.
+func (r *mutationResolver) TestTransformation(ctx context.Context, input TestTransformationInput) (*TransformationTestResult, error) {
+	// Build transformation input from webhook input
+	method := "POST"
+	if input.Webhook.Method != nil {
+		method = *input.Webhook.Method
+	}
+
+	headers := make(map[string]string)
+	if input.Webhook.Headers != nil {
+		for k, v := range input.Webhook.Headers {
+			if s, ok := v.(string); ok {
+				headers[k] = s
+			}
+		}
+	}
+
+	payloadBytes, err := json.Marshal(input.Webhook.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("invalid payload: %w", err)
+	}
+
+	transformInput := domain.NewTransformationInput(
+		method,
+		input.Webhook.URL,
+		headers,
+		payloadBytes,
+	)
+
+	// Execute transformation
+	start := timeNow()
+	result, execErr := r.Transformer.Execute(ctx, input.Code, transformInput)
+	executionMs := int(timeNow().Sub(start).Milliseconds())
+
+	response := &TransformationTestResult{
+		ExecutionMs: executionMs,
+	}
+
+	if execErr != nil {
+		if execErr == domain.ErrTransformationCancelled {
+			// Cancellation is a valid result
+			response.Success = true
+			response.Result = &TransformationResult{
+				Method:  result.Method,
+				URL:     result.URL,
+				Headers: mapStringToAny(result.Headers),
+				Payload: jsonToMap(result.Payload),
+				Cancel:  true,
+			}
+		} else {
+			response.Success = false
+			errStr := execErr.Error()
+			response.Error = &errStr
+		}
+	} else {
+		response.Success = true
+		response.Result = &TransformationResult{
+			Method:  result.Method,
+			URL:     result.URL,
+			Headers: mapStringToAny(result.Headers),
+			Payload: jsonToMap(result.Payload),
+			Cancel:  result.Cancel,
+		}
+	}
+
+	return response, nil
 }
 
 // Event is the resolver for the event field.

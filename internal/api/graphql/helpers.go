@@ -112,6 +112,12 @@ func domainEndpointToGQL(ep domain.Endpoint) *Endpoint {
 		_ = json.Unmarshal(ep.Filter, &filter)
 	}
 
+	// Convert transformation to pointer
+	var transformation *string
+	if ep.Transformation != "" {
+		transformation = &ep.Transformation
+	}
+
 	return &Endpoint{
 		ID:               ep.ID.String(),
 		ClientID:         ep.ClientID,
@@ -120,6 +126,7 @@ func domainEndpointToGQL(ep domain.Endpoint) *Endpoint {
 		EventTypes:       ep.EventTypes,
 		Status:           domainEndpointStatusToGQL(ep.Status),
 		Filter:           filter,
+		Transformation:   transformation,
 		MaxRetries:       ep.MaxRetries,
 		RetryBackoffMs:   ep.RetryBackoffMs,
 		RetryBackoffMax:  ep.RetryBackoffMax,
