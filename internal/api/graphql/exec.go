@@ -141,6 +141,8 @@ type ComplexityRoot struct {
 		MaxAttempts      func(childComplexity int) int
 		NextAttemptAt    func(childComplexity int) int
 		Payload          func(childComplexity int) int
+		Priority         func(childComplexity int) int
+		ScheduledAt      func(childComplexity int) int
 		Status           func(childComplexity int) int
 		UpdatedAt        func(childComplexity int) int
 	}
@@ -205,6 +207,7 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
+		CancelScheduledEvent     func(childComplexity int, id string) int
 		ClearPreviousSecret      func(childComplexity int, id string) int
 		CreateEndpoint           func(childComplexity int, input CreateEndpointInput) int
 		CreateEvent              func(childComplexity int, input CreateEventInput, idempotencyKey string) int
@@ -234,6 +237,13 @@ type ComplexityRoot struct {
 		StartCursor     func(childComplexity int) int
 	}
 
+	PriorityQueueStats struct {
+		Delayed func(childComplexity int) int
+		High    func(childComplexity int) int
+		Low     func(childComplexity int) int
+		Normal  func(childComplexity int) int
+	}
+
 	Query struct {
 		ActiveFIFOQueues   func(childComplexity int) int
 		Endpoint           func(childComplexity int, id string) int
@@ -245,6 +255,7 @@ type ComplexityRoot struct {
 		Events             func(childComplexity int, status *EventStatus, first *int, after *string) int
 		FifoPartitionStats func(childComplexity int, endpointID string, partitionKey string) int
 		FifoQueueStats     func(childComplexity int, endpointID string) int
+		PriorityQueueStats func(childComplexity int) int
 		QueueStats         func(childComplexity int) int
 	}
 
@@ -304,6 +315,7 @@ type MutationResolver interface {
 	ReleaseFIFOLock(ctx context.Context, endpointID string, partitionKey *string) (bool, error)
 	DrainFIFOQueue(ctx context.Context, endpointID string, partitionKey *string, moveToStandard *bool) (*FIFODrainResult, error)
 	RecoverStaleFIFOMessages(ctx context.Context) (*FIFORecoveryResult, error)
+	CancelScheduledEvent(ctx context.Context, id string) (*Event, error)
 }
 type QueryResolver interface {
 	Event(ctx context.Context, id string) (*Event, error)
@@ -317,6 +329,7 @@ type QueryResolver interface {
 	FifoQueueStats(ctx context.Context, endpointID string) (*FIFOEndpointStats, error)
 	FifoPartitionStats(ctx context.Context, endpointID string, partitionKey string) (*FIFOQueueStats, error)
 	ActiveFIFOQueues(ctx context.Context) ([]FIFOQueueStats, error)
+	PriorityQueueStats(ctx context.Context) (*PriorityQueueStats, error)
 }
 
 type executableSchema struct {
@@ -753,6 +766,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Event.Payload(childComplexity), true
+	case "Event.priority":
+		if e.complexity.Event.Priority == nil {
+			break
+		}
+
+		return e.complexity.Event.Priority(childComplexity), true
+	case "Event.scheduledAt":
+		if e.complexity.Event.ScheduledAt == nil {
+			break
+		}
+
+		return e.complexity.Event.ScheduledAt(childComplexity), true
 	case "Event.status":
 		if e.complexity.Event.Status == nil {
 			break
@@ -967,6 +992,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.FIFORecoveryResult.MessagesRecovered(childComplexity), true
 
+	case "Mutation.cancelScheduledEvent":
+		if e.complexity.Mutation.CancelScheduledEvent == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_cancelScheduledEvent_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.CancelScheduledEvent(childComplexity, args["id"].(string)), true
 	case "Mutation.clearPreviousSecret":
 		if e.complexity.Mutation.ClearPreviousSecret == nil {
 			break
@@ -1208,6 +1244,31 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.PageInfo.StartCursor(childComplexity), true
 
+	case "PriorityQueueStats.delayed":
+		if e.complexity.PriorityQueueStats.Delayed == nil {
+			break
+		}
+
+		return e.complexity.PriorityQueueStats.Delayed(childComplexity), true
+	case "PriorityQueueStats.high":
+		if e.complexity.PriorityQueueStats.High == nil {
+			break
+		}
+
+		return e.complexity.PriorityQueueStats.High(childComplexity), true
+	case "PriorityQueueStats.low":
+		if e.complexity.PriorityQueueStats.Low == nil {
+			break
+		}
+
+		return e.complexity.PriorityQueueStats.Low(childComplexity), true
+	case "PriorityQueueStats.normal":
+		if e.complexity.PriorityQueueStats.Normal == nil {
+			break
+		}
+
+		return e.complexity.PriorityQueueStats.Normal(childComplexity), true
+
 	case "Query.activeFIFOQueues":
 		if e.complexity.Query.ActiveFIFOQueues == nil {
 			break
@@ -1313,6 +1374,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.FifoQueueStats(childComplexity, args["endpointId"].(string)), true
+	case "Query.priorityQueueStats":
+		if e.complexity.Query.PriorityQueueStats == nil {
+			break
+		}
+
+		return e.complexity.Query.PriorityQueueStats(childComplexity), true
 	case "Query.queueStats":
 		if e.complexity.Query.QueueStats == nil {
 			break
@@ -1565,6 +1632,17 @@ func (ec *executionContext) field_Endpoint_recentEvents_args(ctx context.Context
 		return nil, err
 	}
 	args["first"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_cancelScheduledEvent_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
 	return args, nil
 }
 
@@ -2119,6 +2197,10 @@ func (ec *executionContext) fieldContext_BatchRetryResult_succeeded(_ context.Co
 				return ec.fieldContext_Event_headers(ctx, field)
 			case "status":
 				return ec.fieldContext_Event_status(ctx, field)
+			case "priority":
+				return ec.fieldContext_Event_priority(ctx, field)
+			case "scheduledAt":
+				return ec.fieldContext_Event_scheduledAt(ctx, field)
 			case "attempts":
 				return ec.fieldContext_Event_attempts(ctx, field)
 			case "maxAttempts":
@@ -3220,6 +3302,10 @@ func (ec *executionContext) fieldContext_Endpoint_recentEvents(ctx context.Conte
 				return ec.fieldContext_Event_headers(ctx, field)
 			case "status":
 				return ec.fieldContext_Event_status(ctx, field)
+			case "priority":
+				return ec.fieldContext_Event_priority(ctx, field)
+			case "scheduledAt":
+				return ec.fieldContext_Event_scheduledAt(ctx, field)
 			case "attempts":
 				return ec.fieldContext_Event_attempts(ctx, field)
 			case "maxAttempts":
@@ -4012,6 +4098,64 @@ func (ec *executionContext) fieldContext_Event_status(_ context.Context, field g
 	return fc, nil
 }
 
+func (ec *executionContext) _Event_priority(ctx context.Context, field graphql.CollectedField, obj *Event) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Event_priority,
+		func(ctx context.Context) (any, error) {
+			return obj.Priority, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Event_priority(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Event",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Event_scheduledAt(ctx context.Context, field graphql.CollectedField, obj *Event) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Event_scheduledAt,
+		func(ctx context.Context) (any, error) {
+			return obj.ScheduledAt, nil
+		},
+		nil,
+		ec.marshalODateTime2ᚖtimeᚐTime,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Event_scheduledAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Event",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type DateTime does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Event_attempts(ctx context.Context, field graphql.CollectedField, obj *Event) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -4459,6 +4603,10 @@ func (ec *executionContext) fieldContext_EventEdge_node(_ context.Context, field
 				return ec.fieldContext_Event_headers(ctx, field)
 			case "status":
 				return ec.fieldContext_Event_status(ctx, field)
+			case "priority":
+				return ec.fieldContext_Event_priority(ctx, field)
+			case "scheduledAt":
+				return ec.fieldContext_Event_scheduledAt(ctx, field)
 			case "attempts":
 				return ec.fieldContext_Event_attempts(ctx, field)
 			case "maxAttempts":
@@ -5383,6 +5531,10 @@ func (ec *executionContext) fieldContext_Mutation_createEvent(ctx context.Contex
 				return ec.fieldContext_Event_headers(ctx, field)
 			case "status":
 				return ec.fieldContext_Event_status(ctx, field)
+			case "priority":
+				return ec.fieldContext_Event_priority(ctx, field)
+			case "scheduledAt":
+				return ec.fieldContext_Event_scheduledAt(ctx, field)
 			case "attempts":
 				return ec.fieldContext_Event_attempts(ctx, field)
 			case "maxAttempts":
@@ -5460,6 +5612,10 @@ func (ec *executionContext) fieldContext_Mutation_sendEvent(ctx context.Context,
 				return ec.fieldContext_Event_headers(ctx, field)
 			case "status":
 				return ec.fieldContext_Event_status(ctx, field)
+			case "priority":
+				return ec.fieldContext_Event_priority(ctx, field)
+			case "scheduledAt":
+				return ec.fieldContext_Event_scheduledAt(ctx, field)
 			case "attempts":
 				return ec.fieldContext_Event_attempts(ctx, field)
 			case "maxAttempts":
@@ -5537,6 +5693,10 @@ func (ec *executionContext) fieldContext_Mutation_replayEvent(ctx context.Contex
 				return ec.fieldContext_Event_headers(ctx, field)
 			case "status":
 				return ec.fieldContext_Event_status(ctx, field)
+			case "priority":
+				return ec.fieldContext_Event_priority(ctx, field)
+			case "scheduledAt":
+				return ec.fieldContext_Event_scheduledAt(ctx, field)
 			case "attempts":
 				return ec.fieldContext_Event_attempts(ctx, field)
 			case "maxAttempts":
@@ -6612,6 +6772,87 @@ func (ec *executionContext) fieldContext_Mutation_recoverStaleFIFOMessages(_ con
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_cancelScheduledEvent(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_cancelScheduledEvent,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().CancelScheduledEvent(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNEvent2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐEvent,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_cancelScheduledEvent(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Event_id(ctx, field)
+			case "idempotencyKey":
+				return ec.fieldContext_Event_idempotencyKey(ctx, field)
+			case "clientId":
+				return ec.fieldContext_Event_clientId(ctx, field)
+			case "eventType":
+				return ec.fieldContext_Event_eventType(ctx, field)
+			case "endpointId":
+				return ec.fieldContext_Event_endpointId(ctx, field)
+			case "destination":
+				return ec.fieldContext_Event_destination(ctx, field)
+			case "payload":
+				return ec.fieldContext_Event_payload(ctx, field)
+			case "headers":
+				return ec.fieldContext_Event_headers(ctx, field)
+			case "status":
+				return ec.fieldContext_Event_status(ctx, field)
+			case "priority":
+				return ec.fieldContext_Event_priority(ctx, field)
+			case "scheduledAt":
+				return ec.fieldContext_Event_scheduledAt(ctx, field)
+			case "attempts":
+				return ec.fieldContext_Event_attempts(ctx, field)
+			case "maxAttempts":
+				return ec.fieldContext_Event_maxAttempts(ctx, field)
+			case "nextAttemptAt":
+				return ec.fieldContext_Event_nextAttemptAt(ctx, field)
+			case "deliveredAt":
+				return ec.fieldContext_Event_deliveredAt(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Event_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Event_updatedAt(ctx, field)
+			case "deliveryAttempts":
+				return ec.fieldContext_Event_deliveryAttempts(ctx, field)
+			case "endpoint":
+				return ec.fieldContext_Event_endpoint(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Event", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_cancelScheduledEvent_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _PageInfo_hasNextPage(ctx context.Context, field graphql.CollectedField, obj *PageInfo) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -6728,6 +6969,122 @@ func (ec *executionContext) fieldContext_PageInfo_endCursor(_ context.Context, f
 	return fc, nil
 }
 
+func (ec *executionContext) _PriorityQueueStats_high(ctx context.Context, field graphql.CollectedField, obj *PriorityQueueStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_PriorityQueueStats_high,
+		func(ctx context.Context) (any, error) {
+			return obj.High, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_PriorityQueueStats_high(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "PriorityQueueStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _PriorityQueueStats_normal(ctx context.Context, field graphql.CollectedField, obj *PriorityQueueStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_PriorityQueueStats_normal,
+		func(ctx context.Context) (any, error) {
+			return obj.Normal, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_PriorityQueueStats_normal(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "PriorityQueueStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _PriorityQueueStats_low(ctx context.Context, field graphql.CollectedField, obj *PriorityQueueStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_PriorityQueueStats_low,
+		func(ctx context.Context) (any, error) {
+			return obj.Low, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_PriorityQueueStats_low(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "PriorityQueueStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _PriorityQueueStats_delayed(ctx context.Context, field graphql.CollectedField, obj *PriorityQueueStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_PriorityQueueStats_delayed,
+		func(ctx context.Context) (any, error) {
+			return obj.Delayed, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_PriorityQueueStats_delayed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "PriorityQueueStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_event(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -6771,6 +7128,10 @@ func (ec *executionContext) fieldContext_Query_event(ctx context.Context, field 
 				return ec.fieldContext_Event_headers(ctx, field)
 			case "status":
 				return ec.fieldContext_Event_status(ctx, field)
+			case "priority":
+				return ec.fieldContext_Event_priority(ctx, field)
+			case "scheduledAt":
+				return ec.fieldContext_Event_scheduledAt(ctx, field)
 			case "attempts":
 				return ec.fieldContext_Event_attempts(ctx, field)
 			case "maxAttempts":
@@ -7350,6 +7711,45 @@ func (ec *executionContext) fieldContext_Query_activeFIFOQueues(_ context.Contex
 				return ec.fieldContext_FIFOQueueStats_hasInFlight(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type FIFOQueueStats", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_priorityQueueStats(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_priorityQueueStats,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().PriorityQueueStats(ctx)
+		},
+		nil,
+		ec.marshalNPriorityQueueStats2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐPriorityQueueStats,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_priorityQueueStats(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "high":
+				return ec.fieldContext_PriorityQueueStats_high(ctx, field)
+			case "normal":
+				return ec.fieldContext_PriorityQueueStats_normal(ctx, field)
+			case "low":
+				return ec.fieldContext_PriorityQueueStats_low(ctx, field)
+			case "delayed":
+				return ec.fieldContext_PriorityQueueStats_delayed(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PriorityQueueStats", field.Name)
 		},
 	}
 	return fc, nil
@@ -9553,7 +9953,7 @@ func (ec *executionContext) unmarshalInputCreateEventInput(ctx context.Context, 
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"destination", "payload", "headers", "maxAttempts"}
+	fieldsInOrder := [...]string{"destination", "payload", "headers", "maxAttempts", "priority", "deliverAt", "delaySeconds"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -9588,6 +9988,27 @@ func (ec *executionContext) unmarshalInputCreateEventInput(ctx context.Context, 
 				return it, err
 			}
 			it.MaxAttempts = data
+		case "priority":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("priority"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Priority = data
+		case "deliverAt":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("deliverAt"))
+			data, err := ec.unmarshalODateTime2ᚖtimeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DeliverAt = data
+		case "delaySeconds":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("delaySeconds"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DelaySeconds = data
 		}
 	}
 
@@ -9649,7 +10070,7 @@ func (ec *executionContext) unmarshalInputSendEventInput(ctx context.Context, ob
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"eventType", "payload", "headers"}
+	fieldsInOrder := [...]string{"eventType", "payload", "headers", "priority", "deliverAt", "delaySeconds"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -9677,6 +10098,27 @@ func (ec *executionContext) unmarshalInputSendEventInput(ctx context.Context, ob
 				return it, err
 			}
 			it.Headers = data
+		case "priority":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("priority"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Priority = data
+		case "deliverAt":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("deliverAt"))
+			data, err := ec.unmarshalODateTime2ᚖtimeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DeliverAt = data
+		case "delaySeconds":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("delaySeconds"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DelaySeconds = data
 		}
 	}
 
@@ -10564,6 +11006,13 @@ func (ec *executionContext) _Event(ctx context.Context, sel ast.SelectionSet, ob
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "priority":
+			out.Values[i] = ec._Event_priority(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "scheduledAt":
+			out.Values[i] = ec._Event_scheduledAt(ctx, field, obj)
 		case "attempts":
 			out.Values[i] = ec._Event_attempts(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -11293,6 +11742,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "cancelScheduledEvent":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_cancelScheduledEvent(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -11341,6 +11797,60 @@ func (ec *executionContext) _PageInfo(ctx context.Context, sel ast.SelectionSet,
 			out.Values[i] = ec._PageInfo_startCursor(ctx, field, obj)
 		case "endCursor":
 			out.Values[i] = ec._PageInfo_endCursor(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var priorityQueueStatsImplementors = []string{"PriorityQueueStats"}
+
+func (ec *executionContext) _PriorityQueueStats(ctx context.Context, sel ast.SelectionSet, obj *PriorityQueueStats) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, priorityQueueStatsImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("PriorityQueueStats")
+		case "high":
+			out.Values[i] = ec._PriorityQueueStats_high(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "normal":
+			out.Values[i] = ec._PriorityQueueStats_normal(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "low":
+			out.Values[i] = ec._PriorityQueueStats_low(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "delayed":
+			out.Values[i] = ec._PriorityQueueStats_delayed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -11595,6 +12105,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_activeFIFOQueues(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "priorityQueueStats":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_priorityQueueStats(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -12809,6 +13341,20 @@ func (ec *executionContext) marshalNPageInfo2ᚖgithubᚗcomᚋstiffinWanjohiᚋ
 		return graphql.Null
 	}
 	return ec._PageInfo(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNPriorityQueueStats2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐPriorityQueueStats(ctx context.Context, sel ast.SelectionSet, v PriorityQueueStats) graphql.Marshaler {
+	return ec._PriorityQueueStats(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNPriorityQueueStats2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐPriorityQueueStats(ctx context.Context, sel ast.SelectionSet, v *PriorityQueueStats) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._PriorityQueueStats(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNQueueStats2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐQueueStats(ctx context.Context, sel ast.SelectionSet, v QueueStats) graphql.Marshaler {

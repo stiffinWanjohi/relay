@@ -217,7 +217,7 @@ func (p *Processor) processBatch(ctx context.Context) error {
 }
 
 func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) error {
-	// Get the event to check if it's for a FIFO endpoint
+	// Get the event to check if it's for a FIFO endpoint and for priority/scheduling info
 	evt, err := p.store.GetByID(ctx, entry.EventID)
 	if err != nil {
 		return err
@@ -257,7 +257,7 @@ func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) e
 				}
 			}
 
-			// Enqueue to FIFO queue
+			// Enqueue to FIFO queue (FIFO doesn't support priority/scheduled delivery)
 			if err := p.queue.EnqueueFIFO(ctx, endpoint.ID.String(), partitionKey, entry.EventID); err != nil {
 				return err
 			}
@@ -270,6 +270,39 @@ func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) e
 			)
 			return nil
 		}
+	}
+
+	// Check if event is scheduled for future delivery
+	if evt.IsScheduled() {
+		delay := evt.ScheduledAt.Sub(time.Now())
+		if delay > 0 {
+			// Use delayed queue with priority info
+			if err := p.queue.EnqueueDelayedWithPriority(ctx, entry.EventID, evt.Priority, delay); err != nil {
+				return err
+			}
+			p.logger.Debug("enqueued scheduled event to delayed queue",
+				"outbox_id", entry.ID,
+				"event_id", entry.EventID,
+				"scheduled_at", evt.ScheduledAt,
+				"delay", delay,
+				"priority", evt.Priority,
+			)
+			return nil
+		}
+		// Scheduled time has passed, deliver immediately with priority
+	}
+
+	// Check if event has non-default priority
+	if evt.Priority != 5 { // Default priority is 5
+		if err := p.queue.EnqueueWithPriority(ctx, entry.EventID, evt.Priority); err != nil {
+			return err
+		}
+		p.logger.Debug("enqueued event to priority queue",
+			"outbox_id", entry.ID,
+			"event_id", entry.EventID,
+			"priority", evt.Priority,
+		)
+		return nil
 	}
 
 	// Enqueue to standard queue

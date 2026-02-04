@@ -28,19 +28,20 @@ const (
 
 // Worker processes events from the queue and delivers them.
 type Worker struct {
-	queue          *queue.Queue
-	store          *event.Store
-	sender         *Sender
-	circuit        *CircuitBreaker
-	retry          *RetryPolicy
-	rateLimiter    *RateLimiter
-	transformer    domain.TransformationExecutor
-	logger         *slog.Logger
-	metrics        *observability.Metrics
-	stopCh         chan struct{}
-	wg             sync.WaitGroup
-	concurrency    int
-	visibilityTime time.Duration
+	queue               *queue.Queue
+	store               *event.Store
+	sender              *Sender
+	circuit             *CircuitBreaker
+	retry               *RetryPolicy
+	rateLimiter         *RateLimiter
+	transformer         domain.TransformationExecutor
+	logger              *slog.Logger
+	metrics             *observability.Metrics
+	stopCh              chan struct{}
+	wg                  sync.WaitGroup
+	concurrency         int
+	visibilityTime      time.Duration
+	enablePriorityQueue bool
 }
 
 // WorkerConfig holds worker configuration.
@@ -54,14 +55,16 @@ type WorkerConfig struct {
 	NotificationService *notification.Service
 	NotifyOnTrip        bool
 	NotifyOnRecover     bool
+	EnablePriorityQueue bool // Enable priority queue processing
 }
 
 // DefaultWorkerConfig returns the default worker configuration.
 func DefaultWorkerConfig() WorkerConfig {
 	return WorkerConfig{
-		Concurrency:    10,
-		VisibilityTime: 30 * time.Second,
-		CircuitConfig:  DefaultCircuitConfig(),
+		Concurrency:         10,
+		VisibilityTime:      30 * time.Second,
+		CircuitConfig:       DefaultCircuitConfig(),
+		EnablePriorityQueue: true, // Enable by default
 	}
 }
 
@@ -73,18 +76,19 @@ func NewWorker(q *queue.Queue, store *event.Store, config WorkerConfig, logger *
 	}
 
 	return &Worker{
-		queue:          q,
-		store:          store,
-		sender:         NewSender(config.SigningKey),
-		circuit:        circuit,
-		retry:          NewRetryPolicy(),
-		rateLimiter:    config.RateLimiter,
-		transformer:    transform.NewDefaultV8Executor(),
-		logger:         logger,
-		metrics:        config.Metrics,
-		stopCh:         make(chan struct{}),
-		concurrency:    config.Concurrency,
-		visibilityTime: config.VisibilityTime,
+		queue:               q,
+		store:               store,
+		sender:              NewSender(config.SigningKey),
+		circuit:             circuit,
+		retry:               NewRetryPolicy(),
+		rateLimiter:         config.RateLimiter,
+		transformer:         transform.NewDefaultV8Executor(),
+		logger:              logger,
+		metrics:             config.Metrics,
+		stopCh:              make(chan struct{}),
+		concurrency:         config.Concurrency,
+		visibilityTime:      config.VisibilityTime,
+		enablePriorityQueue: config.EnablePriorityQueue,
 	}
 }
 
@@ -166,8 +170,14 @@ func (w *Worker) processLoop(ctx context.Context, workerID int) {
 }
 
 func (w *Worker) processOne(ctx context.Context, logger *slog.Logger) error {
-	// Dequeue a message
-	msg, err := w.queue.Dequeue(ctx)
+	// Dequeue a message (using priority queue if enabled)
+	var msg *queue.Message
+	var err error
+	if w.enablePriorityQueue {
+		msg, err = w.queue.DequeueWithPriority(ctx)
+	} else {
+		msg, err = w.queue.Dequeue(ctx)
+	}
 	if err != nil {
 		return err
 	}

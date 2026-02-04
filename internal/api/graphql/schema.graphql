@@ -101,6 +101,8 @@ type Event {
     payload: JSON!
     headers: JSON
     status: EventStatus!
+    priority: Int!
+    scheduledAt: DateTime
     attempts: Int!
     maxAttempts: Int!
     nextAttemptAt: DateTime
@@ -247,6 +249,18 @@ type QueueStats {
     delayed: Int!
 }
 
+# Priority queue statistics
+type PriorityQueueStats {
+    # Number of events in high priority queue (priority 1-3)
+    high: Int!
+    # Number of events in normal priority queue (priority 4-7)
+    normal: Int!
+    # Number of events in low priority queue (priority 8-10)
+    low: Int!
+    # Number of events in delayed queue (scheduled for future)
+    delayed: Int!
+}
+
 type BatchRetryResult {
     succeeded: [Event!]!
     failed: [BatchRetryError!]!
@@ -279,6 +293,12 @@ input CreateEventInput {
     payload: JSON!
     headers: JSON
     maxAttempts: Int
+    # Priority: 1-10 (1=highest, 10=lowest, default=5)
+    priority: Int
+    # Schedule for future delivery (absolute time)
+    deliverAt: DateTime
+    # Schedule for future delivery (relative delay in seconds)
+    delaySeconds: Int
 }
 
 # New input: event type based routing
@@ -286,6 +306,12 @@ input SendEventInput {
     eventType: String!
     payload: JSON!
     headers: JSON
+    # Priority: 1-10 (1=highest, 10=lowest, default=5)
+    priority: Int
+    # Schedule for future delivery (absolute time)
+    deliverAt: DateTime
+    # Schedule for future delivery (relative delay in seconds)
+    delaySeconds: Int
 }
 
 input CreateEndpointInput {
@@ -390,7 +416,7 @@ type FIFORecoveryResult {
     messagesRecovered: Int!
 }
 
-# Extend Query with FIFO management
+# Extend Query with FIFO management and priority queue stats
 extend type Query {
     # Get FIFO queue stats for a specific endpoint
     fifoQueueStats(endpointId: ID!): FIFOEndpointStats
@@ -400,9 +426,12 @@ extend type Query {
     
     # List all active FIFO queues
     activeFIFOQueues: [FIFOQueueStats!]!
+    
+    # Get priority queue statistics
+    priorityQueueStats: PriorityQueueStats!
 }
 
-# Extend Mutation with FIFO management
+# Extend Mutation with FIFO management and scheduled event operations
 extend type Mutation {
     # Forcibly release a stuck FIFO lock (admin operation)
     releaseFIFOLock(endpointId: ID!, partitionKey: String): Boolean!
@@ -412,4 +441,8 @@ extend type Mutation {
     
     # Recover all stale in-flight FIFO messages (admin operation)
     recoverStaleFIFOMessages: FIFORecoveryResult!
+    
+    # Cancel a scheduled event before it is delivered
+    # Only works for events that are still in QUEUED status with a future scheduledAt
+    cancelScheduledEvent(id: ID!): Event!
 }

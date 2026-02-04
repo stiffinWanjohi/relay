@@ -119,6 +119,101 @@ mutation {
 - Memory limits enforced
 - Errors logged, original payload preserved on failure
 
+## Priority Queues
+
+Assign priority levels to events. Higher priority events are delivered before lower priority ones.
+
+```graphql
+# Send a high-priority event
+mutation {
+  sendEvent(input: {
+    eventType: "order.created"
+    payload: { order_id: 123 }
+    priority: 1  # Highest priority
+  }, idempotencyKey: "order-123") {
+    id
+    priority
+    status
+  }
+}
+
+# Send a low-priority analytics event
+mutation {
+  sendEvent(input: {
+    eventType: "analytics.track"
+    payload: { event: "page_view" }
+    priority: 9  # Low priority
+  }, idempotencyKey: "analytics-456") {
+    id
+    priority
+  }
+}
+```
+
+**Priority Scale:**
+- 1-3: High priority (processed first)
+- 4-7: Normal priority (default is 5)
+- 8-10: Low priority (processed last)
+
+**Implementation:**
+- Three-tier queue system: high, normal, low
+- Worker dequeues from high → normal → low
+- Starvation prevention ensures low-priority events still process
+
+## Delayed/Scheduled Delivery
+
+Schedule events for future delivery. Specify an absolute timestamp or relative delay.
+
+```graphql
+# Schedule for a specific time
+mutation {
+  sendEvent(input: {
+    eventType: "reminder.send"
+    payload: { message: "Don't forget your appointment!" }
+    deliverAt: "2026-02-05T10:00:00Z"
+  }, idempotencyKey: "reminder-123") {
+    id
+    scheduledAt
+    status
+  }
+}
+
+# Schedule with a delay (1 hour)
+mutation {
+  sendEvent(input: {
+    eventType: "email.send"
+    payload: { to: "user@example.com", subject: "Follow up" }
+    delaySeconds: 3600
+  }, idempotencyKey: "email-456") {
+    id
+    scheduledAt
+  }
+}
+```
+
+**Constraints:**
+- Cannot specify both `deliverAt` and `delaySeconds`
+- Maximum delay: 30 days
+- Events delivered at scheduled time (±1 second accuracy)
+- Scheduled time visible in event details
+
+**Combined with Priority:**
+
+```graphql
+mutation {
+  sendEvent(input: {
+    eventType: "report.generate"
+    payload: { report_id: 789 }
+    priority: 1
+    delaySeconds: 300  # 5 minutes from now, high priority when ready
+  }, idempotencyKey: "report-789") {
+    id
+    priority
+    scheduledAt
+  }
+}
+```
+
 ## FIFO Delivery (Ordered Delivery)
 
 Guarantee ordered delivery for endpoints that require it. Events are delivered sequentially per endpoint/partition.

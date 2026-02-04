@@ -48,9 +48,9 @@ func (s *Store) Create(ctx context.Context, event domain.Event) (domain.Event, e
 	}
 
 	query := `
-		INSERT INTO events (id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-		RETURNING id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+		INSERT INTO events (id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		RETURNING id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
 	`
 
 	return s.scanEvent(s.pool.QueryRow(ctx, query,
@@ -63,6 +63,8 @@ func (s *Store) Create(ctx context.Context, event domain.Event) (domain.Event, e
 		event.Payload,
 		headersJSON,
 		event.Status,
+		event.Priority,
+		event.ScheduledAt,
 		event.Attempts,
 		event.MaxAttempts,
 		event.NextAttemptAt,
@@ -95,9 +97,9 @@ func (s *Store) CreateWithOutbox(ctx context.Context, event domain.Event) (domai
 
 	// Insert event
 	eventQuery := `
-		INSERT INTO events (id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-		RETURNING id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+		INSERT INTO events (id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		RETURNING id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
 	`
 
 	createdEvent, err := s.scanEvent(tx.QueryRow(ctx, eventQuery,
@@ -110,6 +112,8 @@ func (s *Store) CreateWithOutbox(ctx context.Context, event domain.Event) (domai
 		event.Payload,
 		headersJSON,
 		event.Status,
+		event.Priority,
+		event.ScheduledAt,
 		event.Attempts,
 		event.MaxAttempts,
 		event.NextAttemptAt,
@@ -137,7 +141,7 @@ func (s *Store) CreateWithOutbox(ctx context.Context, event domain.Event) (domai
 // GetByID retrieves an event by ID.
 func (s *Store) GetByID(ctx context.Context, id uuid.UUID) (domain.Event, error) {
 	query := `
-		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
 		FROM events
 		WHERE id = $1
 	`
@@ -152,7 +156,7 @@ func (s *Store) GetByID(ctx context.Context, id uuid.UUID) (domain.Event, error)
 // GetByIdempotencyKey retrieves an event by idempotency key.
 func (s *Store) GetByIdempotencyKey(ctx context.Context, key string) (domain.Event, error) {
 	query := `
-		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
 		FROM events
 		WHERE idempotency_key = $1
 	`
@@ -173,9 +177,9 @@ func (s *Store) Update(ctx context.Context, event domain.Event) (domain.Event, e
 
 	query := `
 		UPDATE events
-		SET destination = $2, payload = $3, headers = $4, status = $5, attempts = $6, max_attempts = $7, next_attempt_at = $8, delivered_at = $9, updated_at = NOW()
+		SET destination = $2, payload = $3, headers = $4, status = $5, priority = $6, scheduled_at = $7, attempts = $8, max_attempts = $9, next_attempt_at = $10, delivered_at = $11, updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+		RETURNING id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
 	`
 
 	updated, err := s.scanEvent(s.pool.QueryRow(ctx, query,
@@ -184,6 +188,8 @@ func (s *Store) Update(ctx context.Context, event domain.Event) (domain.Event, e
 		event.Payload,
 		headersJSON,
 		event.Status,
+		event.Priority,
+		event.ScheduledAt,
 		event.Attempts,
 		event.MaxAttempts,
 		event.NextAttemptAt,
@@ -198,7 +204,7 @@ func (s *Store) Update(ctx context.Context, event domain.Event) (domain.Event, e
 // ListByStatus retrieves events by status with pagination.
 func (s *Store) ListByStatus(ctx context.Context, status domain.EventStatus, limit, offset int) ([]domain.Event, error) {
 	query := `
-		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
 		FROM events
 		WHERE status = $1
 		ORDER BY created_at DESC
@@ -217,11 +223,11 @@ func (s *Store) ListByStatus(ctx context.Context, status domain.EventStatus, lim
 // ListReadyForDelivery retrieves events ready for delivery attempt.
 func (s *Store) ListReadyForDelivery(ctx context.Context, limit int) ([]domain.Event, error) {
 	query := `
-		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
 		FROM events
 		WHERE status IN ('queued', 'failed')
 		AND (next_attempt_at IS NULL OR next_attempt_at <= $1)
-		ORDER BY next_attempt_at ASC NULLS FIRST
+		ORDER BY priority ASC, next_attempt_at ASC NULLS FIRST
 		LIMIT $2
 	`
 
@@ -654,6 +660,13 @@ func (s *Store) CountEndpointsByClient(ctx context.Context, clientID string) (in
 // Returns the list of created events (one per matching endpoint).
 // Endpoints with content-based filters will only receive events that match their filter.
 func (s *Store) CreateEventWithFanout(ctx context.Context, clientID, eventType, idempotencyKey string, payload json.RawMessage, headers map[string]string) ([]domain.Event, error) {
+	return s.CreateEventWithFanoutAndOptions(ctx, clientID, eventType, idempotencyKey, payload, headers, domain.DefaultPriority, nil)
+}
+
+// CreateEventWithFanoutAndOptions creates events for all endpoints subscribed to the event type with priority and scheduling.
+// Returns the list of created events (one per matching endpoint).
+// Endpoints with content-based filters will only receive events that match their filter.
+func (s *Store) CreateEventWithFanoutAndOptions(ctx context.Context, clientID, eventType, idempotencyKey string, payload json.RawMessage, headers map[string]string, priority int, scheduledAt *time.Time) ([]domain.Event, error) {
 	// Find all active endpoints subscribed to this event type
 	endpoints, err := s.FindActiveEndpointsByEventType(ctx, clientID, eventType)
 	if err != nil {
@@ -701,8 +714,8 @@ func (s *Store) CreateEventWithFanout(ctx context.Context, clientID, eventType, 
 		// Create unique idempotency key per endpoint
 		endpointIdempotencyKey := idempotencyKey + ":" + endpoint.ID.String()
 
-		// Create event for this endpoint
-		event := domain.NewEventForEndpoint(clientID, eventType, endpointIdempotencyKey, endpoint, payload, headers)
+		// Create event for this endpoint with priority and scheduling
+		event := domain.NewEventForEndpointWithOptions(clientID, eventType, endpointIdempotencyKey, endpoint, payload, headers, priority, scheduledAt)
 
 		headersJSON, err := json.Marshal(event.Headers)
 		if err != nil {
@@ -711,9 +724,9 @@ func (s *Store) CreateEventWithFanout(ctx context.Context, clientID, eventType, 
 
 		// Insert event
 		eventQuery := `
-			INSERT INTO events (id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-			RETURNING id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+			INSERT INTO events (id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			RETURNING id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
 		`
 
 		createdEvent, err := s.scanEvent(tx.QueryRow(ctx, eventQuery,
@@ -726,6 +739,8 @@ func (s *Store) CreateEventWithFanout(ctx context.Context, clientID, eventType, 
 			event.Payload,
 			headersJSON,
 			event.Status,
+			event.Priority,
+			event.ScheduledAt,
 			event.Attempts,
 			event.MaxAttempts,
 			event.NextAttemptAt,
@@ -756,7 +771,7 @@ func (s *Store) CreateEventWithFanout(ctx context.Context, clientID, eventType, 
 // ListEventsByEndpoint retrieves events for a specific endpoint with pagination.
 func (s *Store) ListEventsByEndpoint(ctx context.Context, endpointID uuid.UUID, limit, offset int) ([]domain.Event, error) {
 	query := `
-		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
 		FROM events
 		WHERE endpoint_id = $1
 		ORDER BY created_at DESC
@@ -897,7 +912,7 @@ func (s *Store) RetryEventsByEndpoint(ctx context.Context, endpointID uuid.UUID,
 	}
 
 	query := `
-		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
+		SELECT id, idempotency_key, client_id, event_type, endpoint_id, destination, payload, headers, status, priority, scheduled_at, attempts, max_attempts, next_attempt_at, delivered_at, created_at, updated_at
 		FROM events
 		WHERE endpoint_id = $1 AND status = $2
 		ORDER BY created_at DESC
@@ -928,6 +943,7 @@ func (s *Store) scanEvent(row pgx.Row) (domain.Event, error) {
 	var headersJSON []byte
 	var clientID, eventType *string
 	var endpointID *uuid.UUID
+	var priority *int
 
 	err := row.Scan(
 		&event.ID,
@@ -939,6 +955,8 @@ func (s *Store) scanEvent(row pgx.Row) (domain.Event, error) {
 		&event.Payload,
 		&headersJSON,
 		&event.Status,
+		&priority,
+		&event.ScheduledAt,
 		&event.Attempts,
 		&event.MaxAttempts,
 		&event.NextAttemptAt,
@@ -957,6 +975,11 @@ func (s *Store) scanEvent(row pgx.Row) (domain.Event, error) {
 		event.EventType = *eventType
 	}
 	event.EndpointID = endpointID
+	if priority != nil {
+		event.Priority = *priority
+	} else {
+		event.Priority = domain.DefaultPriority
+	}
 
 	if len(headersJSON) > 0 {
 		if err := json.Unmarshal(headersJSON, &event.Headers); err != nil {
@@ -974,6 +997,7 @@ func (s *Store) scanEvents(rows pgx.Rows) ([]domain.Event, error) {
 		var headersJSON []byte
 		var clientID, eventType *string
 		var endpointID *uuid.UUID
+		var priority *int
 
 		err := rows.Scan(
 			&event.ID,
@@ -985,6 +1009,8 @@ func (s *Store) scanEvents(rows pgx.Rows) ([]domain.Event, error) {
 			&event.Payload,
 			&headersJSON,
 			&event.Status,
+			&priority,
+			&event.ScheduledAt,
 			&event.Attempts,
 			&event.MaxAttempts,
 			&event.NextAttemptAt,
@@ -1003,6 +1029,11 @@ func (s *Store) scanEvents(rows pgx.Rows) ([]domain.Event, error) {
 			event.EventType = *eventType
 		}
 		event.EndpointID = endpointID
+		if priority != nil {
+			event.Priority = *priority
+		} else {
+			event.Priority = domain.DefaultPriority
+		}
 
 		if len(headersJSON) > 0 {
 			if err := json.Unmarshal(headersJSON, &event.Headers); err != nil {

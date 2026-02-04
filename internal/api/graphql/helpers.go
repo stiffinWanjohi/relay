@@ -12,6 +12,36 @@ import (
 	"github.com/stiffinWanjohi/relay/internal/event"
 )
 
+// validateScheduling validates and computes the scheduled delivery time from input parameters.
+func validateScheduling(deliverAt *time.Time, delaySeconds *int) (*time.Time, error) {
+	if deliverAt != nil && delaySeconds != nil {
+		return nil, fmt.Errorf("cannot specify both deliverAt and delaySeconds")
+	}
+
+	if deliverAt != nil {
+		if deliverAt.Before(time.Now()) {
+			return nil, fmt.Errorf("deliverAt must be in the future")
+		}
+		if deliverAt.Sub(time.Now()) > domain.MaxScheduleDelay {
+			return nil, fmt.Errorf("deliverAt cannot be more than 30 days in the future")
+		}
+		return deliverAt, nil
+	}
+
+	if delaySeconds != nil {
+		if *delaySeconds < 0 {
+			return nil, fmt.Errorf("delaySeconds must be positive")
+		}
+		if *delaySeconds > int(domain.MaxScheduleDelay.Seconds()) {
+			return nil, fmt.Errorf("delaySeconds cannot exceed 30 days")
+		}
+		t := time.Now().Add(time.Duration(*delaySeconds) * time.Second)
+		return &t, nil
+	}
+
+	return nil, nil
+}
+
 // timeNow is a variable so it can be mocked in tests
 var timeNow = time.Now
 
@@ -196,6 +226,8 @@ func domainEventToGQL(evt domain.Event) *Event {
 		Payload:        payload,
 		Headers:        headers,
 		Status:         domainStatusToGQL(evt.Status),
+		Priority:       evt.Priority,
+		ScheduledAt:    evt.ScheduledAt,
 		Attempts:       evt.Attempts,
 		MaxAttempts:    evt.MaxAttempts,
 		NextAttemptAt:  evt.NextAttemptAt,

@@ -1,6 +1,8 @@
 package graphql
 
 import (
+	"log/slog"
+
 	"github.com/stiffinWanjohi/relay/internal/dedup"
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/event"
@@ -16,6 +18,7 @@ type Resolver struct {
 	Queue          *queue.Queue
 	Dedup          *dedup.Checker
 	Transformer    domain.TransformationExecutor
+	Logger         *slog.Logger
 }
 
 // NewResolver creates a new resolver.
@@ -26,5 +29,12 @@ func NewResolver(store *event.Store, eventTypeStore *eventtype.Store, q *queue.Q
 		Queue:          q,
 		Dedup:          d,
 		Transformer:    transform.NewDefaultV8Executor(),
+		Logger:         slog.Default(),
 	}
+}
+
+// WithLogger sets a custom logger for the resolver.
+func (r *Resolver) WithLogger(logger *slog.Logger) *Resolver {
+	r.Logger = logger
+	return r
 }

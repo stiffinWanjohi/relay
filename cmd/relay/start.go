@@ -264,6 +264,7 @@ func runServer(svc *app.Services) {
 		NotificationService: svc.Notification,
 		NotifyOnTrip:        cfg.Notification.NotifyOnTrip,
 		NotifyOnRecover:     cfg.Notification.NotifyOnRecover,
+		EnablePriorityQueue: true, // Enable priority queue processing
 	}
 
 	worker := delivery.NewWorker(q, store, workerConfig, logger)

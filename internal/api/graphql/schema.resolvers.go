@@ -127,6 +127,21 @@ func (r *mutationResolver) CreateEvent(ctx context.Context, input CreateEventInp
 		return nil, err
 	}
 
+	// Validate and compute scheduling
+	scheduledAt, err := validateScheduling(input.DeliverAt, input.DelaySeconds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate priority
+	priority := domain.DefaultPriority
+	if input.Priority != nil {
+		if *input.Priority < 1 || *input.Priority > 10 {
+			return nil, fmt.Errorf("priority must be between 1 and 10")
+		}
+		priority = *input.Priority
+	}
+
 	// Parse headers first (needed for event creation)
 	var headers map[string]string
 	if input.Headers != nil {
@@ -139,7 +154,7 @@ func (r *mutationResolver) CreateEvent(ctx context.Context, input CreateEventInp
 	}
 
 	// Create event object with a new ID (not yet persisted)
-	evt := domain.NewEvent(idempotencyKey, input.Destination, payload, headers)
+	evt := domain.NewEventWithOptions(idempotencyKey, input.Destination, payload, headers, priority, scheduledAt)
 	if input.MaxAttempts != nil && *input.MaxAttempts > 0 {
 		evt.MaxAttempts = *input.MaxAttempts
 	}
@@ -200,6 +215,21 @@ func (r *mutationResolver) SendEvent(ctx context.Context, input SendEventInput, 
 	}
 	// If event type not found, we allow sending (event types are optional)
 
+	// Validate and compute scheduling
+	scheduledAt, err := validateScheduling(input.DeliverAt, input.DelaySeconds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate priority
+	priority := domain.DefaultPriority
+	if input.Priority != nil {
+		if *input.Priority < 1 || *input.Priority > 10 {
+			return nil, fmt.Errorf("priority must be between 1 and 10")
+		}
+		priority = *input.Priority
+	}
+
 	// Parse headers
 	var headers map[string]string
 	if input.Headers != nil {
@@ -212,21 +242,15 @@ func (r *mutationResolver) SendEvent(ctx context.Context, input SendEventInput, 
 	}
 
 	// Create events with fanout to all subscribed endpoints
-	events, err := r.Store.CreateEventWithFanout(ctx, clientID, input.EventType, idempotencyKey, payload, headers)
+	// Events are created with outbox entries - the outbox processor handles
+	// enqueuing with correct priority and scheduling (transactional outbox pattern)
+	events, err := r.Store.CreateEventWithFanoutAndOptions(ctx, clientID, input.EventType, idempotencyKey, payload, headers, priority, scheduledAt)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(events) == 0 {
 		return nil, fmt.Errorf("no endpoints subscribed to event type: %s", input.EventType)
-	}
-
-	// Enqueue all events for delivery
-	for _, evt := range events {
-		if err := r.Queue.Enqueue(ctx, evt.ID); err != nil {
-			// Log but don't fail - outbox will pick up any missed events
-			continue
-		}
 	}
 
 	result := make([]Event, len(events))
@@ -1007,6 +1031,50 @@ func (r *mutationResolver) RecoverStaleFIFOMessages(ctx context.Context) (*FIFOR
 	}, nil
 }
 
+// CancelScheduledEvent is the resolver for the cancelScheduledEvent field.
+func (r *mutationResolver) CancelScheduledEvent(ctx context.Context, id string) (*Event, error) {
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid event ID: %w", err)
+	}
+
+	evt, err := r.Store.GetByID(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate that the event can be cancelled
+	if evt.Status != domain.EventStatusQueued {
+		return nil, fmt.Errorf("can only cancel events in QUEUED status, current status: %s", evt.Status)
+	}
+
+	if !evt.IsScheduled() {
+		return nil, fmt.Errorf("event is not scheduled for future delivery")
+	}
+
+	// Mark the event as dead (cancelled)
+	evt = evt.MarkDead()
+
+	// Update in store
+	evt, err = r.Store.Update(ctx, evt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Remove from delayed queue if present
+	if removeErr := r.Queue.RemoveFromDelayed(ctx, uid); removeErr != nil {
+		// Log but don't fail - the event is already marked as cancelled in the database.
+		// The delayed queue processor will skip dead events anyway.
+		// This could happen if the event was already moved to a priority queue.
+		r.Logger.Warn("failed to remove cancelled event from delayed queue",
+			"event_id", uid,
+			"error", removeErr,
+		)
+	}
+
+	return domainEventToGQL(evt), nil
+}
+
 // Event is the resolver for the event field.
 func (r *queryResolver) Event(ctx context.Context, id string) (*Event, error) {
 	uid, err := uuid.Parse(id)
@@ -1382,6 +1450,21 @@ func (r *queryResolver) ActiveFIFOQueues(ctx context.Context) ([]FIFOQueueStats,
 	}
 
 	return result, nil
+}
+
+// PriorityQueueStats is the resolver for the priorityQueueStats field.
+func (r *queryResolver) PriorityQueueStats(ctx context.Context) (*PriorityQueueStats, error) {
+	stats, err := r.Queue.GetPriorityStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PriorityQueueStats{
+		High:    int(stats.High),
+		Normal:  int(stats.Normal),
+		Low:     int(stats.Low),
+		Delayed: int(stats.Delayed),
+	}, nil
 }
 
 // Endpoint returns EndpointResolver implementation.

@@ -20,6 +20,11 @@ const (
 	processingQueueKey = "relay:queue:processing"
 	delayedQueueKey    = "relay:queue:delayed"
 
+	// Priority queue keys
+	priorityHighKey   = "relay:queue:priority:high"   // priority 1-3
+	priorityNormalKey = "relay:queue:priority:normal" // priority 4-7 (default)
+	priorityLowKey    = "relay:queue:priority:low"    // priority 8-10
+
 	// Default visibility timeout (how long a message stays invisible to other consumers)
 	defaultVisibilityTimeout = 30 * time.Second
 
@@ -35,6 +40,7 @@ type Message struct {
 	ID        string    `json:"id"`
 	EventID   uuid.UUID `json:"event_id"`
 	ClientID  string    `json:"client_id,omitempty"` // For per-client queuing
+	Priority  int       `json:"priority,omitempty"`  // 1-10, lower = higher priority
 	EnqueueAt time.Time `json:"enqueue_at"`
 }
 
@@ -140,6 +146,258 @@ func (q *Queue) EnqueueDelayed(ctx context.Context, eventID uuid.UUID, delay tim
 
 	score := float64(msg.EnqueueAt.Unix())
 	return q.client.ZAdd(ctx, delayedQueueKey, redis.Z{Score: score, Member: data}).Err()
+}
+
+// ============================================================================
+// Priority Queue Support
+// ============================================================================
+// Priority queues allow events to be processed in priority order.
+// Priority 1-3 = High, 4-7 = Normal (default), 8-10 = Low
+// Higher priority events (lower number) are processed first.
+
+// priorityQueueKey returns the queue key for a given priority level.
+func priorityQueueKey(priority int) string {
+	switch {
+	case priority <= 3:
+		return priorityHighKey
+	case priority <= 7:
+		return priorityNormalKey
+	default:
+		return priorityLowKey
+	}
+}
+
+// EnqueueWithPriority adds an event to the appropriate priority queue.
+func (q *Queue) EnqueueWithPriority(ctx context.Context, eventID uuid.UUID, priority int) error {
+	// Normalize priority to valid range
+	if priority < 1 {
+		priority = 1
+	} else if priority > 10 {
+		priority = 10
+	}
+
+	msg := Message{
+		ID:        uuid.New().String(),
+		EventID:   eventID,
+		Priority:  priority,
+		EnqueueAt: time.Now().UTC(),
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	queueKey := priorityQueueKey(priority)
+	if err := q.client.LPush(ctx, queueKey, data).Err(); err != nil {
+		return err
+	}
+
+	if q.metrics != nil {
+		q.metrics.QueueEnqueued(ctx)
+	}
+
+	return nil
+}
+
+// EnqueueDelayedWithPriority adds an event to the delayed queue with priority info.
+func (q *Queue) EnqueueDelayedWithPriority(ctx context.Context, eventID uuid.UUID, priority int, delay time.Duration) error {
+	// Normalize priority to valid range
+	if priority < 1 {
+		priority = 1
+	} else if priority > 10 {
+		priority = 10
+	}
+
+	msg := Message{
+		ID:        uuid.New().String(),
+		EventID:   eventID,
+		Priority:  priority,
+		EnqueueAt: time.Now().UTC().Add(delay),
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	score := float64(msg.EnqueueAt.Unix())
+	return q.client.ZAdd(ctx, delayedQueueKey, redis.Z{Score: score, Member: data}).Err()
+}
+
+// starvationCounter tracks how many messages have been dequeued from high priority
+// to implement weighted fair queuing (process some low priority periodically)
+var starvationCounter uint64
+
+// DequeueWithPriority retrieves a message from the priority queues using weighted fair queuing.
+// Uses a weighted approach: for every 10 high-priority messages, process at least 1 from
+// normal queue, and for every 20, process at least 1 from low queue.
+// This prevents starvation of low-priority messages while still prioritizing high-priority ones.
+func (q *Queue) DequeueWithPriority(ctx context.Context) (*Message, error) {
+	// First, move any delayed messages that are ready to their priority queues
+	if err := q.moveDelayedToPriority(ctx); err != nil {
+		return nil, err
+	}
+
+	// Check for context cancellation before blocking
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	// Increment starvation counter atomically
+	counter := starvationCounter
+	starvationCounter++
+
+	// Weighted fair queuing:
+	// - Every 20th dequeue, try low priority first (5% of traffic)
+	// - Every 10th dequeue, try normal priority first (10% of traffic)
+	// - Otherwise, strict priority order
+	var queueOrder []string
+	if counter%20 == 19 {
+		// Give low priority a chance
+		queueOrder = []string{priorityLowKey, priorityNormalKey, priorityHighKey}
+	} else if counter%10 == 9 {
+		// Give normal priority a chance
+		queueOrder = []string{priorityNormalKey, priorityHighKey, priorityLowKey}
+	} else {
+		// Standard priority order
+		queueOrder = []string{priorityHighKey, priorityNormalKey, priorityLowKey}
+	}
+
+	for _, queueKey := range queueOrder {
+		// Non-blocking check
+		result, err := q.client.RPopLPush(ctx, queueKey, processingQueueKey).Result()
+		if err == nil {
+			var msg Message
+			if err := json.Unmarshal([]byte(result), &msg); err != nil {
+				return nil, err
+			}
+			if q.metrics != nil {
+				q.metrics.QueueDequeued(ctx)
+			}
+			return &msg, nil
+		}
+		if !errors.Is(err, redis.Nil) {
+			return nil, err
+		}
+	}
+
+	// All priority queues are empty, fall back to main queue with blocking
+	result, err := q.client.BRPopLPush(ctx, mainQueueKey, processingQueueKey, q.blockingTimeout).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, domain.ErrQueueEmpty
+	}
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, err
+	}
+
+	var msg Message
+	if err := json.Unmarshal([]byte(result), &msg); err != nil {
+		return nil, err
+	}
+
+	if q.metrics != nil {
+		q.metrics.QueueDequeued(ctx)
+	}
+
+	return &msg, nil
+}
+
+// moveDelayedToPriority moves ready delayed messages to their priority queues.
+func (q *Queue) moveDelayedToPriority(ctx context.Context) error {
+	now := formatFloat(float64(time.Now().UTC().Unix()))
+
+	// Get messages that are ready
+	messages, err := q.client.ZRangeByScore(ctx, delayedQueueKey, &redis.ZRangeBy{
+		Min:   "-inf",
+		Max:   now,
+		Count: int64(delayedBatchLimit),
+	}).Result()
+	if err != nil {
+		return err
+	}
+
+	if len(messages) == 0 {
+		return nil
+	}
+
+	pipe := q.client.Pipeline()
+	for _, msgData := range messages {
+		var msg Message
+		if err := json.Unmarshal([]byte(msgData), &msg); err != nil {
+			continue
+		}
+
+		// Determine target queue based on priority
+		var targetQueue string
+		if msg.Priority > 0 {
+			targetQueue = priorityQueueKey(msg.Priority)
+		} else {
+			targetQueue = mainQueueKey // No priority info, use main queue
+		}
+
+		pipe.RPush(ctx, targetQueue, msgData)
+		pipe.ZRem(ctx, delayedQueueKey, msgData)
+	}
+
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+// PriorityStats holds statistics for priority queues.
+type PriorityStats struct {
+	High    int64
+	Normal  int64
+	Low     int64
+	Delayed int64
+}
+
+// GetPriorityStats returns the current depth of each priority queue.
+func (q *Queue) GetPriorityStats(ctx context.Context) (PriorityStats, error) {
+	pipe := q.client.Pipeline()
+	highLen := pipe.LLen(ctx, priorityHighKey)
+	normalLen := pipe.LLen(ctx, priorityNormalKey)
+	lowLen := pipe.LLen(ctx, priorityLowKey)
+	delayedLen := pipe.ZCard(ctx, delayedQueueKey)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return PriorityStats{}, err
+	}
+
+	return PriorityStats{
+		High:    highLen.Val(),
+		Normal:  normalLen.Val(),
+		Low:     lowLen.Val(),
+		Delayed: delayedLen.Val(),
+	}, nil
+}
+
+// RemoveFromDelayed removes a specific event from the delayed queue.
+// This is used when cancelling a scheduled event.
+func (q *Queue) RemoveFromDelayed(ctx context.Context, eventID uuid.UUID) error {
+	// We need to find and remove the message with the matching event ID
+	// Since ZSET members are serialized Message structs, we need to scan and remove
+	messages, err := q.client.ZRange(ctx, delayedQueueKey, 0, -1).Result()
+	if err != nil {
+		return err
+	}
+
+	for _, msgData := range messages {
+		var msg Message
+		if err := json.Unmarshal([]byte(msgData), &msg); err != nil {
+			continue
+		}
+		if msg.EventID == eventID {
+			return q.client.ZRem(ctx, delayedQueueKey, msgData).Err()
+		}
+	}
+
+	return nil // Not found is not an error
 }
 
 // Dequeue retrieves a message from the queue with visibility timeout.

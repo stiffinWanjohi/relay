@@ -29,12 +29,14 @@ mutation CreateEvent($input: CreateEventInput!, $key: String!) {
     id
     status
     destination
+    priority
+    scheduledAt
     createdAt
   }
 }
 ```
 
-**Variables:**
+**Variables (basic):**
 ```json
 {
   "input": {
@@ -44,6 +46,19 @@ mutation CreateEvent($input: CreateEventInput!, $key: String!) {
     "maxAttempts": 10
   },
   "key": "order-123-created"
+}
+```
+
+**Variables (with priority and scheduling):**
+```json
+{
+  "input": {
+    "destination": "https://example.com/webhook",
+    "payload": { "orderId": "123" },
+    "priority": 2,
+    "delaySeconds": 300
+  },
+  "key": "delayed-order-123"
 }
 ```
 
@@ -58,11 +73,13 @@ mutation SendEvent($input: SendEventInput!, $key: String!) {
     status
     destination
     endpointId
+    priority
+    scheduledAt
   }
 }
 ```
 
-**Variables:**
+**Variables (basic):**
 ```json
 {
   "input": {
@@ -71,6 +88,42 @@ mutation SendEvent($input: SendEventInput!, $key: String!) {
     "headers": { "X-Custom": "value" }
   },
   "key": "order-123-created"
+}
+```
+
+**Variables (with priority):**
+```json
+{
+  "input": {
+    "eventType": "order.created",
+    "payload": { "orderId": "123" },
+    "priority": 1
+  },
+  "key": "high-priority-order-123"
+}
+```
+
+**Variables (scheduled delivery):**
+```json
+{
+  "input": {
+    "eventType": "reminder.send",
+    "payload": { "message": "Don't forget!" },
+    "deliverAt": "2026-02-05T10:00:00Z"
+  },
+  "key": "reminder-123"
+}
+```
+
+**Variables (delayed delivery):**
+```json
+{
+  "input": {
+    "eventType": "email.send",
+    "payload": { "to": "user@example.com" },
+    "delaySeconds": 3600
+  },
+  "key": "email-456"
 }
 ```
 
@@ -388,6 +441,8 @@ query GetEvent($id: ID!) {
     status
     attempts
     maxAttempts
+    priority
+    scheduledAt
     createdAt
     deliveredAt
     deliveryAttempts {

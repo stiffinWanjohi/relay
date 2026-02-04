@@ -42,10 +42,13 @@ type CreateEndpointInput struct {
 }
 
 type CreateEventInput struct {
-	Destination string         `json:"destination"`
-	Payload     map[string]any `json:"payload"`
-	Headers     map[string]any `json:"headers,omitempty"`
-	MaxAttempts *int           `json:"maxAttempts,omitempty"`
+	Destination  string         `json:"destination"`
+	Payload      map[string]any `json:"payload"`
+	Headers      map[string]any `json:"headers,omitempty"`
+	MaxAttempts  *int           `json:"maxAttempts,omitempty"`
+	Priority     *int           `json:"priority,omitempty"`
+	DeliverAt    *time.Time     `json:"deliverAt,omitempty"`
+	DelaySeconds *int           `json:"delaySeconds,omitempty"`
 }
 
 type CreateEventTypeInput struct {
@@ -129,6 +132,8 @@ type Event struct {
 	Payload          map[string]any    `json:"payload"`
 	Headers          map[string]any    `json:"headers,omitempty"`
 	Status           EventStatus       `json:"status"`
+	Priority         int               `json:"priority"`
+	ScheduledAt      *time.Time        `json:"scheduledAt,omitempty"`
 	Attempts         int               `json:"attempts"`
 	MaxAttempts      int               `json:"maxAttempts"`
 	NextAttemptAt    *time.Time        `json:"nextAttemptAt,omitempty"`
@@ -208,6 +213,13 @@ type PageInfo struct {
 	EndCursor       *string `json:"endCursor,omitempty"`
 }
 
+type PriorityQueueStats struct {
+	High    int `json:"high"`
+	Normal  int `json:"normal"`
+	Low     int `json:"low"`
+	Delayed int `json:"delayed"`
+}
+
 type Query struct {
 }
 
@@ -223,9 +235,12 @@ type QueueStats struct {
 }
 
 type SendEventInput struct {
-	EventType string         `json:"eventType"`
-	Payload   map[string]any `json:"payload"`
-	Headers   map[string]any `json:"headers,omitempty"`
+	EventType    string         `json:"eventType"`
+	Payload      map[string]any `json:"payload"`
+	Headers      map[string]any `json:"headers,omitempty"`
+	Priority     *int           `json:"priority,omitempty"`
+	DeliverAt    *time.Time     `json:"deliverAt,omitempty"`
+	DelaySeconds *int           `json:"delaySeconds,omitempty"`
 }
 
 type TestTransformationInput struct {

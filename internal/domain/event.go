@@ -18,6 +18,20 @@ const (
 	EventStatusDead       EventStatus = "dead"
 )
 
+// Priority constants
+const (
+	PriorityHighest = 1
+	PriorityHigh    = 3
+	PriorityNormal  = 5
+	PriorityLow     = 7
+	PriorityLowest  = 10
+
+	DefaultPriority = PriorityNormal
+)
+
+// MaxScheduleDelay is the maximum time an event can be scheduled in the future (30 days)
+const MaxScheduleDelay = 30 * 24 * time.Hour
+
 // Event represents a webhook event to be delivered.
 type Event struct {
 	ID             uuid.UUID
@@ -29,6 +43,8 @@ type Event struct {
 	Payload        json.RawMessage
 	Headers        map[string]string
 	Status         EventStatus
+	Priority       int        // 1-10, lower = higher priority, default 5
+	ScheduledAt    *time.Time // When to deliver (nil = immediate)
 	Attempts       int
 	MaxAttempts    int
 	NextAttemptAt  *time.Time
@@ -47,6 +63,30 @@ func NewEvent(idempotencyKey, destination string, payload json.RawMessage, heade
 		Payload:        payload,
 		Headers:        headers,
 		Status:         EventStatusQueued,
+		Priority:       DefaultPriority,
+		Attempts:       0,
+		MaxAttempts:    10,
+		NextAttemptAt:  &now,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+}
+
+// NewEventWithOptions creates a new event with custom priority and scheduling.
+func NewEventWithOptions(idempotencyKey, destination string, payload json.RawMessage, headers map[string]string, priority int, scheduledAt *time.Time) Event {
+	now := time.Now().UTC()
+	if priority < 1 || priority > 10 {
+		priority = DefaultPriority
+	}
+	return Event{
+		ID:             uuid.New(),
+		IdempotencyKey: idempotencyKey,
+		Destination:    destination,
+		Payload:        payload,
+		Headers:        headers,
+		Status:         EventStatusQueued,
+		Priority:       priority,
+		ScheduledAt:    scheduledAt,
 		Attempts:       0,
 		MaxAttempts:    10,
 		NextAttemptAt:  &now,
@@ -57,6 +97,11 @@ func NewEvent(idempotencyKey, destination string, payload json.RawMessage, heade
 
 // NewEventForEndpoint creates a new event targeting a specific endpoint.
 func NewEventForEndpoint(clientID, eventType, idempotencyKey string, endpoint Endpoint, payload json.RawMessage, headers map[string]string) Event {
+	return NewEventForEndpointWithOptions(clientID, eventType, idempotencyKey, endpoint, payload, headers, DefaultPriority, nil)
+}
+
+// NewEventForEndpointWithOptions creates a new event targeting a specific endpoint with custom priority and scheduling.
+func NewEventForEndpointWithOptions(clientID, eventType, idempotencyKey string, endpoint Endpoint, payload json.RawMessage, headers map[string]string, priority int, scheduledAt *time.Time) Event {
 	now := time.Now().UTC()
 	endpointID := endpoint.ID
 
@@ -69,6 +114,10 @@ func NewEventForEndpoint(clientID, eventType, idempotencyKey string, endpoint En
 		mergedHeaders[k] = v // Event headers override endpoint headers
 	}
 
+	if priority < 1 || priority > 10 {
+		priority = DefaultPriority
+	}
+
 	return Event{
 		ID:             uuid.New(),
 		IdempotencyKey: idempotencyKey,
@@ -79,6 +128,8 @@ func NewEventForEndpoint(clientID, eventType, idempotencyKey string, endpoint En
 		Payload:        payload,
 		Headers:        mergedHeaders,
 		Status:         EventStatusQueued,
+		Priority:       priority,
+		ScheduledAt:    scheduledAt,
 		Attempts:       0,
 		MaxAttempts:    endpoint.MaxRetries,
 		NextAttemptAt:  &now,
@@ -104,6 +155,8 @@ func (e Event) MarkDelivering() Event {
 		Payload:        e.Payload,
 		Headers:        e.Headers,
 		Status:         EventStatusDelivering,
+		Priority:       e.Priority,
+		ScheduledAt:    e.ScheduledAt,
 		Attempts:       e.Attempts,
 		MaxAttempts:    e.MaxAttempts,
 		NextAttemptAt:  e.NextAttemptAt,
@@ -126,6 +179,8 @@ func (e Event) MarkDelivered() Event {
 		Payload:        e.Payload,
 		Headers:        e.Headers,
 		Status:         EventStatusDelivered,
+		Priority:       e.Priority,
+		ScheduledAt:    e.ScheduledAt,
 		Attempts:       e.Attempts,
 		MaxAttempts:    e.MaxAttempts,
 		NextAttemptAt:  nil,
@@ -147,6 +202,8 @@ func (e Event) MarkFailed(nextAttemptAt time.Time) Event {
 		Payload:        e.Payload,
 		Headers:        e.Headers,
 		Status:         EventStatusFailed,
+		Priority:       e.Priority,
+		ScheduledAt:    e.ScheduledAt,
 		Attempts:       e.Attempts,
 		MaxAttempts:    e.MaxAttempts,
 		NextAttemptAt:  &nextAttemptAt,
@@ -168,6 +225,8 @@ func (e Event) MarkDead() Event {
 		Payload:        e.Payload,
 		Headers:        e.Headers,
 		Status:         EventStatusDead,
+		Priority:       e.Priority,
+		ScheduledAt:    e.ScheduledAt,
 		Attempts:       e.Attempts,
 		MaxAttempts:    e.MaxAttempts,
 		NextAttemptAt:  nil,
@@ -189,6 +248,8 @@ func (e Event) IncrementAttempts() Event {
 		Payload:        e.Payload,
 		Headers:        e.Headers,
 		Status:         e.Status,
+		Priority:       e.Priority,
+		ScheduledAt:    e.ScheduledAt,
 		Attempts:       e.Attempts + 1,
 		MaxAttempts:    e.MaxAttempts,
 		NextAttemptAt:  e.NextAttemptAt,
@@ -216,6 +277,8 @@ func (e Event) Replay() Event {
 		Payload:        e.Payload,
 		Headers:        e.Headers,
 		Status:         EventStatusQueued,
+		Priority:       e.Priority,
+		ScheduledAt:    nil, // Clear scheduling on replay for immediate delivery
 		Attempts:       0,
 		MaxAttempts:    e.MaxAttempts,
 		NextAttemptAt:  &now,
@@ -223,4 +286,14 @@ func (e Event) Replay() Event {
 		CreatedAt:      e.CreatedAt,
 		UpdatedAt:      now,
 	}
+}
+
+// IsScheduled returns true if the event is scheduled for future delivery.
+func (e Event) IsScheduled() bool {
+	return e.ScheduledAt != nil && e.ScheduledAt.After(time.Now())
+}
+
+// ValidatePriority checks if a priority value is valid (1-10).
+func ValidatePriority(priority int) bool {
+	return priority >= 1 && priority <= 10
 }
