@@ -1,5 +1,180 @@
 # Features
 
+## Event Type Catalog
+
+Define event types with optional JSONSchema validation. Event types become first-class entities that can be browsed, documented, and validated against.
+
+```graphql
+# Create an event type with schema validation
+mutation {
+  createEventType(input: {
+    name: "order.created"
+    description: "Fired when a new order is placed"
+    schema: {
+      "type": "object",
+      "required": ["order_id", "customer_id", "total"],
+      "properties": {
+        "order_id": { "type": "string" },
+        "customer_id": { "type": "string" },
+        "total": { "type": "number", "minimum": 0 }
+      }
+    }
+    schemaVersion: "1.0"
+  }) {
+    id
+    name
+  }
+}
+
+# List all event types
+query {
+  eventTypes(first: 10) {
+    edges {
+      node { id name description schemaVersion }
+    }
+  }
+}
+```
+
+When a schema is defined, payloads are validated on `sendEvent`. Invalid payloads are rejected with detailed error messages.
+
+## Event Filtering (Content-Based Routing)
+
+Route events to endpoints based on payload content using JSONPath expressions and comparison operators.
+
+```graphql
+mutation {
+  createEndpoint(input: {
+    url: "https://premium.example.com/hook"
+    eventTypes: ["order.created"]
+    filter: {
+      "and": [
+        { "path": "$.data.amount", "operator": "gt", "value": 100 },
+        { "or": [
+          { "path": "$.data.country", "operator": "eq", "value": "US" },
+          { "path": "$.data.country", "operator": "eq", "value": "CA" }
+        ]}
+      ]
+    }
+  }) { id }
+}
+```
+
+**Supported Operators:**
+- `eq`, `ne` - Equality/inequality
+- `gt`, `gte`, `lt`, `lte` - Numeric comparisons
+- `contains`, `startsWith`, `endsWith` - String operations
+- `exists` - Check if path exists
+- `regex` - Regular expression matching
+
+**Logical Combinators:** `and`, `or`, `not` (max 10 levels deep)
+
+Events only delivered to endpoints where filters match. Unmatched events logged but not delivered.
+
+## Payload Transformations
+
+Transform webhook payloads before delivery using JavaScript. Modify URL, method, headers, body, or cancel delivery conditionally.
+
+```graphql
+mutation {
+  createEndpoint(input: {
+    url: "https://slack.example.com/hook"
+    eventTypes: ["alert.*"]
+    transformation: """
+      function transform(webhook) {
+        return {
+          method: 'POST',
+          url: webhook.url,
+          headers: { 'Content-Type': 'application/json' },
+          payload: {
+            text: `Alert: ${webhook.payload.message}`,
+            channel: '#alerts'
+          },
+          cancel: webhook.payload.severity === 'debug'
+        };
+      }
+    """
+  }) { id }
+}
+```
+
+**Test transformations before saving:**
+
+```graphql
+mutation {
+  testTransformation(
+    code: "function transform(w) { return { ...w, payload: { wrapped: w.payload } }; }"
+    samplePayload: { "order_id": 123 }
+  ) {
+    success
+    result
+    error
+  }
+}
+```
+
+**Safety Features:**
+- 1-second execution timeout
+- No filesystem, network, or system API access
+- Memory limits enforced
+- Errors logged, original payload preserved on failure
+
+## FIFO Delivery (Ordered Delivery)
+
+Guarantee ordered delivery for endpoints that require it. Events are delivered sequentially per endpoint/partition.
+
+```graphql
+mutation {
+  createEndpoint(input: {
+    url: "https://inventory.example.com/hook"
+    eventTypes: ["stock.*"]
+    fifo: true
+    partitionKey: "$.product_id"  # Optional: parallel streams per product
+  }) { id }
+}
+```
+
+**How it works:**
+- FIFO endpoints use separate queues per endpoint/partition
+- Only one in-flight message at a time per queue
+- Next message waits for ack/nack before sending
+- Partition keys enable parallelism within ordering (e.g., `$.customer_id`)
+
+**Management API:**
+
+```graphql
+# View FIFO queue statistics
+query {
+  fifoQueueStats(endpointId: "ep_123") {
+    totalPartitions
+    totalMessages
+    partitionStats { partitionKey queueDepth locked }
+  }
+}
+
+# Release stuck locks (after crash recovery)
+mutation {
+  releaseFIFOLock(endpointId: "ep_123", partitionKey: "customer-456")
+}
+
+# Drain a FIFO queue (optionally move to standard delivery)
+mutation {
+  drainFIFOQueue(endpointId: "ep_123", moveToStandard: true) {
+    messagesProcessed
+  }
+}
+
+# Recover stale messages from crashed workers
+mutation {
+  recoverStaleFIFOMessages { recoveredCount }
+}
+```
+
+**Trade-offs:**
+- Reduced throughput compared to parallel delivery
+- Failures block subsequent events until retry succeeds
+- Use partition keys to balance ordering guarantees with throughput
+
 ## Guaranteed Delivery
 
 Transactional outbox pattern. Events are written to PostgreSQL in the same transaction as your application logic. A background processor moves them to Redis for delivery.

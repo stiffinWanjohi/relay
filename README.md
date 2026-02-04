@@ -22,6 +22,10 @@ Relay fixes that.
 - **Resilient** - Circuit breakers + exponential backoff.
 - **Observable** - Full delivery history, queue stats.
 - **Multi-tenant** - Fair scheduling, per-endpoint config.
+- **Event Types** - Schema catalog with JSONSchema validation.
+- **Smart Routing** - Content-based filtering with JSONPath expressions.
+- **Transformable** - JavaScript payload transformations before delivery.
+- **Ordered** - FIFO delivery with partition key support.
 
 [All features →](docs/features.md)
 
