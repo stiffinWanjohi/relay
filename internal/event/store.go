@@ -434,12 +434,14 @@ func (s *Store) CreateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 	query := `
 		INSERT INTO endpoints (
 			id, client_id, url, description, event_types, status, filter, transformation,
+			fifo, fifo_partition_key,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
 			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 		RETURNING id, client_id, url, description, event_types, status, filter, transformation,
+			fifo, fifo_partition_key,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -455,6 +457,8 @@ func (s *Store) CreateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 		endpoint.Status,
 		endpoint.Filter,
 		nullString(endpoint.Transformation),
+		endpoint.FIFO,
+		nullString(endpoint.FIFOPartitionKey),
 		endpoint.MaxRetries,
 		endpoint.RetryBackoffMs,
 		endpoint.RetryBackoffMax,
@@ -482,12 +486,14 @@ func (s *Store) UpdateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 	query := `
 		UPDATE endpoints SET
 			url = $2, description = $3, event_types = $4, status = $5, filter = $6, transformation = $7,
-			max_retries = $8, retry_backoff_ms = $9, retry_backoff_max = $10, retry_backoff_mult = $11,
-			timeout_ms = $12, rate_limit_per_sec = $13, circuit_threshold = $14, circuit_reset_ms = $15,
-			custom_headers = $16, signing_secret = $17, previous_secret = $18, secret_rotated_at = $19,
+			fifo = $8, fifo_partition_key = $9,
+			max_retries = $10, retry_backoff_ms = $11, retry_backoff_max = $12, retry_backoff_mult = $13,
+			timeout_ms = $14, rate_limit_per_sec = $15, circuit_threshold = $16, circuit_reset_ms = $17,
+			custom_headers = $18, signing_secret = $19, previous_secret = $20, secret_rotated_at = $21,
 			updated_at = NOW()
 		WHERE id = $1
 		RETURNING id, client_id, url, description, event_types, status, filter, transformation,
+			fifo, fifo_partition_key,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -502,6 +508,8 @@ func (s *Store) UpdateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 		endpoint.Status,
 		endpoint.Filter,
 		nullString(endpoint.Transformation),
+		endpoint.FIFO,
+		nullString(endpoint.FIFOPartitionKey),
 		endpoint.MaxRetries,
 		endpoint.RetryBackoffMs,
 		endpoint.RetryBackoffMax,
@@ -525,6 +533,7 @@ func (s *Store) UpdateEndpoint(ctx context.Context, endpoint domain.Endpoint) (d
 func (s *Store) GetEndpointByID(ctx context.Context, id uuid.UUID) (domain.Endpoint, error) {
 	query := `
 		SELECT id, client_id, url, description, event_types, status, filter, transformation,
+			fifo, fifo_partition_key,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -544,6 +553,7 @@ func (s *Store) GetEndpointByID(ctx context.Context, id uuid.UUID) (domain.Endpo
 func (s *Store) ListEndpointsByClient(ctx context.Context, clientID string, limit, offset int) ([]domain.Endpoint, error) {
 	query := `
 		SELECT id, client_id, url, description, event_types, status, filter, transformation,
+			fifo, fifo_partition_key,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -571,6 +581,7 @@ func (s *Store) FindActiveEndpointsByEventType(ctx context.Context, clientID, ev
 	// 3. event_types array is empty (subscribe to all)
 	query := `
 		SELECT id, client_id, url, description, event_types, status, filter, transformation,
+			fifo, fifo_partition_key,
 			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
 			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
 			custom_headers, signing_secret, previous_secret, secret_rotated_at,
@@ -583,6 +594,29 @@ func (s *Store) FindActiveEndpointsByEventType(ctx context.Context, clientID, ev
 	`
 
 	rows, err := s.pool.Query(ctx, query, clientID, eventType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return s.scanEndpoints(rows)
+}
+
+// ListFIFOEndpoints returns all active endpoints with FIFO enabled.
+func (s *Store) ListFIFOEndpoints(ctx context.Context) ([]domain.Endpoint, error) {
+	query := `
+		SELECT id, client_id, url, description, event_types, status, filter, transformation,
+			fifo, fifo_partition_key,
+			max_retries, retry_backoff_ms, retry_backoff_max, retry_backoff_mult,
+			timeout_ms, rate_limit_per_sec, circuit_threshold, circuit_reset_ms,
+			custom_headers, signing_secret, previous_secret, secret_rotated_at,
+			created_at, updated_at
+		FROM endpoints
+		WHERE fifo = TRUE AND status = 'active'
+		ORDER BY created_at ASC
+	`
+
+	rows, err := s.pool.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -1015,7 +1049,8 @@ func (s *Store) scanDeliveryAttemptFromRows(rows pgx.Rows) (domain.DeliveryAttem
 func (s *Store) scanEndpoint(row pgx.Row) (domain.Endpoint, error) {
 	var endpoint domain.Endpoint
 	var headersJSON []byte
-	var description, signingSecret, previousSecret, transformation *string
+	var description, signingSecret, previousSecret, transformation, fifoPartitionKey *string
+	var fifo *bool
 
 	err := row.Scan(
 		&endpoint.ID,
@@ -1026,6 +1061,8 @@ func (s *Store) scanEndpoint(row pgx.Row) (domain.Endpoint, error) {
 		&endpoint.Status,
 		&endpoint.Filter,
 		&transformation,
+		&fifo,
+		&fifoPartitionKey,
 		&endpoint.MaxRetries,
 		&endpoint.RetryBackoffMs,
 		&endpoint.RetryBackoffMax,
@@ -1051,6 +1088,12 @@ func (s *Store) scanEndpoint(row pgx.Row) (domain.Endpoint, error) {
 	if transformation != nil {
 		endpoint.Transformation = *transformation
 	}
+	if fifo != nil {
+		endpoint.FIFO = *fifo
+	}
+	if fifoPartitionKey != nil {
+		endpoint.FIFOPartitionKey = *fifoPartitionKey
+	}
 	if signingSecret != nil {
 		endpoint.SigningSecret = *signingSecret
 	}
@@ -1075,7 +1118,8 @@ func (s *Store) scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 	for rows.Next() {
 		var endpoint domain.Endpoint
 		var headersJSON []byte
-		var description, signingSecret, previousSecret, transformation *string
+		var description, signingSecret, previousSecret, transformation, fifoPartitionKey *string
+		var fifo *bool
 
 		err := rows.Scan(
 			&endpoint.ID,
@@ -1086,6 +1130,8 @@ func (s *Store) scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 			&endpoint.Status,
 			&endpoint.Filter,
 			&transformation,
+			&fifo,
+			&fifoPartitionKey,
 			&endpoint.MaxRetries,
 			&endpoint.RetryBackoffMs,
 			&endpoint.RetryBackoffMax,
@@ -1110,6 +1156,12 @@ func (s *Store) scanEndpoints(rows pgx.Rows) ([]domain.Endpoint, error) {
 		}
 		if transformation != nil {
 			endpoint.Transformation = *transformation
+		}
+		if fifo != nil {
+			endpoint.FIFO = *fifo
+		}
+		if fifoPartitionKey != nil {
+			endpoint.FIFOPartitionKey = *fifoPartitionKey
 		}
 		if signingSecret != nil {
 			endpoint.SigningSecret = *signingSecret

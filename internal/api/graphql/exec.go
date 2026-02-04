@@ -80,6 +80,8 @@ type ComplexityRoot struct {
 		CustomHeaders    func(childComplexity int) int
 		Description      func(childComplexity int) int
 		EventTypes       func(childComplexity int) int
+		Fifo             func(childComplexity int) int
+		FifoPartitionKey func(childComplexity int) int
 		Filter           func(childComplexity int) int
 		HasCustomSecret  func(childComplexity int) int
 		ID               func(childComplexity int) int
@@ -176,24 +178,53 @@ type ComplexityRoot struct {
 		Node   func(childComplexity int) int
 	}
 
+	FIFODrainResult struct {
+		EndpointID      func(childComplexity int) int
+		MessagesDrained func(childComplexity int) int
+		MovedToStandard func(childComplexity int) int
+		PartitionKey    func(childComplexity int) int
+	}
+
+	FIFOEndpointStats struct {
+		EndpointID          func(childComplexity int) int
+		Partitions          func(childComplexity int) int
+		TotalPartitions     func(childComplexity int) int
+		TotalQueuedMessages func(childComplexity int) int
+	}
+
+	FIFOQueueStats struct {
+		EndpointID   func(childComplexity int) int
+		HasInFlight  func(childComplexity int) int
+		IsLocked     func(childComplexity int) int
+		PartitionKey func(childComplexity int) int
+		QueueLength  func(childComplexity int) int
+	}
+
+	FIFORecoveryResult struct {
+		MessagesRecovered func(childComplexity int) int
+	}
+
 	Mutation struct {
-		ClearPreviousSecret   func(childComplexity int, id string) int
-		CreateEndpoint        func(childComplexity int, input CreateEndpointInput) int
-		CreateEvent           func(childComplexity int, input CreateEventInput, idempotencyKey string) int
-		CreateEventType       func(childComplexity int, input CreateEventTypeInput) int
-		DeleteEndpoint        func(childComplexity int, id string) int
-		DeleteEventType       func(childComplexity int, id string) int
-		PauseEndpoint         func(childComplexity int, id string) int
-		ReplayEvent           func(childComplexity int, id string) int
-		ResumeEndpoint        func(childComplexity int, id string) int
-		RetryEvents           func(childComplexity int, ids []string) int
-		RetryEventsByEndpoint func(childComplexity int, endpointID string, status *EventStatus, limit *int) int
-		RetryEventsByStatus   func(childComplexity int, status EventStatus, limit *int) int
-		RotateEndpointSecret  func(childComplexity int, id string) int
-		SendEvent             func(childComplexity int, input SendEventInput, idempotencyKey string) int
-		TestTransformation    func(childComplexity int, input TestTransformationInput) int
-		UpdateEndpoint        func(childComplexity int, id string, input UpdateEndpointInput) int
-		UpdateEventType       func(childComplexity int, id string, input UpdateEventTypeInput) int
+		ClearPreviousSecret      func(childComplexity int, id string) int
+		CreateEndpoint           func(childComplexity int, input CreateEndpointInput) int
+		CreateEvent              func(childComplexity int, input CreateEventInput, idempotencyKey string) int
+		CreateEventType          func(childComplexity int, input CreateEventTypeInput) int
+		DeleteEndpoint           func(childComplexity int, id string) int
+		DeleteEventType          func(childComplexity int, id string) int
+		DrainFIFOQueue           func(childComplexity int, endpointID string, partitionKey *string, moveToStandard *bool) int
+		PauseEndpoint            func(childComplexity int, id string) int
+		RecoverStaleFIFOMessages func(childComplexity int) int
+		ReleaseFIFOLock          func(childComplexity int, endpointID string, partitionKey *string) int
+		ReplayEvent              func(childComplexity int, id string) int
+		ResumeEndpoint           func(childComplexity int, id string) int
+		RetryEvents              func(childComplexity int, ids []string) int
+		RetryEventsByEndpoint    func(childComplexity int, endpointID string, status *EventStatus, limit *int) int
+		RetryEventsByStatus      func(childComplexity int, status EventStatus, limit *int) int
+		RotateEndpointSecret     func(childComplexity int, id string) int
+		SendEvent                func(childComplexity int, input SendEventInput, idempotencyKey string) int
+		TestTransformation       func(childComplexity int, input TestTransformationInput) int
+		UpdateEndpoint           func(childComplexity int, id string, input UpdateEndpointInput) int
+		UpdateEventType          func(childComplexity int, id string, input UpdateEventTypeInput) int
 	}
 
 	PageInfo struct {
@@ -204,14 +235,17 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		Endpoint        func(childComplexity int, id string) int
-		Endpoints       func(childComplexity int, status *EndpointStatus, first *int, after *string) int
-		Event           func(childComplexity int, id string) int
-		EventType       func(childComplexity int, id string) int
-		EventTypeByName func(childComplexity int, name string) int
-		EventTypes      func(childComplexity int, first *int, after *string) int
-		Events          func(childComplexity int, status *EventStatus, first *int, after *string) int
-		QueueStats      func(childComplexity int) int
+		ActiveFIFOQueues   func(childComplexity int) int
+		Endpoint           func(childComplexity int, id string) int
+		Endpoints          func(childComplexity int, status *EndpointStatus, first *int, after *string) int
+		Event              func(childComplexity int, id string) int
+		EventType          func(childComplexity int, id string) int
+		EventTypeByName    func(childComplexity int, name string) int
+		EventTypes         func(childComplexity int, first *int, after *string) int
+		Events             func(childComplexity int, status *EventStatus, first *int, after *string) int
+		FifoPartitionStats func(childComplexity int, endpointID string, partitionKey string) int
+		FifoQueueStats     func(childComplexity int, endpointID string) int
+		QueueStats         func(childComplexity int) int
 	}
 
 	QueueStats struct {
@@ -267,6 +301,9 @@ type MutationResolver interface {
 	UpdateEventType(ctx context.Context, id string, input UpdateEventTypeInput) (*EventType, error)
 	DeleteEventType(ctx context.Context, id string) (bool, error)
 	TestTransformation(ctx context.Context, input TestTransformationInput) (*TransformationTestResult, error)
+	ReleaseFIFOLock(ctx context.Context, endpointID string, partitionKey *string) (bool, error)
+	DrainFIFOQueue(ctx context.Context, endpointID string, partitionKey *string, moveToStandard *bool) (*FIFODrainResult, error)
+	RecoverStaleFIFOMessages(ctx context.Context) (*FIFORecoveryResult, error)
 }
 type QueryResolver interface {
 	Event(ctx context.Context, id string) (*Event, error)
@@ -277,6 +314,9 @@ type QueryResolver interface {
 	EventType(ctx context.Context, id string) (*EventType, error)
 	EventTypeByName(ctx context.Context, name string) (*EventType, error)
 	EventTypes(ctx context.Context, first *int, after *string) (*EventTypeConnection, error)
+	FifoQueueStats(ctx context.Context, endpointID string) (*FIFOEndpointStats, error)
+	FifoPartitionStats(ctx context.Context, endpointID string, partitionKey string) (*FIFOQueueStats, error)
+	ActiveFIFOQueues(ctx context.Context) ([]FIFOQueueStats, error)
 }
 
 type executableSchema struct {
@@ -427,6 +467,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Endpoint.EventTypes(childComplexity), true
+	case "Endpoint.fifo":
+		if e.complexity.Endpoint.Fifo == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.Fifo(childComplexity), true
+	case "Endpoint.fifoPartitionKey":
+		if e.complexity.Endpoint.FifoPartitionKey == nil {
+			break
+		}
+
+		return e.complexity.Endpoint.FifoPartitionKey(childComplexity), true
 	case "Endpoint.filter":
 		if e.complexity.Endpoint.Filter == nil {
 			break
@@ -827,6 +879,94 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.EventTypeEdge.Node(childComplexity), true
 
+	case "FIFODrainResult.endpointId":
+		if e.complexity.FIFODrainResult.EndpointID == nil {
+			break
+		}
+
+		return e.complexity.FIFODrainResult.EndpointID(childComplexity), true
+	case "FIFODrainResult.messagesDrained":
+		if e.complexity.FIFODrainResult.MessagesDrained == nil {
+			break
+		}
+
+		return e.complexity.FIFODrainResult.MessagesDrained(childComplexity), true
+	case "FIFODrainResult.movedToStandard":
+		if e.complexity.FIFODrainResult.MovedToStandard == nil {
+			break
+		}
+
+		return e.complexity.FIFODrainResult.MovedToStandard(childComplexity), true
+	case "FIFODrainResult.partitionKey":
+		if e.complexity.FIFODrainResult.PartitionKey == nil {
+			break
+		}
+
+		return e.complexity.FIFODrainResult.PartitionKey(childComplexity), true
+
+	case "FIFOEndpointStats.endpointId":
+		if e.complexity.FIFOEndpointStats.EndpointID == nil {
+			break
+		}
+
+		return e.complexity.FIFOEndpointStats.EndpointID(childComplexity), true
+	case "FIFOEndpointStats.partitions":
+		if e.complexity.FIFOEndpointStats.Partitions == nil {
+			break
+		}
+
+		return e.complexity.FIFOEndpointStats.Partitions(childComplexity), true
+	case "FIFOEndpointStats.totalPartitions":
+		if e.complexity.FIFOEndpointStats.TotalPartitions == nil {
+			break
+		}
+
+		return e.complexity.FIFOEndpointStats.TotalPartitions(childComplexity), true
+	case "FIFOEndpointStats.totalQueuedMessages":
+		if e.complexity.FIFOEndpointStats.TotalQueuedMessages == nil {
+			break
+		}
+
+		return e.complexity.FIFOEndpointStats.TotalQueuedMessages(childComplexity), true
+
+	case "FIFOQueueStats.endpointId":
+		if e.complexity.FIFOQueueStats.EndpointID == nil {
+			break
+		}
+
+		return e.complexity.FIFOQueueStats.EndpointID(childComplexity), true
+	case "FIFOQueueStats.hasInFlight":
+		if e.complexity.FIFOQueueStats.HasInFlight == nil {
+			break
+		}
+
+		return e.complexity.FIFOQueueStats.HasInFlight(childComplexity), true
+	case "FIFOQueueStats.isLocked":
+		if e.complexity.FIFOQueueStats.IsLocked == nil {
+			break
+		}
+
+		return e.complexity.FIFOQueueStats.IsLocked(childComplexity), true
+	case "FIFOQueueStats.partitionKey":
+		if e.complexity.FIFOQueueStats.PartitionKey == nil {
+			break
+		}
+
+		return e.complexity.FIFOQueueStats.PartitionKey(childComplexity), true
+	case "FIFOQueueStats.queueLength":
+		if e.complexity.FIFOQueueStats.QueueLength == nil {
+			break
+		}
+
+		return e.complexity.FIFOQueueStats.QueueLength(childComplexity), true
+
+	case "FIFORecoveryResult.messagesRecovered":
+		if e.complexity.FIFORecoveryResult.MessagesRecovered == nil {
+			break
+		}
+
+		return e.complexity.FIFORecoveryResult.MessagesRecovered(childComplexity), true
+
 	case "Mutation.clearPreviousSecret":
 		if e.complexity.Mutation.ClearPreviousSecret == nil {
 			break
@@ -893,6 +1033,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.DeleteEventType(childComplexity, args["id"].(string)), true
+	case "Mutation.drainFIFOQueue":
+		if e.complexity.Mutation.DrainFIFOQueue == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_drainFIFOQueue_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.DrainFIFOQueue(childComplexity, args["endpointId"].(string), args["partitionKey"].(*string), args["moveToStandard"].(*bool)), true
 	case "Mutation.pauseEndpoint":
 		if e.complexity.Mutation.PauseEndpoint == nil {
 			break
@@ -904,6 +1055,23 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.PauseEndpoint(childComplexity, args["id"].(string)), true
+	case "Mutation.recoverStaleFIFOMessages":
+		if e.complexity.Mutation.RecoverStaleFIFOMessages == nil {
+			break
+		}
+
+		return e.complexity.Mutation.RecoverStaleFIFOMessages(childComplexity), true
+	case "Mutation.releaseFIFOLock":
+		if e.complexity.Mutation.ReleaseFIFOLock == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_releaseFIFOLock_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ReleaseFIFOLock(childComplexity, args["endpointId"].(string), args["partitionKey"].(*string)), true
 	case "Mutation.replayEvent":
 		if e.complexity.Mutation.ReplayEvent == nil {
 			break
@@ -1040,6 +1208,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.PageInfo.StartCursor(childComplexity), true
 
+	case "Query.activeFIFOQueues":
+		if e.complexity.Query.ActiveFIFOQueues == nil {
+			break
+		}
+
+		return e.complexity.Query.ActiveFIFOQueues(childComplexity), true
 	case "Query.endpoint":
 		if e.complexity.Query.Endpoint == nil {
 			break
@@ -1117,6 +1291,28 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.Events(childComplexity, args["status"].(*EventStatus), args["first"].(*int), args["after"].(*string)), true
+	case "Query.fifoPartitionStats":
+		if e.complexity.Query.FifoPartitionStats == nil {
+			break
+		}
+
+		args, err := ec.field_Query_fifoPartitionStats_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.FifoPartitionStats(childComplexity, args["endpointId"].(string), args["partitionKey"].(string)), true
+	case "Query.fifoQueueStats":
+		if e.complexity.Query.FifoQueueStats == nil {
+			break
+		}
+
+		args, err := ec.field_Query_fifoQueueStats_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.FifoQueueStats(childComplexity, args["endpointId"].(string)), true
 	case "Query.queueStats":
 		if e.complexity.Query.QueueStats == nil {
 			break
@@ -1443,6 +1639,27 @@ func (ec *executionContext) field_Mutation_deleteEventType_args(ctx context.Cont
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_drainFIFOQueue_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "endpointId", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["endpointId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "partitionKey", ec.unmarshalOString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["partitionKey"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "moveToStandard", ec.unmarshalOBoolean2ᚖbool)
+	if err != nil {
+		return nil, err
+	}
+	args["moveToStandard"] = arg2
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_pauseEndpoint_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1451,6 +1668,22 @@ func (ec *executionContext) field_Mutation_pauseEndpoint_args(ctx context.Contex
 		return nil, err
 	}
 	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_releaseFIFOLock_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "endpointId", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["endpointId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "partitionKey", ec.unmarshalOString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["partitionKey"] = arg1
 	return args, nil
 }
 
@@ -1704,6 +1937,33 @@ func (ec *executionContext) field_Query_events_args(ctx context.Context, rawArgs
 		return nil, err
 	}
 	args["after"] = arg2
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_fifoPartitionStats_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "endpointId", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["endpointId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "partitionKey", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["partitionKey"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_fifoQueueStats_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "endpointId", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["endpointId"] = arg0
 	return args, nil
 }
 
@@ -2439,6 +2699,64 @@ func (ec *executionContext) fieldContext_Endpoint_transformation(_ context.Conte
 	return fc, nil
 }
 
+func (ec *executionContext) _Endpoint_fifo(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_fifo,
+		func(ctx context.Context) (any, error) {
+			return obj.Fifo, nil
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_fifo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Endpoint_fifoPartitionKey(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Endpoint_fifoPartitionKey,
+		func(ctx context.Context) (any, error) {
+			return obj.FifoPartitionKey, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Endpoint_fifoPartitionKey(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Endpoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Endpoint_maxRetries(ctx context.Context, field graphql.CollectedField, obj *Endpoint) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3079,6 +3397,10 @@ func (ec *executionContext) fieldContext_EndpointEdge_node(_ context.Context, fi
 				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "transformation":
 				return ec.fieldContext_Endpoint_transformation(ctx, field)
+			case "fifo":
+				return ec.fieldContext_Endpoint_fifo(ctx, field)
+			case "fifoPartitionKey":
+				return ec.fieldContext_Endpoint_fifoPartitionKey(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -3185,6 +3507,10 @@ func (ec *executionContext) fieldContext_EndpointSecretRotation_endpoint(_ conte
 				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "transformation":
 				return ec.fieldContext_Endpoint_transformation(ctx, field)
+			case "fifo":
+				return ec.fieldContext_Endpoint_fifo(ctx, field)
+			case "fifoPartitionKey":
+				return ec.fieldContext_Endpoint_fifoPartitionKey(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -3947,6 +4273,10 @@ func (ec *executionContext) fieldContext_Event_endpoint(_ context.Context, field
 				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "transformation":
 				return ec.fieldContext_Endpoint_transformation(ctx, field)
+			case "fifo":
+				return ec.fieldContext_Endpoint_fifo(ctx, field)
+			case "fifoPartitionKey":
+				return ec.fieldContext_Endpoint_fifoPartitionKey(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -4592,6 +4922,424 @@ func (ec *executionContext) fieldContext_EventTypeEdge_cursor(_ context.Context,
 	return fc, nil
 }
 
+func (ec *executionContext) _FIFODrainResult_endpointId(ctx context.Context, field graphql.CollectedField, obj *FIFODrainResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFODrainResult_endpointId,
+		func(ctx context.Context) (any, error) {
+			return obj.EndpointID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFODrainResult_endpointId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFODrainResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFODrainResult_partitionKey(ctx context.Context, field graphql.CollectedField, obj *FIFODrainResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFODrainResult_partitionKey,
+		func(ctx context.Context) (any, error) {
+			return obj.PartitionKey, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFODrainResult_partitionKey(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFODrainResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFODrainResult_messagesDrained(ctx context.Context, field graphql.CollectedField, obj *FIFODrainResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFODrainResult_messagesDrained,
+		func(ctx context.Context) (any, error) {
+			return obj.MessagesDrained, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFODrainResult_messagesDrained(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFODrainResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFODrainResult_movedToStandard(ctx context.Context, field graphql.CollectedField, obj *FIFODrainResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFODrainResult_movedToStandard,
+		func(ctx context.Context) (any, error) {
+			return obj.MovedToStandard, nil
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFODrainResult_movedToStandard(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFODrainResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFOEndpointStats_endpointId(ctx context.Context, field graphql.CollectedField, obj *FIFOEndpointStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFOEndpointStats_endpointId,
+		func(ctx context.Context) (any, error) {
+			return obj.EndpointID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFOEndpointStats_endpointId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFOEndpointStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFOEndpointStats_totalPartitions(ctx context.Context, field graphql.CollectedField, obj *FIFOEndpointStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFOEndpointStats_totalPartitions,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalPartitions, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFOEndpointStats_totalPartitions(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFOEndpointStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFOEndpointStats_totalQueuedMessages(ctx context.Context, field graphql.CollectedField, obj *FIFOEndpointStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFOEndpointStats_totalQueuedMessages,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalQueuedMessages, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFOEndpointStats_totalQueuedMessages(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFOEndpointStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFOEndpointStats_partitions(ctx context.Context, field graphql.CollectedField, obj *FIFOEndpointStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFOEndpointStats_partitions,
+		func(ctx context.Context) (any, error) {
+			return obj.Partitions, nil
+		},
+		nil,
+		ec.marshalNFIFOQueueStats2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFOQueueStatsᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFOEndpointStats_partitions(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFOEndpointStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "endpointId":
+				return ec.fieldContext_FIFOQueueStats_endpointId(ctx, field)
+			case "partitionKey":
+				return ec.fieldContext_FIFOQueueStats_partitionKey(ctx, field)
+			case "queueLength":
+				return ec.fieldContext_FIFOQueueStats_queueLength(ctx, field)
+			case "isLocked":
+				return ec.fieldContext_FIFOQueueStats_isLocked(ctx, field)
+			case "hasInFlight":
+				return ec.fieldContext_FIFOQueueStats_hasInFlight(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type FIFOQueueStats", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFOQueueStats_endpointId(ctx context.Context, field graphql.CollectedField, obj *FIFOQueueStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFOQueueStats_endpointId,
+		func(ctx context.Context) (any, error) {
+			return obj.EndpointID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFOQueueStats_endpointId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFOQueueStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFOQueueStats_partitionKey(ctx context.Context, field graphql.CollectedField, obj *FIFOQueueStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFOQueueStats_partitionKey,
+		func(ctx context.Context) (any, error) {
+			return obj.PartitionKey, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFOQueueStats_partitionKey(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFOQueueStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFOQueueStats_queueLength(ctx context.Context, field graphql.CollectedField, obj *FIFOQueueStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFOQueueStats_queueLength,
+		func(ctx context.Context) (any, error) {
+			return obj.QueueLength, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFOQueueStats_queueLength(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFOQueueStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFOQueueStats_isLocked(ctx context.Context, field graphql.CollectedField, obj *FIFOQueueStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFOQueueStats_isLocked,
+		func(ctx context.Context) (any, error) {
+			return obj.IsLocked, nil
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFOQueueStats_isLocked(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFOQueueStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFOQueueStats_hasInFlight(ctx context.Context, field graphql.CollectedField, obj *FIFOQueueStats) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFOQueueStats_hasInFlight,
+		func(ctx context.Context) (any, error) {
+			return obj.HasInFlight, nil
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFOQueueStats_hasInFlight(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFOQueueStats",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _FIFORecoveryResult_messagesRecovered(ctx context.Context, field graphql.CollectedField, obj *FIFORecoveryResult) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_FIFORecoveryResult_messagesRecovered,
+		func(ctx context.Context) (any, error) {
+			return obj.MessagesRecovered, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_FIFORecoveryResult_messagesRecovered(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "FIFORecoveryResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_createEvent(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -5017,6 +5765,10 @@ func (ec *executionContext) fieldContext_Mutation_createEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "transformation":
 				return ec.fieldContext_Endpoint_transformation(ctx, field)
+			case "fifo":
+				return ec.fieldContext_Endpoint_fifo(ctx, field)
+			case "fifoPartitionKey":
+				return ec.fieldContext_Endpoint_fifoPartitionKey(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -5106,6 +5858,10 @@ func (ec *executionContext) fieldContext_Mutation_updateEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "transformation":
 				return ec.fieldContext_Endpoint_transformation(ctx, field)
+			case "fifo":
+				return ec.fieldContext_Endpoint_fifo(ctx, field)
+			case "fifoPartitionKey":
+				return ec.fieldContext_Endpoint_fifoPartitionKey(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -5236,6 +5992,10 @@ func (ec *executionContext) fieldContext_Mutation_pauseEndpoint(ctx context.Cont
 				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "transformation":
 				return ec.fieldContext_Endpoint_transformation(ctx, field)
+			case "fifo":
+				return ec.fieldContext_Endpoint_fifo(ctx, field)
+			case "fifoPartitionKey":
+				return ec.fieldContext_Endpoint_fifoPartitionKey(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -5325,6 +6085,10 @@ func (ec *executionContext) fieldContext_Mutation_resumeEndpoint(ctx context.Con
 				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "transformation":
 				return ec.fieldContext_Endpoint_transformation(ctx, field)
+			case "fifo":
+				return ec.fieldContext_Endpoint_fifo(ctx, field)
+			case "fifoPartitionKey":
+				return ec.fieldContext_Endpoint_fifoPartitionKey(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -5461,6 +6225,10 @@ func (ec *executionContext) fieldContext_Mutation_clearPreviousSecret(ctx contex
 				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "transformation":
 				return ec.fieldContext_Endpoint_transformation(ctx, field)
+			case "fifo":
+				return ec.fieldContext_Endpoint_fifo(ctx, field)
+			case "fifoPartitionKey":
+				return ec.fieldContext_Endpoint_fifoPartitionKey(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -5715,6 +6483,131 @@ func (ec *executionContext) fieldContext_Mutation_testTransformation(ctx context
 	if fc.Args, err = ec.field_Mutation_testTransformation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_releaseFIFOLock(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_releaseFIFOLock,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().ReleaseFIFOLock(ctx, fc.Args["endpointId"].(string), fc.Args["partitionKey"].(*string))
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_releaseFIFOLock(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_releaseFIFOLock_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_drainFIFOQueue(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_drainFIFOQueue,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().DrainFIFOQueue(ctx, fc.Args["endpointId"].(string), fc.Args["partitionKey"].(*string), fc.Args["moveToStandard"].(*bool))
+		},
+		nil,
+		ec.marshalNFIFODrainResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFODrainResult,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_drainFIFOQueue(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "endpointId":
+				return ec.fieldContext_FIFODrainResult_endpointId(ctx, field)
+			case "partitionKey":
+				return ec.fieldContext_FIFODrainResult_partitionKey(ctx, field)
+			case "messagesDrained":
+				return ec.fieldContext_FIFODrainResult_messagesDrained(ctx, field)
+			case "movedToStandard":
+				return ec.fieldContext_FIFODrainResult_movedToStandard(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type FIFODrainResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_drainFIFOQueue_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_recoverStaleFIFOMessages(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_recoverStaleFIFOMessages,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Mutation().RecoverStaleFIFOMessages(ctx)
+		},
+		nil,
+		ec.marshalNFIFORecoveryResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFORecoveryResult,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_recoverStaleFIFOMessages(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "messagesRecovered":
+				return ec.fieldContext_FIFORecoveryResult_messagesRecovered(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type FIFORecoveryResult", field.Name)
+		},
 	}
 	return fc, nil
 }
@@ -6049,6 +6942,10 @@ func (ec *executionContext) fieldContext_Query_endpoint(ctx context.Context, fie
 				return ec.fieldContext_Endpoint_filter(ctx, field)
 			case "transformation":
 				return ec.fieldContext_Endpoint_transformation(ctx, field)
+			case "fifo":
+				return ec.fieldContext_Endpoint_fifo(ctx, field)
+			case "fifoPartitionKey":
+				return ec.fieldContext_Endpoint_fifoPartitionKey(ctx, field)
 			case "maxRetries":
 				return ec.fieldContext_Endpoint_maxRetries(ctx, field)
 			case "retryBackoffMs":
@@ -6309,6 +7206,151 @@ func (ec *executionContext) fieldContext_Query_eventTypes(ctx context.Context, f
 	if fc.Args, err = ec.field_Query_eventTypes_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_fifoQueueStats(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_fifoQueueStats,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().FifoQueueStats(ctx, fc.Args["endpointId"].(string))
+		},
+		nil,
+		ec.marshalOFIFOEndpointStats2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFOEndpointStats,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_fifoQueueStats(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "endpointId":
+				return ec.fieldContext_FIFOEndpointStats_endpointId(ctx, field)
+			case "totalPartitions":
+				return ec.fieldContext_FIFOEndpointStats_totalPartitions(ctx, field)
+			case "totalQueuedMessages":
+				return ec.fieldContext_FIFOEndpointStats_totalQueuedMessages(ctx, field)
+			case "partitions":
+				return ec.fieldContext_FIFOEndpointStats_partitions(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type FIFOEndpointStats", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_fifoQueueStats_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_fifoPartitionStats(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_fifoPartitionStats,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().FifoPartitionStats(ctx, fc.Args["endpointId"].(string), fc.Args["partitionKey"].(string))
+		},
+		nil,
+		ec.marshalOFIFOQueueStats2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFOQueueStats,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_fifoPartitionStats(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "endpointId":
+				return ec.fieldContext_FIFOQueueStats_endpointId(ctx, field)
+			case "partitionKey":
+				return ec.fieldContext_FIFOQueueStats_partitionKey(ctx, field)
+			case "queueLength":
+				return ec.fieldContext_FIFOQueueStats_queueLength(ctx, field)
+			case "isLocked":
+				return ec.fieldContext_FIFOQueueStats_isLocked(ctx, field)
+			case "hasInFlight":
+				return ec.fieldContext_FIFOQueueStats_hasInFlight(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type FIFOQueueStats", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_fifoPartitionStats_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_activeFIFOQueues(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_activeFIFOQueues,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().ActiveFIFOQueues(ctx)
+		},
+		nil,
+		ec.marshalNFIFOQueueStats2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFOQueueStatsᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_activeFIFOQueues(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "endpointId":
+				return ec.fieldContext_FIFOQueueStats_endpointId(ctx, field)
+			case "partitionKey":
+				return ec.fieldContext_FIFOQueueStats_partitionKey(ctx, field)
+			case "queueLength":
+				return ec.fieldContext_FIFOQueueStats_queueLength(ctx, field)
+			case "isLocked":
+				return ec.fieldContext_FIFOQueueStats_isLocked(ctx, field)
+			case "hasInFlight":
+				return ec.fieldContext_FIFOQueueStats_hasInFlight(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type FIFOQueueStats", field.Name)
+		},
 	}
 	return fc, nil
 }
@@ -8379,7 +9421,7 @@ func (ec *executionContext) unmarshalInputCreateEndpointInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"url", "description", "eventTypes", "filter", "transformation", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
+	fieldsInOrder := [...]string{"url", "description", "eventTypes", "filter", "transformation", "fifo", "fifoPartitionKey", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -8421,6 +9463,20 @@ func (ec *executionContext) unmarshalInputCreateEndpointInput(ctx context.Contex
 				return it, err
 			}
 			it.Transformation = data
+		case "fifo":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("fifo"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Fifo = data
+		case "fifoPartitionKey":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("fifoPartitionKey"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.FifoPartitionKey = data
 		case "maxRetries":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("maxRetries"))
 			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
@@ -8668,7 +9724,7 @@ func (ec *executionContext) unmarshalInputUpdateEndpointInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"url", "description", "eventTypes", "status", "filter", "transformation", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
+	fieldsInOrder := [...]string{"url", "description", "eventTypes", "status", "filter", "transformation", "fifo", "fifoPartitionKey", "maxRetries", "retryBackoffMs", "retryBackoffMax", "retryBackoffMult", "timeoutMs", "rateLimitPerSec", "circuitThreshold", "circuitResetMs", "customHeaders"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -8717,6 +9773,20 @@ func (ec *executionContext) unmarshalInputUpdateEndpointInput(ctx context.Contex
 				return it, err
 			}
 			it.Transformation = data
+		case "fifo":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("fifo"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Fifo = data
+		case "fifoPartitionKey":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("fifoPartitionKey"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.FifoPartitionKey = data
 		case "maxRetries":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("maxRetries"))
 			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
@@ -9088,6 +10158,13 @@ func (ec *executionContext) _Endpoint(ctx context.Context, sel ast.SelectionSet,
 			out.Values[i] = ec._Endpoint_filter(ctx, field, obj)
 		case "transformation":
 			out.Values[i] = ec._Endpoint_transformation(ctx, field, obj)
+		case "fifo":
+			out.Values[i] = ec._Endpoint_fifo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "fifoPartitionKey":
+			out.Values[i] = ec._Endpoint_fifoPartitionKey(ctx, field, obj)
 		case "maxRetries":
 			out.Values[i] = ec._Endpoint_maxRetries(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -9854,6 +10931,209 @@ func (ec *executionContext) _EventTypeEdge(ctx context.Context, sel ast.Selectio
 	return out
 }
 
+var fIFODrainResultImplementors = []string{"FIFODrainResult"}
+
+func (ec *executionContext) _FIFODrainResult(ctx context.Context, sel ast.SelectionSet, obj *FIFODrainResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, fIFODrainResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("FIFODrainResult")
+		case "endpointId":
+			out.Values[i] = ec._FIFODrainResult_endpointId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "partitionKey":
+			out.Values[i] = ec._FIFODrainResult_partitionKey(ctx, field, obj)
+		case "messagesDrained":
+			out.Values[i] = ec._FIFODrainResult_messagesDrained(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "movedToStandard":
+			out.Values[i] = ec._FIFODrainResult_movedToStandard(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var fIFOEndpointStatsImplementors = []string{"FIFOEndpointStats"}
+
+func (ec *executionContext) _FIFOEndpointStats(ctx context.Context, sel ast.SelectionSet, obj *FIFOEndpointStats) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, fIFOEndpointStatsImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("FIFOEndpointStats")
+		case "endpointId":
+			out.Values[i] = ec._FIFOEndpointStats_endpointId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalPartitions":
+			out.Values[i] = ec._FIFOEndpointStats_totalPartitions(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalQueuedMessages":
+			out.Values[i] = ec._FIFOEndpointStats_totalQueuedMessages(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "partitions":
+			out.Values[i] = ec._FIFOEndpointStats_partitions(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var fIFOQueueStatsImplementors = []string{"FIFOQueueStats"}
+
+func (ec *executionContext) _FIFOQueueStats(ctx context.Context, sel ast.SelectionSet, obj *FIFOQueueStats) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, fIFOQueueStatsImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("FIFOQueueStats")
+		case "endpointId":
+			out.Values[i] = ec._FIFOQueueStats_endpointId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "partitionKey":
+			out.Values[i] = ec._FIFOQueueStats_partitionKey(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "queueLength":
+			out.Values[i] = ec._FIFOQueueStats_queueLength(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "isLocked":
+			out.Values[i] = ec._FIFOQueueStats_isLocked(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "hasInFlight":
+			out.Values[i] = ec._FIFOQueueStats_hasInFlight(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var fIFORecoveryResultImplementors = []string{"FIFORecoveryResult"}
+
+func (ec *executionContext) _FIFORecoveryResult(ctx context.Context, sel ast.SelectionSet, obj *FIFORecoveryResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, fIFORecoveryResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("FIFORecoveryResult")
+		case "messagesRecovered":
+			out.Values[i] = ec._FIFORecoveryResult_messagesRecovered(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var mutationImplementors = []string{"Mutation"}
 
 func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
@@ -9988,6 +11268,27 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "testTransformation":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_testTransformation(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "releaseFIFOLock":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_releaseFIFOLock(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "drainFIFOQueue":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_drainFIFOQueue(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "recoverStaleFIFOMessages":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_recoverStaleFIFOMessages(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -10234,6 +11535,66 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_eventTypes(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "fifoQueueStats":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_fifoQueueStats(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "fifoPartitionStats":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_fifoPartitionStats(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "activeFIFOQueues":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_activeFIFOQueues(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -11264,6 +12625,82 @@ func (ec *executionContext) marshalNEventTypeEdge2ᚕgithubᚗcomᚋstiffinWanjo
 	return ret
 }
 
+func (ec *executionContext) marshalNFIFODrainResult2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFODrainResult(ctx context.Context, sel ast.SelectionSet, v FIFODrainResult) graphql.Marshaler {
+	return ec._FIFODrainResult(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNFIFODrainResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFODrainResult(ctx context.Context, sel ast.SelectionSet, v *FIFODrainResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._FIFODrainResult(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNFIFOQueueStats2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFOQueueStats(ctx context.Context, sel ast.SelectionSet, v FIFOQueueStats) graphql.Marshaler {
+	return ec._FIFOQueueStats(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNFIFOQueueStats2ᚕgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFOQueueStatsᚄ(ctx context.Context, sel ast.SelectionSet, v []FIFOQueueStats) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNFIFOQueueStats2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFOQueueStats(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNFIFORecoveryResult2githubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFORecoveryResult(ctx context.Context, sel ast.SelectionSet, v FIFORecoveryResult) graphql.Marshaler {
+	return ec._FIFORecoveryResult(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNFIFORecoveryResult2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFORecoveryResult(ctx context.Context, sel ast.SelectionSet, v *FIFORecoveryResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._FIFORecoveryResult(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNFloat2float64(ctx context.Context, v any) (float64, error) {
 	res, err := graphql.UnmarshalFloatContext(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -11825,6 +13262,20 @@ func (ec *executionContext) marshalOEventType2ᚖgithubᚗcomᚋstiffinWanjohi�
 		return graphql.Null
 	}
 	return ec._EventType(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOFIFOEndpointStats2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFOEndpointStats(ctx context.Context, sel ast.SelectionSet, v *FIFOEndpointStats) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._FIFOEndpointStats(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOFIFOQueueStats2ᚖgithubᚗcomᚋstiffinWanjohiᚋrelayᚋinternalᚋapiᚋgraphqlᚐFIFOQueueStats(ctx context.Context, sel ast.SelectionSet, v *FIFOQueueStats) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._FIFOQueueStats(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOFloat2ᚖfloat64(ctx context.Context, v any) (*float64, error) {

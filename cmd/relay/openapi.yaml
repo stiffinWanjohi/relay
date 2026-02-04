@@ -786,6 +786,22 @@ components:
                 cancel: false
               };
             }
+        fifo:
+          type: boolean
+          description: |
+            When enabled, events are delivered sequentially - one at a time.
+            The next event is only delivered after the previous one completes
+            (either successfully or after all retries are exhausted).
+          default: false
+        fifoPartitionKey:
+          type: string
+          nullable: true
+          description: |
+            JSONPath expression to extract a partition key from the event payload.
+            Events with the same partition key are delivered in order, but events
+            with different partition keys can be processed in parallel.
+            Only applicable when fifo is true.
+          example: "$.customer_id"
         maxRetries:
           type: integer
         retryBackoffMs:
@@ -933,6 +949,13 @@ components:
         transformation:
           type: string
           description: JavaScript code to transform the webhook payload before delivery
+        fifo:
+          type: boolean
+          description: Enable FIFO (ordered) delivery - events delivered one at a time
+          default: false
+        fifoPartitionKey:
+          type: string
+          description: JSONPath expression for partition key (e.g., "$.customer_id")
         maxRetries:
           type: integer
           minimum: 0
@@ -992,6 +1015,12 @@ components:
         transformation:
           type: string
           description: JavaScript code to transform the webhook payload (set to empty string to remove)
+        fifo:
+          type: boolean
+          description: Enable/disable FIFO (ordered) delivery
+        fifoPartitionKey:
+          type: string
+          description: JSONPath expression for partition key (set to empty string to remove)
         maxRetries:
           type: integer
         retryBackoffMs:

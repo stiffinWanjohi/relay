@@ -140,6 +140,14 @@ type Endpoint {
     # JavaScript code to transform webhook payload before delivery
     transformation: String
 
+    # FIFO (ordered delivery) configuration
+    # When enabled, events are delivered sequentially - one at a time
+    fifo: Boolean!
+    # JSONPath expression to extract partition key from payload
+    # Events with same partition key are delivered in order
+    # Different partition keys can be processed in parallel
+    fifoPartitionKey: String
+
     # Retry configuration
     maxRetries: Int!
     retryBackoffMs: Int!
@@ -295,6 +303,13 @@ input CreateEndpointInput {
     # Example: function transform(webhook) { return { ...webhook, payload: { wrapped: webhook.payload } }; }
     transformation: String
 
+    # FIFO (ordered delivery) configuration
+    # When true, events are delivered sequentially - one at a time
+    fifo: Boolean
+    # JSONPath expression to extract partition key from payload
+    # Example: "$.customer_id" or "$.data.order_id"
+    fifoPartitionKey: String
+
     # Optional configuration (uses defaults if not provided)
     maxRetries: Int
     retryBackoffMs: Int
@@ -319,6 +334,10 @@ input UpdateEndpointInput {
     # Payload transformation (set to null to remove)
     transformation: String
 
+    # FIFO (ordered delivery) configuration
+    fifo: Boolean
+    fifoPartitionKey: String
+
     maxRetries: Int
     retryBackoffMs: Int
     retryBackoffMax: Int
@@ -341,4 +360,56 @@ input UpdateEventTypeInput {
     description: String
     schema: JSON
     schemaVersion: String
+}
+
+# FIFO Queue Management Types
+
+type FIFOQueueStats {
+    endpointId: ID!
+    partitionKey: String!
+    queueLength: Int!
+    isLocked: Boolean!
+    hasInFlight: Boolean!
+}
+
+type FIFOEndpointStats {
+    endpointId: ID!
+    totalPartitions: Int!
+    totalQueuedMessages: Int!
+    partitions: [FIFOQueueStats!]!
+}
+
+type FIFODrainResult {
+    endpointId: ID!
+    partitionKey: String
+    messagesDrained: Int!
+    movedToStandard: Boolean!
+}
+
+type FIFORecoveryResult {
+    messagesRecovered: Int!
+}
+
+# Extend Query with FIFO management
+extend type Query {
+    # Get FIFO queue stats for a specific endpoint
+    fifoQueueStats(endpointId: ID!): FIFOEndpointStats
+    
+    # Get FIFO queue stats for a specific partition
+    fifoPartitionStats(endpointId: ID!, partitionKey: String!): FIFOQueueStats
+    
+    # List all active FIFO queues
+    activeFIFOQueues: [FIFOQueueStats!]!
+}
+
+# Extend Mutation with FIFO management
+extend type Mutation {
+    # Forcibly release a stuck FIFO lock (admin operation)
+    releaseFIFOLock(endpointId: ID!, partitionKey: String): Boolean!
+    
+    # Drain a FIFO queue and optionally move messages to standard queue
+    drainFIFOQueue(endpointId: ID!, partitionKey: String, moveToStandard: Boolean): FIFODrainResult!
+    
+    # Recover all stale in-flight FIFO messages (admin operation)
+    recoverStaleFIFOMessages: FIFORecoveryResult!
 }

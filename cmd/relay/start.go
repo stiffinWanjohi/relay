@@ -269,6 +269,19 @@ func runServer(svc *app.Services) {
 	worker := delivery.NewWorker(q, store, workerConfig, logger)
 	worker.Start(ctx)
 
+	// Start FIFO worker for ordered delivery endpoints
+	fifoWorkerConfig := delivery.FIFOWorkerConfig{
+		SigningKey:          cfg.Worker.SigningKey,
+		CircuitConfig:       delivery.DefaultCircuitConfig(),
+		Metrics:             svc.Metrics,
+		RateLimiter:         rateLimiter,
+		NotificationService: svc.Notification,
+		NotifyOnTrip:        cfg.Notification.NotifyOnTrip,
+		NotifyOnRecover:     cfg.Notification.NotifyOnRecover,
+	}
+	fifoWorker := delivery.NewFIFOWorker(q, store, fifoWorkerConfig, logger)
+	fifoWorker.Start(ctx)
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -303,6 +316,7 @@ func runServer(svc *app.Services) {
 
 	_ = httpServer.Shutdown(shutdownCtx)
 	_ = worker.StopAndWait(cfg.Worker.ShutdownTimeout)
+	_ = fifoWorker.StopAndWait(cfg.Worker.ShutdownTimeout)
 	_ = outboxProcessor.StopAndWait(cfg.API.ShutdownTimeout)
 
 	done := make(chan struct{})

@@ -2,7 +2,10 @@ package outbox
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -214,7 +217,62 @@ func (p *Processor) processBatch(ctx context.Context) error {
 }
 
 func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) error {
-	// Enqueue the event to Redis
+	// Get the event to check if it's for a FIFO endpoint
+	evt, err := p.store.GetByID(ctx, entry.EventID)
+	if err != nil {
+		return err
+	}
+
+	// Check if this event is for a FIFO endpoint
+	if evt.EndpointID != nil {
+		endpoint, err := p.store.GetEndpointByID(ctx, *evt.EndpointID)
+		if err == nil && endpoint.IsFIFO() {
+			// Extract partition key if configured
+			partitionKey := ""
+			if endpoint.HasPartitionKey() {
+				var extractErr error
+				partitionKey, extractErr = extractPartitionKey(evt.Payload, endpoint.FIFOPartitionKey)
+				if extractErr != nil {
+					// Log the error but continue with empty partition key (default queue)
+					p.logger.Warn("failed to extract FIFO partition key, using default partition",
+						"event_id", entry.EventID,
+						"endpoint_id", endpoint.ID,
+						"partition_key_path", endpoint.FIFOPartitionKey,
+						"error", extractErr,
+					)
+					// Record metric for monitoring
+					if p.metrics != nil {
+						p.metrics.FIFOPartitionKeyExtractionFailed(ctx, endpoint.ID.String())
+					}
+				} else if partitionKey == "" && endpoint.FIFOPartitionKey != "" {
+					// Path was valid but value not found in payload
+					p.logger.Warn("FIFO partition key path not found in payload, using default partition",
+						"event_id", entry.EventID,
+						"endpoint_id", endpoint.ID,
+						"partition_key_path", endpoint.FIFOPartitionKey,
+					)
+					if p.metrics != nil {
+						p.metrics.FIFOPartitionKeyExtractionFailed(ctx, endpoint.ID.String())
+					}
+				}
+			}
+
+			// Enqueue to FIFO queue
+			if err := p.queue.EnqueueFIFO(ctx, endpoint.ID.String(), partitionKey, entry.EventID); err != nil {
+				return err
+			}
+
+			p.logger.Debug("enqueued event to FIFO queue",
+				"outbox_id", entry.ID,
+				"event_id", entry.EventID,
+				"endpoint_id", endpoint.ID,
+				"partition_key", partitionKey,
+			)
+			return nil
+		}
+	}
+
+	// Enqueue to standard queue
 	if err := p.queue.Enqueue(ctx, entry.EventID); err != nil {
 		return err
 	}
@@ -225,6 +283,76 @@ func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) e
 	)
 
 	return nil
+}
+
+// extractPartitionKey extracts a partition key from the payload using a JSONPath expression.
+func extractPartitionKey(payload []byte, path string) (string, error) {
+	if len(payload) == 0 || path == "" {
+		return "", nil
+	}
+
+	// Use the domain helper
+	return extractJSONPathValue(payload, path)
+}
+
+// extractJSONPathValue is a local wrapper for domain.ExtractJSONPathValue
+// This avoids circular imports
+func extractJSONPathValue(payload []byte, path string) (string, error) {
+	if len(payload) == 0 || path == "" {
+		return "", nil
+	}
+
+	var data interface{}
+	if err := json.Unmarshal(payload, &data); err != nil {
+		return "", err
+	}
+
+	// Simple JSONPath extraction (supports $.field.subfield format)
+	// For complex paths, the full jsonpath library is used in domain
+	parts := parseJSONPath(path)
+	if len(parts) == 0 {
+		return "", nil
+	}
+
+	current := data
+	for _, part := range parts {
+		m, ok := current.(map[string]interface{})
+		if !ok {
+			return "", nil
+		}
+		current, ok = m[part]
+		if !ok {
+			return "", nil
+		}
+	}
+
+	// Convert to string
+	switch v := current.(type) {
+	case string:
+		return v, nil
+	case float64:
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%d", int64(v)), nil
+		}
+		return fmt.Sprintf("%v", v), nil
+	case bool:
+		return fmt.Sprintf("%v", v), nil
+	default:
+		return fmt.Sprintf("%v", v), nil
+	}
+}
+
+// parseJSONPath parses a simple JSONPath like "$.field.subfield" into ["field", "subfield"]
+func parseJSONPath(path string) []string {
+	// Remove leading "$." or "$"
+	path = strings.TrimPrefix(path, "$.")
+	path = strings.TrimPrefix(path, "$")
+
+	if path == "" {
+		return nil
+	}
+
+	return strings.Split(path, ".")
 }
 
 func (p *Processor) cleanupLoop(ctx context.Context) {

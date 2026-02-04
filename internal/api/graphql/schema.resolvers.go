@@ -11,40 +11,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/stiffinWanjohi/relay/internal/auth"
 	"github.com/stiffinWanjohi/relay/internal/config"
 	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/queue"
 )
-
-// timeNow is a variable for testing purposes
-var timeNow = time.Now
-
-// mapStringToAny converts a map[string]string to map[string]any
-func mapStringToAny(m map[string]string) map[string]any {
-	if m == nil {
-		return nil
-	}
-	result := make(map[string]any, len(m))
-	for k, v := range m {
-		result[k] = v
-	}
-	return result
-}
-
-// jsonToMap converts json.RawMessage to map[string]any
-func jsonToMap(data json.RawMessage) map[string]any {
-	if data == nil {
-		return nil
-	}
-	var v map[string]any
-	if err := json.Unmarshal(data, &v); err != nil {
-		return nil
-	}
-	return v
-}
 
 // Stats is the resolver for the stats field.
 func (r *endpointResolver) Stats(ctx context.Context, obj *Endpoint) (*EndpointStats, error) {
@@ -474,6 +447,17 @@ func (r *mutationResolver) CreateEndpoint(ctx context.Context, input CreateEndpo
 		}
 		endpoint.Transformation = *input.Transformation
 	}
+	if input.Fifo != nil {
+		endpoint.FIFO = *input.Fifo
+	}
+	if input.FifoPartitionKey != nil {
+		endpoint.FIFOPartitionKey = *input.FifoPartitionKey
+	}
+
+	// Validate FIFO configuration
+	if err := validateFIFOConfig(endpoint.FIFO, endpoint.FIFOPartitionKey); err != nil {
+		return nil, err
+	}
 
 	created, err := r.Store.CreateEndpoint(ctx, endpoint)
 	if err != nil {
@@ -578,6 +562,17 @@ func (r *mutationResolver) UpdateEndpoint(ctx context.Context, id string, input 
 			}
 			endpoint.Transformation = *input.Transformation
 		}
+	}
+	if input.Fifo != nil {
+		endpoint.FIFO = *input.Fifo
+	}
+	if input.FifoPartitionKey != nil {
+		endpoint.FIFOPartitionKey = *input.FifoPartitionKey
+	}
+
+	// Validate FIFO configuration
+	if err := validateFIFOConfig(endpoint.FIFO, endpoint.FIFOPartitionKey); err != nil {
+		return nil, err
 	}
 
 	updated, err := r.Store.UpdateEndpoint(ctx, endpoint)
@@ -952,6 +947,66 @@ func (r *mutationResolver) TestTransformation(ctx context.Context, input TestTra
 	return response, nil
 }
 
+// ReleaseFIFOLock is the resolver for the releaseFIFOLock field.
+func (r *mutationResolver) ReleaseFIFOLock(ctx context.Context, endpointID string, partitionKey *string) (bool, error) {
+	pk := ""
+	if partitionKey != nil {
+		pk = *partitionKey
+	}
+
+	if err := r.Queue.ReleaseFIFOLock(ctx, endpointID, pk); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// DrainFIFOQueue is the resolver for the drainFIFOQueue field.
+func (r *mutationResolver) DrainFIFOQueue(ctx context.Context, endpointID string, partitionKey *string, moveToStandard *bool) (*FIFODrainResult, error) {
+	pk := ""
+	if partitionKey != nil {
+		pk = *partitionKey
+	}
+
+	move := false
+	if moveToStandard != nil {
+		move = *moveToStandard
+	}
+
+	var messagesDrained int
+	var err error
+
+	if move {
+		messagesDrained, err = r.Queue.MoveFIFOToStandardQueue(ctx, endpointID, pk)
+	} else {
+		messages, drainErr := r.Queue.DrainFIFOQueue(ctx, endpointID, pk)
+		err = drainErr
+		messagesDrained = len(messages)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &FIFODrainResult{
+		EndpointID:      endpointID,
+		PartitionKey:    partitionKey,
+		MessagesDrained: messagesDrained,
+		MovedToStandard: move,
+	}, nil
+}
+
+// RecoverStaleFIFOMessages is the resolver for the recoverStaleFIFOMessages field.
+func (r *mutationResolver) RecoverStaleFIFOMessages(ctx context.Context) (*FIFORecoveryResult, error) {
+	recovered, err := r.Queue.RecoverAllStaleFIFO(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &FIFORecoveryResult{
+		MessagesRecovered: recovered,
+	}, nil
+}
+
 // Event is the resolver for the event field.
 func (r *queryResolver) Event(ctx context.Context, id string) (*Event, error) {
 	uid, err := uuid.Parse(id)
@@ -1246,6 +1301,87 @@ func (r *queryResolver) EventTypes(ctx context.Context, first *int, after *strin
 		},
 		TotalCount: len(eventTypes),
 	}, nil
+}
+
+// FifoQueueStats is the resolver for the fifoQueueStats field.
+func (r *queryResolver) FifoQueueStats(ctx context.Context, endpointID string) (*FIFOEndpointStats, error) {
+	partitions, err := r.Queue.ListFIFOPartitions(ctx, endpointID)
+	if err != nil {
+		return nil, err
+	}
+
+	var totalQueued int64
+	var partitionStats []FIFOQueueStats
+
+	for _, pk := range partitions {
+		stats, err := r.Queue.GetFIFOQueueStats(ctx, endpointID, pk)
+		if err != nil {
+			continue
+		}
+
+		totalQueued += stats.QueueLength
+		partitionStats = append(partitionStats, FIFOQueueStats{
+			EndpointID:   endpointID,
+			PartitionKey: pk,
+			QueueLength:  int(stats.QueueLength),
+			IsLocked:     stats.IsLocked,
+			HasInFlight:  stats.HasInFlight,
+		})
+	}
+
+	return &FIFOEndpointStats{
+		EndpointID:          endpointID,
+		TotalPartitions:     len(partitions),
+		TotalQueuedMessages: int(totalQueued),
+		Partitions:          partitionStats,
+	}, nil
+}
+
+// FifoPartitionStats is the resolver for the fifoPartitionStats field.
+func (r *queryResolver) FifoPartitionStats(ctx context.Context, endpointID string, partitionKey string) (*FIFOQueueStats, error) {
+	stats, err := r.Queue.GetFIFOQueueStats(ctx, endpointID, partitionKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return &FIFOQueueStats{
+		EndpointID:   endpointID,
+		PartitionKey: partitionKey,
+		QueueLength:  int(stats.QueueLength),
+		IsLocked:     stats.IsLocked,
+		HasInFlight:  stats.HasInFlight,
+	}, nil
+}
+
+// ActiveFIFOQueues is the resolver for the activeFIFOQueues field.
+func (r *queryResolver) ActiveFIFOQueues(ctx context.Context) ([]FIFOQueueStats, error) {
+	queues, err := r.Queue.GetActiveFIFOQueues(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []FIFOQueueStats
+	for _, queueKey := range queues {
+		endpointID, partitionKey, ok := queue.ParseFIFOQueueKey(queueKey)
+		if !ok {
+			continue
+		}
+
+		stats, err := r.Queue.GetFIFOQueueStats(ctx, endpointID, partitionKey)
+		if err != nil {
+			continue
+		}
+
+		result = append(result, FIFOQueueStats{
+			EndpointID:   endpointID,
+			PartitionKey: partitionKey,
+			QueueLength:  int(stats.QueueLength),
+			IsLocked:     stats.IsLocked,
+			HasInFlight:  stats.HasInFlight,
+		})
+	}
+
+	return result, nil
 }
 
 // Endpoint returns EndpointResolver implementation.

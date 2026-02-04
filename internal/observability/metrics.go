@@ -177,6 +177,64 @@ func (m *Metrics) RedisCommandDuration(ctx context.Context, command string, dura
 	})
 }
 
+// FIFO metrics
+
+// FIFOMessagesRecovered records the number of FIFO messages recovered after worker restart.
+func (m *Metrics) FIFOMessagesRecovered(ctx context.Context, count int) {
+	m.provider.Counter(ctx, m.prefixName("fifo.messages.recovered"), int64(count), nil)
+}
+
+// FIFOQueueDepth records the depth of a FIFO queue.
+func (m *Metrics) FIFOQueueDepth(ctx context.Context, endpointID, partitionKey string, depth int64) {
+	m.provider.Gauge(ctx, m.prefixName("fifo.queue.depth"), float64(depth), map[string]string{
+		"endpoint_id":   endpointID,
+		"partition_key": partitionKey,
+	})
+}
+
+// FIFOProcessorCount records the number of active FIFO processors.
+func (m *Metrics) FIFOProcessorCount(ctx context.Context, count int) {
+	m.provider.Gauge(ctx, m.prefixName("fifo.processors.active"), float64(count), nil)
+}
+
+// FIFOLockAcquired records a successful FIFO lock acquisition.
+func (m *Metrics) FIFOLockAcquired(ctx context.Context, endpointID string) {
+	m.provider.Counter(ctx, m.prefixName("fifo.lock.acquired"), 1, map[string]string{
+		"endpoint_id": endpointID,
+	})
+}
+
+// FIFOLockContention records when a FIFO lock could not be acquired (contention).
+func (m *Metrics) FIFOLockContention(ctx context.Context, endpointID string) {
+	m.provider.Counter(ctx, m.prefixName("fifo.lock.contention"), 1, map[string]string{
+		"endpoint_id": endpointID,
+	})
+}
+
+// FIFODeliveryDuration records the duration of a FIFO delivery.
+func (m *Metrics) FIFODeliveryDuration(ctx context.Context, endpointID string, duration time.Duration, success bool) {
+	status := "success"
+	if !success {
+		status = "failure"
+	}
+	m.provider.Timing(ctx, m.prefixName("fifo.delivery.duration"), duration, map[string]string{
+		"endpoint_id": endpointID,
+		"status":      status,
+	})
+}
+
+// FIFOPartitionKeyExtractionFailed records a partition key extraction failure.
+func (m *Metrics) FIFOPartitionKeyExtractionFailed(ctx context.Context, endpointID string) {
+	m.provider.Counter(ctx, m.prefixName("fifo.partition_key.extraction_failed"), 1, map[string]string{
+		"endpoint_id": endpointID,
+	})
+}
+
+// FIFOInFlightDeliveries records the number of in-flight FIFO deliveries.
+func (m *Metrics) FIFOInFlightDeliveries(ctx context.Context, count int) {
+	m.provider.Gauge(ctx, m.prefixName("fifo.deliveries.inflight"), float64(count), nil)
+}
+
 // Flush flushes all pending metrics.
 func (m *Metrics) Flush(ctx context.Context) error {
 	return m.provider.Flush(ctx)

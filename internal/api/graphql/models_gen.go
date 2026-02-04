@@ -28,6 +28,8 @@ type CreateEndpointInput struct {
 	EventTypes       []string       `json:"eventTypes"`
 	Filter           map[string]any `json:"filter,omitempty"`
 	Transformation   *string        `json:"transformation,omitempty"`
+	Fifo             *bool          `json:"fifo,omitempty"`
+	FifoPartitionKey *string        `json:"fifoPartitionKey,omitempty"`
 	MaxRetries       *int           `json:"maxRetries,omitempty"`
 	RetryBackoffMs   *int           `json:"retryBackoffMs,omitempty"`
 	RetryBackoffMax  *int           `json:"retryBackoffMax,omitempty"`
@@ -73,6 +75,8 @@ type Endpoint struct {
 	Status           EndpointStatus `json:"status"`
 	Filter           map[string]any `json:"filter,omitempty"`
 	Transformation   *string        `json:"transformation,omitempty"`
+	Fifo             bool           `json:"fifo"`
+	FifoPartitionKey *string        `json:"fifoPartitionKey,omitempty"`
 	MaxRetries       int            `json:"maxRetries"`
 	RetryBackoffMs   int            `json:"retryBackoffMs"`
 	RetryBackoffMax  int            `json:"retryBackoffMax"`
@@ -168,6 +172,32 @@ type EventTypeEdge struct {
 	Cursor string     `json:"cursor"`
 }
 
+type FIFODrainResult struct {
+	EndpointID      string  `json:"endpointId"`
+	PartitionKey    *string `json:"partitionKey,omitempty"`
+	MessagesDrained int     `json:"messagesDrained"`
+	MovedToStandard bool    `json:"movedToStandard"`
+}
+
+type FIFOEndpointStats struct {
+	EndpointID          string           `json:"endpointId"`
+	TotalPartitions     int              `json:"totalPartitions"`
+	TotalQueuedMessages int              `json:"totalQueuedMessages"`
+	Partitions          []FIFOQueueStats `json:"partitions"`
+}
+
+type FIFOQueueStats struct {
+	EndpointID   string `json:"endpointId"`
+	PartitionKey string `json:"partitionKey"`
+	QueueLength  int    `json:"queueLength"`
+	IsLocked     bool   `json:"isLocked"`
+	HasInFlight  bool   `json:"hasInFlight"`
+}
+
+type FIFORecoveryResult struct {
+	MessagesRecovered int `json:"messagesRecovered"`
+}
+
 type Mutation struct {
 }
 
@@ -225,6 +255,8 @@ type UpdateEndpointInput struct {
 	Status           *EndpointStatus `json:"status,omitempty"`
 	Filter           map[string]any  `json:"filter,omitempty"`
 	Transformation   *string         `json:"transformation,omitempty"`
+	Fifo             *bool           `json:"fifo,omitempty"`
+	FifoPartitionKey *string         `json:"fifoPartitionKey,omitempty"`
 	MaxRetries       *int            `json:"maxRetries,omitempty"`
 	RetryBackoffMs   *int            `json:"retryBackoffMs,omitempty"`
 	RetryBackoffMax  *int            `json:"retryBackoffMax,omitempty"`

@@ -45,6 +45,15 @@ type Endpoint struct {
 	// JavaScript code to transform the webhook before delivery
 	Transformation string
 
+	// FIFO (ordered delivery) configuration
+	// When enabled, events are delivered sequentially - one at a time
+	FIFO bool
+	// FIFOPartitionKey is a JSONPath expression to extract a partition key from the payload
+	// Events with the same partition key are delivered in order
+	// Different partition keys can be processed in parallel
+	// Example: "$.customer_id" or "$.data.order_id"
+	FIFOPartitionKey string
+
 	// Retry configuration
 	MaxRetries       int     // Maximum delivery attempts
 	RetryBackoffMs   int     // Initial backoff delay in milliseconds
@@ -124,6 +133,8 @@ func (e Endpoint) Pause() Endpoint {
 		Status:           EndpointStatusPaused,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		FIFO:             e.FIFO,
+		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -152,6 +163,8 @@ func (e Endpoint) Resume() Endpoint {
 		Status:           EndpointStatusActive,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		FIFO:             e.FIFO,
+		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -180,6 +193,8 @@ func (e Endpoint) Disable() Endpoint {
 		Status:           EndpointStatusDisabled,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		FIFO:             e.FIFO,
+		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -208,6 +223,8 @@ func (e Endpoint) WithRetryConfig(maxRetries, backoffMs, backoffMax int, backoff
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		FIFO:             e.FIFO,
+		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       maxRetries,
 		RetryBackoffMs:   backoffMs,
 		RetryBackoffMax:  backoffMax,
@@ -236,6 +253,8 @@ func (e Endpoint) WithTimeout(timeoutMs int) Endpoint {
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		FIFO:             e.FIFO,
+		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -264,6 +283,8 @@ func (e Endpoint) WithRateLimit(rps int) Endpoint {
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		FIFO:             e.FIFO,
+		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -303,6 +324,8 @@ func (e Endpoint) RotateSecret(newSecret string) Endpoint {
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		FIFO:             e.FIFO,
+		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -332,6 +355,8 @@ func (e Endpoint) ClearPreviousSecret() Endpoint {
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		FIFO:             e.FIFO,
+		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -407,6 +432,8 @@ func (e Endpoint) WithFilter(filter []byte) Endpoint {
 		Status:           e.Status,
 		Filter:           filter,
 		Transformation:   e.Transformation,
+		FIFO:             e.FIFO,
+		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,
@@ -440,6 +467,48 @@ func (e Endpoint) WithTransformation(transformation string) Endpoint {
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   transformation,
+		FIFO:             e.FIFO,
+		FIFOPartitionKey: e.FIFOPartitionKey,
+		MaxRetries:       e.MaxRetries,
+		RetryBackoffMs:   e.RetryBackoffMs,
+		RetryBackoffMax:  e.RetryBackoffMax,
+		RetryBackoffMult: e.RetryBackoffMult,
+		TimeoutMs:        e.TimeoutMs,
+		RateLimitPerSec:  e.RateLimitPerSec,
+		CircuitThreshold: e.CircuitThreshold,
+		CircuitResetMs:   e.CircuitResetMs,
+		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    e.SigningSecret,
+		PreviousSecret:   e.PreviousSecret,
+		SecretRotatedAt:  e.SecretRotatedAt,
+		CreatedAt:        e.CreatedAt,
+		UpdatedAt:        time.Now().UTC(),
+	}
+}
+
+// IsFIFO returns true if the endpoint requires ordered delivery.
+func (e Endpoint) IsFIFO() bool {
+	return e.FIFO
+}
+
+// HasPartitionKey returns true if the endpoint has a partition key configured.
+func (e Endpoint) HasPartitionKey() bool {
+	return e.FIFOPartitionKey != ""
+}
+
+// WithFIFO returns a new endpoint with FIFO configuration.
+func (e Endpoint) WithFIFO(fifo bool, partitionKey string) Endpoint {
+	return Endpoint{
+		ID:               e.ID,
+		ClientID:         e.ClientID,
+		URL:              e.URL,
+		Description:      e.Description,
+		EventTypes:       e.EventTypes,
+		Status:           e.Status,
+		Filter:           e.Filter,
+		Transformation:   e.Transformation,
+		FIFO:             fifo,
+		FIFOPartitionKey: partitionKey,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,

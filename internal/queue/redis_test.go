@@ -867,3 +867,434 @@ func TestQueue_ChainedWithMethods(t *testing.T) {
 		t.Error("blocking timeout not preserved in chain")
 	}
 }
+
+// ============================================================================
+// FIFO Queue Tests
+// ============================================================================
+
+func TestFIFOQueueKey(t *testing.T) {
+	tests := []struct {
+		endpointID   string
+		partitionKey string
+		expected     string
+	}{
+		{"endpoint-1", "", "relay:queue:fifo:endpoint-1"},
+		{"endpoint-1", "customer-123", "relay:queue:fifo:endpoint-1:customer-123"},
+		{"ep-abc", "order-456", "relay:queue:fifo:ep-abc:order-456"},
+	}
+
+	for _, tc := range tests {
+		result := FIFOQueueKey(tc.endpointID, tc.partitionKey)
+		if result != tc.expected {
+			t.Errorf("FIFOQueueKey(%q, %q) = %q, expected %q",
+				tc.endpointID, tc.partitionKey, result, tc.expected)
+		}
+	}
+}
+
+func TestFIFOLockKey(t *testing.T) {
+	tests := []struct {
+		endpointID   string
+		partitionKey string
+		expected     string
+	}{
+		{"endpoint-1", "", "relay:lock:fifo:endpoint-1"},
+		{"endpoint-1", "customer-123", "relay:lock:fifo:endpoint-1:customer-123"},
+		{"ep-abc", "order-456", "relay:lock:fifo:ep-abc:order-456"},
+	}
+
+	for _, tc := range tests {
+		result := FIFOLockKey(tc.endpointID, tc.partitionKey)
+		if result != tc.expected {
+			t.Errorf("FIFOLockKey(%q, %q) = %q, expected %q",
+				tc.endpointID, tc.partitionKey, result, tc.expected)
+		}
+	}
+}
+
+func TestQueue_EnqueueFIFO(t *testing.T) {
+	q, mr, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+	eventID := uuid.New()
+
+	err := q.EnqueueFIFO(ctx, endpointID, "", eventID)
+	if err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+
+	// Verify message is in FIFO queue
+	queueKey := FIFOQueueKey(endpointID, "")
+	length := listLen(t, mr, queueKey)
+	if length != 1 {
+		t.Errorf("expected queue length 1, got %d", length)
+	}
+}
+
+func TestQueue_EnqueueFIFO_WithPartitionKey(t *testing.T) {
+	q, mr, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+	partitionKey := "customer-123"
+	eventID := uuid.New()
+
+	err := q.EnqueueFIFO(ctx, endpointID, partitionKey, eventID)
+	if err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+
+	// Verify message is in partitioned FIFO queue
+	queueKey := FIFOQueueKey(endpointID, partitionKey)
+	length := listLen(t, mr, queueKey)
+	if length != 1 {
+		t.Errorf("expected queue length 1, got %d", length)
+	}
+
+	// Verify other partition queue is empty
+	otherQueueKey := FIFOQueueKey(endpointID, "other-partition")
+	otherLength := listLen(t, mr, otherQueueKey)
+	if otherLength != 0 {
+		t.Errorf("expected other queue to be empty, got %d", otherLength)
+	}
+}
+
+func TestQueue_DequeueFIFO(t *testing.T) {
+	q, _, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+	eventID := uuid.New()
+
+	// Enqueue first
+	if err := q.EnqueueFIFO(ctx, endpointID, "", eventID); err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+
+	// Dequeue
+	msg, err := q.DequeueFIFO(ctx, endpointID, "")
+	if err != nil {
+		t.Fatalf("DequeueFIFO failed: %v", err)
+	}
+
+	if msg.EventID != eventID {
+		t.Errorf("expected event ID %v, got %v", eventID, msg.EventID)
+	}
+}
+
+func TestQueue_DequeueFIFO_EmptyQueue(t *testing.T) {
+	q, _, _ := setupTestQueue(t)
+	ctx := context.Background()
+
+	_, err := q.DequeueFIFO(ctx, "empty-endpoint", "")
+	if !errors.Is(err, domain.ErrQueueEmpty) {
+		t.Errorf("expected ErrQueueEmpty, got %v", err)
+	}
+}
+
+func TestQueue_DequeueFIFO_Locked(t *testing.T) {
+	q, _, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+
+	// Enqueue two messages
+	if err := q.EnqueueFIFO(ctx, endpointID, "", uuid.New()); err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+	if err := q.EnqueueFIFO(ctx, endpointID, "", uuid.New()); err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+
+	// First dequeue should succeed
+	_, err := q.DequeueFIFO(ctx, endpointID, "")
+	if err != nil {
+		t.Fatalf("First DequeueFIFO failed: %v", err)
+	}
+
+	// Second dequeue should fail (locked)
+	_, err = q.DequeueFIFO(ctx, endpointID, "")
+	if !errors.Is(err, domain.ErrQueueEmpty) {
+		t.Errorf("expected ErrQueueEmpty (locked), got %v", err)
+	}
+}
+
+func TestQueue_AckFIFO(t *testing.T) {
+	q, _, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+
+	// Enqueue and dequeue
+	if err := q.EnqueueFIFO(ctx, endpointID, "", uuid.New()); err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+
+	_, err := q.DequeueFIFO(ctx, endpointID, "")
+	if err != nil {
+		t.Fatalf("DequeueFIFO failed: %v", err)
+	}
+
+	// Verify locked
+	locked, _ := q.IsFIFOLocked(ctx, endpointID, "")
+	if !locked {
+		t.Error("expected queue to be locked after dequeue")
+	}
+
+	// Ack
+	if err := q.AckFIFO(ctx, endpointID, ""); err != nil {
+		t.Fatalf("AckFIFO failed: %v", err)
+	}
+
+	// Verify unlocked
+	locked, _ = q.IsFIFOLocked(ctx, endpointID, "")
+	if locked {
+		t.Error("expected queue to be unlocked after ack")
+	}
+}
+
+func TestQueue_NackFIFO_NoDelay(t *testing.T) {
+	q, mr, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+	eventID := uuid.New()
+
+	// Enqueue and dequeue
+	if err := q.EnqueueFIFO(ctx, endpointID, "", eventID); err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+
+	msg, err := q.DequeueFIFO(ctx, endpointID, "")
+	if err != nil {
+		t.Fatalf("DequeueFIFO failed: %v", err)
+	}
+
+	// Nack without delay
+	if err := q.NackFIFO(ctx, endpointID, "", msg, 0); err != nil {
+		t.Fatalf("NackFIFO failed: %v", err)
+	}
+
+	// Verify message is back in queue
+	queueKey := FIFOQueueKey(endpointID, "")
+	length := listLen(t, mr, queueKey)
+	if length != 1 {
+		t.Errorf("expected 1 message in queue, got %d", length)
+	}
+
+	// Verify unlocked (can dequeue again)
+	msg2, err := q.DequeueFIFO(ctx, endpointID, "")
+	if err != nil {
+		t.Fatalf("Second DequeueFIFO failed: %v", err)
+	}
+	if msg2.EventID != eventID {
+		t.Errorf("expected same event ID %v, got %v", eventID, msg2.EventID)
+	}
+}
+
+func TestQueue_NackFIFO_WithDelay(t *testing.T) {
+	q, mr, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+
+	// Enqueue and dequeue
+	if err := q.EnqueueFIFO(ctx, endpointID, "", uuid.New()); err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+
+	msg, err := q.DequeueFIFO(ctx, endpointID, "")
+	if err != nil {
+		t.Fatalf("DequeueFIFO failed: %v", err)
+	}
+
+	// Nack with delay
+	if err := q.NackFIFO(ctx, endpointID, "", msg, 10*time.Second); err != nil {
+		t.Fatalf("NackFIFO failed: %v", err)
+	}
+
+	// Verify message is back in queue
+	queueKey := FIFOQueueKey(endpointID, "")
+	length := listLen(t, mr, queueKey)
+	if length != 1 {
+		t.Errorf("expected 1 message in queue, got %d", length)
+	}
+
+	// Verify still locked (can't dequeue due to delay)
+	lockKey := FIFOLockKey(endpointID, "")
+	exists := mr.Exists(lockKey)
+	if !exists {
+		t.Error("expected lock to exist with TTL")
+	}
+}
+
+func TestQueue_GetFIFOQueueLength(t *testing.T) {
+	q, _, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+
+	// Enqueue several messages
+	for range 5 {
+		if err := q.EnqueueFIFO(ctx, endpointID, "", uuid.New()); err != nil {
+			t.Fatalf("EnqueueFIFO failed: %v", err)
+		}
+	}
+
+	length, err := q.GetFIFOQueueLength(ctx, endpointID, "")
+	if err != nil {
+		t.Fatalf("GetFIFOQueueLength failed: %v", err)
+	}
+
+	if length != 5 {
+		t.Errorf("expected length 5, got %d", length)
+	}
+}
+
+func TestQueue_IsFIFOLocked(t *testing.T) {
+	q, _, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+
+	// Initially not locked
+	locked, err := q.IsFIFOLocked(ctx, endpointID, "")
+	if err != nil {
+		t.Fatalf("IsFIFOLocked failed: %v", err)
+	}
+	if locked {
+		t.Error("expected not locked initially")
+	}
+
+	// Enqueue and dequeue to acquire lock
+	if err := q.EnqueueFIFO(ctx, endpointID, "", uuid.New()); err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+	if _, err := q.DequeueFIFO(ctx, endpointID, ""); err != nil {
+		t.Fatalf("DequeueFIFO failed: %v", err)
+	}
+
+	// Now should be locked
+	locked, err = q.IsFIFOLocked(ctx, endpointID, "")
+	if err != nil {
+		t.Fatalf("IsFIFOLocked failed: %v", err)
+	}
+	if !locked {
+		t.Error("expected locked after dequeue")
+	}
+}
+
+func TestQueue_ReleaseFIFOLock(t *testing.T) {
+	q, _, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+
+	// Enqueue and dequeue to acquire lock
+	if err := q.EnqueueFIFO(ctx, endpointID, "", uuid.New()); err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+	if _, err := q.DequeueFIFO(ctx, endpointID, ""); err != nil {
+		t.Fatalf("DequeueFIFO failed: %v", err)
+	}
+
+	// Verify locked
+	locked, _ := q.IsFIFOLocked(ctx, endpointID, "")
+	if !locked {
+		t.Error("expected locked")
+	}
+
+	// Force release
+	if err := q.ReleaseFIFOLock(ctx, endpointID, ""); err != nil {
+		t.Fatalf("ReleaseFIFOLock failed: %v", err)
+	}
+
+	// Verify unlocked
+	locked, _ = q.IsFIFOLocked(ctx, endpointID, "")
+	if locked {
+		t.Error("expected unlocked after force release")
+	}
+}
+
+func TestQueue_FIFO_OrderPreservation(t *testing.T) {
+	q, _, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+
+	// Enqueue multiple messages in order
+	eventIDs := make([]uuid.UUID, 5)
+	for i := range 5 {
+		eventIDs[i] = uuid.New()
+		if err := q.EnqueueFIFO(ctx, endpointID, "", eventIDs[i]); err != nil {
+			t.Fatalf("EnqueueFIFO %d failed: %v", i, err)
+		}
+	}
+
+	// Dequeue and verify order (FIFO)
+	for i := range 5 {
+		msg, err := q.DequeueFIFO(ctx, endpointID, "")
+		if err != nil {
+			t.Fatalf("DequeueFIFO %d failed: %v", i, err)
+		}
+		if msg.EventID != eventIDs[i] {
+			t.Errorf("Dequeue %d: expected event ID %v, got %v", i, eventIDs[i], msg.EventID)
+		}
+		if err := q.AckFIFO(ctx, endpointID, ""); err != nil {
+			t.Fatalf("AckFIFO %d failed: %v", i, err)
+		}
+	}
+}
+
+func TestQueue_FIFO_PartitionIsolation(t *testing.T) {
+	q, _, _ := setupTestQueue(t)
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+
+	// Enqueue to partition A
+	eventA := uuid.New()
+	if err := q.EnqueueFIFO(ctx, endpointID, "partition-A", eventA); err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+
+	// Enqueue to partition B
+	eventB := uuid.New()
+	if err := q.EnqueueFIFO(ctx, endpointID, "partition-B", eventB); err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+
+	// Dequeue from partition A (should get eventA, lock partition A)
+	msgA, err := q.DequeueFIFO(ctx, endpointID, "partition-A")
+	if err != nil {
+		t.Fatalf("DequeueFIFO A failed: %v", err)
+	}
+	if msgA.EventID != eventA {
+		t.Errorf("expected event A %v, got %v", eventA, msgA.EventID)
+	}
+
+	// Dequeue from partition B (should succeed despite A being locked)
+	msgB, err := q.DequeueFIFO(ctx, endpointID, "partition-B")
+	if err != nil {
+		t.Fatalf("DequeueFIFO B failed: %v", err)
+	}
+	if msgB.EventID != eventB {
+		t.Errorf("expected event B %v, got %v", eventB, msgB.EventID)
+	}
+
+	// Both partitions now locked independently
+	lockedA, _ := q.IsFIFOLocked(ctx, endpointID, "partition-A")
+	lockedB, _ := q.IsFIFOLocked(ctx, endpointID, "partition-B")
+	if !lockedA || !lockedB {
+		t.Error("expected both partitions to be locked")
+	}
+}
+
+func TestQueue_FIFO_WithMetrics(t *testing.T) {
+	q, _, _ := setupTestQueue(t)
+	metrics := observability.NewMetrics(&observability.NoopMetricsProvider{}, "test")
+	q = q.WithMetrics(metrics)
+
+	ctx := context.Background()
+	endpointID := "endpoint-1"
+
+	// Enqueue with metrics
+	if err := q.EnqueueFIFO(ctx, endpointID, "", uuid.New()); err != nil {
+		t.Fatalf("EnqueueFIFO failed: %v", err)
+	}
+
+	// Dequeue with metrics
+	_, err := q.DequeueFIFO(ctx, endpointID, "")
+	if err != nil {
+		t.Fatalf("DequeueFIFO failed: %v", err)
+	}
+}

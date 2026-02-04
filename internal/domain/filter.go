@@ -395,3 +395,50 @@ type FilterContext struct {
 	EventType string
 	ClientID  string
 }
+
+// ExtractJSONPathValue extracts a value from a JSON payload using a JSONPath expression.
+// Returns the extracted value as a string, or an empty string if the path doesn't exist.
+// This is useful for extracting partition keys for FIFO queues.
+func ExtractJSONPathValue(payload []byte, path string) (string, error) {
+	if len(payload) == 0 || path == "" {
+		return "", nil
+	}
+
+	var data any
+	if err := json.Unmarshal(payload, &data); err != nil {
+		return "", fmt.Errorf("invalid JSON payload: %w", err)
+	}
+
+	value, err := jsonpath.Get(path, data)
+	if err != nil {
+		// Path doesn't exist or is invalid - return empty string
+		return "", nil
+	}
+
+	if value == nil {
+		return "", nil
+	}
+
+	// Convert value to string
+	switch v := value.(type) {
+	case string:
+		return v, nil
+	case float64:
+		// Check if it's an integer
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%d", int64(v)), nil
+		}
+		return fmt.Sprintf("%v", v), nil
+	case bool:
+		return fmt.Sprintf("%v", v), nil
+	case json.Number:
+		return v.String(), nil
+	default:
+		// For complex types, marshal to JSON
+		bytes, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprintf("%v", v), nil
+		}
+		return string(bytes), nil
+	}
+}
