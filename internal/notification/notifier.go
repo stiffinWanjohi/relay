@@ -2,9 +2,12 @@ package notification
 
 import (
 	"context"
-	"log/slog"
 	"sync"
+
+	"github.com/stiffinWanjohi/relay/internal/logging"
 )
+
+var serviceLog = logging.Component("notification.service")
 
 // Notifier defines the interface for sending notifications.
 type Notifier interface {
@@ -25,7 +28,6 @@ type Notifier interface {
 type Service struct {
 	notifiers []Notifier
 	async     bool
-	logger    *slog.Logger
 	wg        sync.WaitGroup
 }
 
@@ -45,15 +47,10 @@ type Config struct {
 }
 
 // NewService creates a new notification service with the given configuration.
-func NewService(cfg Config, logger *slog.Logger) *Service {
-	if logger == nil {
-		logger = slog.Default()
-	}
-
+func NewService(cfg Config) *Service {
 	s := &Service{
 		notifiers: make([]Notifier, 0),
 		async:     cfg.Async,
-		logger:    logger,
 	}
 
 	if !cfg.Enabled {
@@ -63,8 +60,8 @@ func NewService(cfg Config, logger *slog.Logger) *Service {
 
 	// Add Slack notifier if configured
 	if cfg.SlackWebhookURL != "" {
-		s.notifiers = append(s.notifiers, NewSlackNotifier(cfg.SlackWebhookURL, logger))
-		logger.Info("slack notifier enabled")
+		s.notifiers = append(s.notifiers, NewSlackNotifier(cfg.SlackWebhookURL))
+		serviceLog.Info("slack notifier enabled")
 	}
 
 	// Add Email notifier if configured
@@ -76,15 +73,14 @@ func NewService(cfg Config, logger *slog.Logger) *Service {
 			cfg.SMTPPassword,
 			cfg.EmailFrom,
 			cfg.EmailTo,
-			logger,
 		))
-		logger.Info("email notifier enabled", "recipients", cfg.EmailTo)
+		serviceLog.Info("email notifier enabled", "recipients", cfg.EmailTo)
 	}
 
 	// If no notifiers configured, use noop
 	if len(s.notifiers) == 0 {
 		s.notifiers = append(s.notifiers, &NoopNotifier{})
-		logger.Info("no notifiers configured, using noop")
+		serviceLog.Info("no notifiers configured, using noop")
 	}
 
 	return s
@@ -120,12 +116,12 @@ func (s *Service) dispatch(fn func(Notifier) error) {
 			go func() {
 				defer s.wg.Done()
 				if err := fn(notifier); err != nil {
-					s.logger.Error("notification failed", "error", err)
+					serviceLog.Error("notification failed", "error", err)
 				}
 			}()
 		} else {
 			if err := fn(notifier); err != nil {
-				s.logger.Error("notification failed", "error", err)
+				serviceLog.Error("notification failed", "error", err)
 			}
 		}
 	}

@@ -3,10 +3,8 @@ package delivery
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -45,7 +43,6 @@ func TestNewWorker(t *testing.T) {
 	defer func() { _ = client.Close() }()
 
 	q := queue.NewQueue(client)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	config := DefaultWorkerConfig()
 	config.SigningKey = "test-signing-key-32-chars-long!"
 
@@ -56,7 +53,7 @@ func TestNewWorker(t *testing.T) {
 		sender:         NewSender(config.SigningKey),
 		circuit:        NewCircuitBreaker(config.CircuitConfig),
 		retry:          NewRetryPolicy(),
-		logger:         logger,
+		
 		stopCh:         make(chan struct{}),
 		concurrency:    config.Concurrency,
 		visibilityTime: config.VisibilityTime,
@@ -72,12 +69,11 @@ func TestNewWorker(t *testing.T) {
 }
 
 func TestWorker_Stop(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	config := DefaultWorkerConfig()
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		logger:  logger,
+		
 		stopCh:  make(chan struct{}),
 	}
 	defer w.circuit.Stop()
@@ -95,12 +91,11 @@ func TestWorker_Stop(t *testing.T) {
 }
 
 func TestWorker_Wait(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	config := DefaultWorkerConfig()
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		logger:  logger,
+		
 		stopCh:  make(chan struct{}),
 	}
 	defer w.circuit.Stop()
@@ -128,12 +123,11 @@ func TestWorker_Wait(t *testing.T) {
 }
 
 func TestWorker_StopAndWait_Success(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	config := DefaultWorkerConfig()
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		logger:  logger,
+		
 		stopCh:  make(chan struct{}),
 	}
 	defer w.circuit.Stop()
@@ -153,12 +147,11 @@ func TestWorker_StopAndWait_Success(t *testing.T) {
 }
 
 func TestWorker_StopAndWait_Timeout(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	config := DefaultWorkerConfig()
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		logger:  logger,
+		
 		stopCh:  make(chan struct{}),
 	}
 	defer w.circuit.Stop()
@@ -181,12 +174,11 @@ func TestWorker_StopAndWait_Timeout(t *testing.T) {
 }
 
 func TestWorker_CircuitStats(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	config := DefaultWorkerConfig()
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		logger:  logger,
+		
 	}
 	defer w.circuit.Stop()
 
@@ -481,14 +473,13 @@ func TestWorker_CircuitBreakerWithEndpoint(t *testing.T) {
 
 // Test worker with metrics
 func TestWorker_WithMetrics(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	config := DefaultWorkerConfig()
 
 	metrics := observability.NewMetrics(&observability.NoopMetricsProvider{}, "test")
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		logger:  logger,
+		
 		metrics: metrics,
 		stopCh:  make(chan struct{}),
 	}
@@ -511,13 +502,12 @@ func TestWorker_WithRateLimiter(t *testing.T) {
 	defer func() { _ = client.Close() }()
 
 	rateLimiter := NewRateLimiter(client)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	config := DefaultWorkerConfig()
 
 	w := &Worker{
 		circuit:     NewCircuitBreaker(config.CircuitConfig),
 		rateLimiter: rateLimiter,
-		logger:      logger,
+		
 		stopCh:      make(chan struct{}),
 	}
 	defer w.circuit.Stop()
@@ -539,14 +529,13 @@ func TestWorker_ProcessLoop_ContextCancellation(t *testing.T) {
 	defer func() { _ = client.Close() }()
 
 	q := queue.NewQueue(client)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	config := DefaultWorkerConfig()
 
 	w := &Worker{
 		queue:          q,
 		circuit:        NewCircuitBreaker(config.CircuitConfig),
 		retry:          NewRetryPolicy(),
-		logger:         logger,
+		
 		stopCh:         make(chan struct{}),
 		visibilityTime: config.VisibilityTime,
 	}
@@ -586,14 +575,13 @@ func TestWorker_ProcessLoop_StopSignal(t *testing.T) {
 	defer func() { _ = client.Close() }()
 
 	q := queue.NewQueue(client).WithBlockingTimeout(100 * time.Millisecond)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	config := DefaultWorkerConfig()
 
 	w := &Worker{
 		queue:          q,
 		circuit:        NewCircuitBreaker(config.CircuitConfig),
 		retry:          NewRetryPolicy(),
-		logger:         logger,
+		
 		stopCh:         make(chan struct{}),
 		visibilityTime: config.VisibilityTime,
 	}
@@ -634,7 +622,6 @@ func TestWorker_Start(t *testing.T) {
 	defer func() { _ = client.Close() }()
 
 	q := queue.NewQueue(client).WithBlockingTimeout(50 * time.Millisecond)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	config := WorkerConfig{
 		Concurrency:    2,
 		VisibilityTime: 30 * time.Second,
@@ -647,7 +634,7 @@ func TestWorker_Start(t *testing.T) {
 		circuit:        NewCircuitBreaker(config.CircuitConfig),
 		retry:          NewRetryPolicy(),
 		sender:         NewSender(config.SigningKey),
-		logger:         logger,
+		
 		stopCh:         make(chan struct{}),
 		concurrency:    config.Concurrency,
 		visibilityTime: config.VisibilityTime,

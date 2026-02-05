@@ -8,8 +8,11 @@ import (
 	"time"
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/logging"
 	"github.com/stiffinWanjohi/relay/pkg/signature"
 )
+
+var senderLog = logging.Component("sender")
 
 const (
 	// Default timeout for webhook delivery
@@ -94,6 +97,13 @@ func (s *Sender) SendWithTimeout(ctx context.Context, event domain.Event, timeou
 func (s *Sender) sendWithConfig(ctx context.Context, event domain.Event, endpoint *domain.Endpoint, timeout time.Duration) domain.DeliveryResult {
 	start := time.Now()
 
+	senderLog.Debug("sending webhook",
+		"event_id", event.ID,
+		"destination", event.Destination,
+		"payload_size", len(event.Payload),
+		"timeout_ms", timeout.Milliseconds(),
+	)
+
 	// Ensure we have a deadline for the request
 	// If context doesn't have a deadline, create one with the specified timeout
 	if _, ok := ctx.Deadline(); !ok {
@@ -105,6 +115,11 @@ func (s *Sender) sendWithConfig(ctx context.Context, event domain.Event, endpoin
 	// Create the request
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, event.Destination, bytes.NewReader(event.Payload))
 	if err != nil {
+		senderLog.Error("failed to create request",
+			"event_id", event.ID,
+			"destination", event.Destination,
+			"error", err,
+		)
 		return domain.NewFailureResult(0, "", err, time.Since(start).Milliseconds())
 	}
 
@@ -130,24 +145,51 @@ func (s *Sender) sendWithConfig(ctx context.Context, event domain.Event, endpoin
 	// Send the request
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return domain.NewFailureResult(0, "", err, time.Since(start).Milliseconds())
+		durationMs := time.Since(start).Milliseconds()
+		senderLog.Warn("webhook delivery failed",
+			"event_id", event.ID,
+			"destination", event.Destination,
+			"error", err,
+			"duration_ms", durationMs,
+		)
+		return domain.NewFailureResult(0, "", err, durationMs)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	// Read the response body (limited)
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
 	if err != nil {
-		return domain.NewFailureResult(resp.StatusCode, "", err, time.Since(start).Milliseconds())
+		durationMs := time.Since(start).Milliseconds()
+		senderLog.Warn("failed to read response body",
+			"event_id", event.ID,
+			"destination", event.Destination,
+			"status_code", resp.StatusCode,
+			"error", err,
+			"duration_ms", durationMs,
+		)
+		return domain.NewFailureResult(resp.StatusCode, "", err, durationMs)
 	}
 
 	durationMs := time.Since(start).Milliseconds()
 
 	// Check if successful (2xx status code)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		senderLog.Debug("webhook delivered successfully",
+			"event_id", event.ID,
+			"destination", event.Destination,
+			"status_code", resp.StatusCode,
+			"duration_ms", durationMs,
+		)
 		return domain.NewSuccessResult(resp.StatusCode, string(body), durationMs)
 	}
 
 	// Return failure for non-2xx
+	senderLog.Warn("webhook returned non-2xx status",
+		"event_id", event.ID,
+		"destination", event.Destination,
+		"status_code", resp.StatusCode,
+		"duration_ms", durationMs,
+	)
 	return domain.NewFailureResult(resp.StatusCode, string(body), nil, durationMs)
 }
 

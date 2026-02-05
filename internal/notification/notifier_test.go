@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -36,7 +35,7 @@ func TestNewService_Disabled(t *testing.T) {
 		Enabled: false,
 	}
 
-	s := NewService(cfg, nil)
+	s := NewService(cfg)
 	defer func() { _ = s.Close() }()
 
 	if len(s.notifiers) != 1 {
@@ -55,8 +54,7 @@ func TestNewService_WithSlack(t *testing.T) {
 		SlackWebhookURL: "https://hooks.slack.com/services/test",
 	}
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s := NewService(cfg, logger)
+	s := NewService(cfg)
 	defer func() { _ = s.Close() }()
 
 	if len(s.notifiers) != 1 {
@@ -77,8 +75,7 @@ func TestNewService_WithEmail(t *testing.T) {
 		EmailTo:  []string{"ops@example.com"},
 	}
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s := NewService(cfg, logger)
+	s := NewService(cfg)
 	defer func() { _ = s.Close() }()
 
 	if len(s.notifiers) != 1 {
@@ -100,8 +97,7 @@ func TestNewService_WithMultipleNotifiers(t *testing.T) {
 		EmailTo:         []string{"ops@example.com"},
 	}
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s := NewService(cfg, logger)
+	s := NewService(cfg)
 	defer func() { _ = s.Close() }()
 
 	if len(s.notifiers) != 2 {
@@ -115,8 +111,7 @@ func TestNewService_NoNotifiersConfigured(t *testing.T) {
 		// No Slack or Email configured
 	}
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s := NewService(cfg, logger)
+	s := NewService(cfg)
 	defer func() { _ = s.Close() }()
 
 	if len(s.notifiers) != 1 {
@@ -167,7 +162,6 @@ func TestService_NotifyCircuitTrip(t *testing.T) {
 	s := &Service{
 		notifiers: []Notifier{mock},
 		async:     false,
-		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	s.NotifyCircuitTrip(context.Background(), "ep1", "https://example.com", 5)
@@ -182,7 +176,6 @@ func TestService_NotifyCircuitRecover(t *testing.T) {
 	s := &Service{
 		notifiers: []Notifier{mock},
 		async:     false,
-		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	s.NotifyCircuitRecover(context.Background(), "ep1", "https://example.com")
@@ -197,7 +190,6 @@ func TestService_NotifyEndpointDisabled(t *testing.T) {
 	s := &Service{
 		notifiers: []Notifier{mock},
 		async:     false,
-		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	s.NotifyEndpointDisabled(context.Background(), "ep1", "too many failures")
@@ -213,7 +205,6 @@ func TestService_AsyncNotification(t *testing.T) {
 	s := &Service{
 		notifiers: []Notifier{mock},
 		async:     true,
-		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	s.NotifyCircuitTrip(context.Background(), "ep1", "https://example.com", 5)
@@ -235,7 +226,6 @@ func TestService_MultipleNotifiers(t *testing.T) {
 	s := &Service{
 		notifiers: []Notifier{mock1, mock2},
 		async:     false,
-		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	s.NotifyCircuitTrip(context.Background(), "ep1", "https://example.com", 5)
@@ -254,7 +244,6 @@ func TestService_NotifierError(t *testing.T) {
 	s := &Service{
 		notifiers: []Notifier{mock},
 		async:     false,
-		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	// Should not panic, just log error
@@ -285,8 +274,7 @@ func TestSlackNotifier_NotifyCircuitTrip(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	notifier := NewSlackNotifier(server.URL, logger)
+	notifier := NewSlackNotifier(server.URL)
 	defer func() { _ = notifier.Close() }()
 
 	err := notifier.NotifyCircuitTrip(context.Background(), "endpoint-123", "https://example.com/webhook", 5)
@@ -317,8 +305,7 @@ func TestSlackNotifier_NotifyCircuitRecover(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	notifier := NewSlackNotifier(server.URL, logger)
+	notifier := NewSlackNotifier(server.URL)
 	defer func() { _ = notifier.Close() }()
 
 	err := notifier.NotifyCircuitRecover(context.Background(), "endpoint-123", "https://example.com/webhook")
@@ -349,8 +336,7 @@ func TestSlackNotifier_NotifyEndpointDisabled(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	notifier := NewSlackNotifier(server.URL, logger)
+	notifier := NewSlackNotifier(server.URL)
 	defer func() { _ = notifier.Close() }()
 
 	err := notifier.NotifyEndpointDisabled(context.Background(), "endpoint-123", "too many failures")
@@ -377,8 +363,7 @@ func TestSlackNotifier_ServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	notifier := NewSlackNotifier(server.URL, logger)
+	notifier := NewSlackNotifier(server.URL)
 	defer func() { _ = notifier.Close() }()
 
 	err := notifier.NotifyCircuitTrip(context.Background(), "ep1", "https://example.com", 5)
@@ -394,8 +379,7 @@ func TestSlackNotifier_Timeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	notifier := NewSlackNotifier(server.URL, logger)
+	notifier := NewSlackNotifier(server.URL)
 	notifier.client.Timeout = 50 * time.Millisecond
 	defer func() { _ = notifier.Close() }()
 
@@ -409,7 +393,6 @@ func TestSlackNotifier_Timeout(t *testing.T) {
 }
 
 func TestEmailNotifier_NotifyCircuitTrip(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	notifier := NewEmailNotifier(
 		"smtp.example.com",
 		587,
@@ -417,7 +400,6 @@ func TestEmailNotifier_NotifyCircuitTrip(t *testing.T) {
 		"pass",
 		"relay@example.com",
 		[]string{"ops@example.com"},
-		logger,
 	)
 	defer func() { _ = notifier.Close() }()
 
@@ -430,7 +412,6 @@ func TestEmailNotifier_NotifyCircuitTrip(t *testing.T) {
 }
 
 func TestEmailNotifier_BuildMessage(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	notifier := NewEmailNotifier(
 		"smtp.example.com",
 		587,
@@ -438,7 +419,6 @@ func TestEmailNotifier_BuildMessage(t *testing.T) {
 		"pass",
 		"relay@example.com",
 		[]string{"ops@example.com"},
-		logger,
 	)
 
 	// Test that notifier is created with correct config

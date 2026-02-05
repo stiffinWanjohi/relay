@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,30 +12,20 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/logging"
 )
+
+var log = logging.Component("event.store")
 
 // Store provides persistence for events and delivery attempts.
 type Store struct {
-	pool   *pgxpool.Pool
-	logger *slog.Logger
+	pool *pgxpool.Pool
 }
 
 // NewStore creates a new event store.
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{
-		pool:   pool,
-		logger: slog.Default(),
-	}
-}
-
-// NewStoreWithLogger creates a new event store with a custom logger.
-func NewStoreWithLogger(pool *pgxpool.Pool, logger *slog.Logger) *Store {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	return &Store{
-		pool:   pool,
-		logger: logger,
+		pool: pool,
 	}
 }
 
@@ -685,11 +674,11 @@ func (s *Store) CreateEventWithFanoutAndOptions(ctx context.Context, clientID, e
 			// Log the filter evaluation error with context for debugging
 			// Skip this endpoint but continue processing others to avoid
 			// a single misconfigured filter from blocking all event delivery
-			s.logger.Warn("filter evaluation failed for endpoint",
-				slog.String("endpoint_id", endpoint.ID.String()),
-				slog.String("client_id", endpoint.ClientID),
-				slog.String("event_type", eventType),
-				slog.String("error", err.Error()),
+			log.Warn("filter evaluation failed for endpoint",
+				"endpoint_id", endpoint.ID.String(),
+				"client_id", endpoint.ClientID,
+				"event_type", eventType,
+				"error", err.Error(),
 			)
 			continue
 		}

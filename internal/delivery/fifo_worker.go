@@ -12,11 +12,14 @@ import (
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/logging"
 	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 	"github.com/stiffinWanjohi/relay/internal/transform"
 )
+
+var fifoLog = logging.Component("delivery.fifo")
 
 const (
 	// How often to poll for active FIFO endpoints
@@ -39,7 +42,6 @@ type FIFOWorker struct {
 	retry       *RetryPolicy
 	rateLimiter *RateLimiter
 	transformer domain.TransformationExecutor
-	logger      *slog.Logger
 	metrics     *observability.Metrics
 	stopCh      chan struct{}
 	wg          sync.WaitGroup
@@ -67,7 +69,7 @@ type FIFOWorkerConfig struct {
 }
 
 // NewFIFOWorker creates a new FIFO delivery worker.
-func NewFIFOWorker(q *queue.Queue, store *event.Store, config FIFOWorkerConfig, logger *slog.Logger) *FIFOWorker {
+func NewFIFOWorker(q *queue.Queue, store *event.Store, config FIFOWorkerConfig) *FIFOWorker {
 	circuit := NewCircuitBreaker(config.CircuitConfig)
 	if config.NotificationService != nil {
 		circuit.WithNotifier(config.NotificationService, config.NotifyOnTrip, config.NotifyOnRecover)
@@ -86,7 +88,6 @@ func NewFIFOWorker(q *queue.Queue, store *event.Store, config FIFOWorkerConfig, 
 		retry:               NewRetryPolicy(),
 		rateLimiter:         config.RateLimiter,
 		transformer:         transform.NewDefaultV8Executor(),
-		logger:              logger.With("component", "fifo_worker"),
 		metrics:             config.Metrics,
 		stopCh:              make(chan struct{}),
 		activeProcessors:    make(map[string]context.CancelFunc),
@@ -97,7 +98,7 @@ func NewFIFOWorker(q *queue.Queue, store *event.Store, config FIFOWorkerConfig, 
 
 // Start begins the FIFO worker.
 func (w *FIFOWorker) Start(ctx context.Context) {
-	w.logger.Info("FIFO worker started")
+	fifoLog.Info("FIFO worker started")
 
 	// Recover any in-flight messages from previous worker crash
 	w.recoverStaleFIFOMessages(ctx)
@@ -113,11 +114,11 @@ func (w *FIFOWorker) Start(ctx context.Context) {
 func (w *FIFOWorker) recoverStaleFIFOMessages(ctx context.Context) {
 	recovered, err := w.queue.RecoverAllStaleFIFO(ctx)
 	if err != nil {
-		w.logger.Error("failed to recover stale FIFO messages", "error", err)
+		fifoLog.Error("failed to recover stale FIFO messages", "error", err)
 		return
 	}
 	if recovered > 0 {
-		w.logger.Info("recovered stale FIFO messages", "count", recovered)
+		fifoLog.Info("recovered stale FIFO messages", "count", recovered)
 		if w.metrics != nil {
 			w.metrics.FIFOMessagesRecovered(ctx, recovered)
 		}
@@ -127,7 +128,7 @@ func (w *FIFOWorker) recoverStaleFIFOMessages(ctx context.Context) {
 // Stop signals the FIFO worker to stop.
 // It waits for in-flight deliveries to complete before cancelling processors.
 func (w *FIFOWorker) Stop() {
-	w.logger.Info("stopping FIFO worker, waiting for in-flight deliveries")
+	fifoLog.Info("stopping FIFO worker, waiting for in-flight deliveries")
 
 	// Signal stop to prevent new work
 	close(w.stopCh)
@@ -138,7 +139,7 @@ func (w *FIFOWorker) Stop() {
 	// Cancel all active processors
 	w.activeProcessorsMu.Lock()
 	for key, cancel := range w.activeProcessors {
-		w.logger.Debug("cancelling processor", "key", key)
+		fifoLog.Debug("cancelling processor", "key", key)
 		cancel()
 	}
 	w.activeProcessorsMu.Unlock()
@@ -155,11 +156,11 @@ func (w *FIFOWorker) waitForInFlightDeliveries() {
 		w.inFlightDeliveriesMu.Unlock()
 
 		if count == 0 {
-			w.logger.Info("all in-flight deliveries completed")
+			fifoLog.Info("all in-flight deliveries completed")
 			return
 		}
 
-		w.logger.Debug("waiting for in-flight deliveries", "count", count)
+		fifoLog.Debug("waiting for in-flight deliveries", "count", count)
 		time.Sleep(checkInterval)
 	}
 
@@ -168,7 +169,7 @@ func (w *FIFOWorker) waitForInFlightDeliveries() {
 	w.inFlightDeliveriesMu.Unlock()
 
 	if remaining > 0 {
-		w.logger.Warn("shutdown grace period exceeded, abandoning in-flight deliveries", "count", remaining)
+		fifoLog.Warn("shutdown grace period exceeded, abandoning in-flight deliveries", "count", remaining)
 	}
 }
 
@@ -245,7 +246,7 @@ func (w *FIFOWorker) discoverAndProcessFIFOEndpoints(ctx context.Context) {
 	// Get all active FIFO endpoints
 	endpoints, err := w.store.ListFIFOEndpoints(ctx)
 	if err != nil {
-		w.logger.Error("failed to list FIFO endpoints", "error", err)
+		fifoLog.Error("failed to list FIFO endpoints", "error", err)
 		return
 	}
 
@@ -270,7 +271,7 @@ func (w *FIFOWorker) discoverAndProcessFIFOEndpoints(ctx context.Context) {
 	// Discover active partitions from Redis queues
 	activeQueues, err := w.queue.GetActiveFIFOQueues(ctx)
 	if err != nil {
-		w.logger.Warn("failed to get active FIFO queues", "error", err)
+		fifoLog.Warn("failed to get active FIFO queues", "error", err)
 	} else {
 		for _, queueKey := range activeQueues {
 			endpointID, partitionKey, ok := queue.ParseFIFOQueueKey(queueKey)
@@ -295,7 +296,7 @@ func (w *FIFOWorker) discoverAndProcessFIFOEndpoints(ctx context.Context) {
 	w.activeProcessorsMu.Lock()
 	for key, cancel := range w.activeProcessors {
 		if !activeKeys[key] {
-			w.logger.Debug("stopping processor for inactive endpoint", "key", key)
+			fifoLog.Debug("stopping processor for inactive endpoint", "key", key)
 			cancel()
 			delete(w.activeProcessors, key)
 		}
@@ -317,7 +318,7 @@ func (w *FIFOWorker) ensureProcessorRunning(ctx context.Context, endpoint domain
 
 	// Check max processors limit
 	if len(w.activeProcessors) >= maxFIFOProcessors {
-		w.logger.Warn("max FIFO processors reached", "max", maxFIFOProcessors)
+		fifoLog.Warn("max FIFO processors reached", "max", maxFIFOProcessors)
 		return
 	}
 
@@ -337,12 +338,12 @@ func (w *FIFOWorker) ensureProcessorRunning(ctx context.Context, endpoint domain
 		w.processFIFOQueue(procCtx, endpoint, partitionKey)
 	}()
 
-	w.logger.Debug("started FIFO processor", "endpoint_id", endpoint.ID, "partition", partitionKey)
+	fifoLog.Debug("started FIFO processor", "endpoint_id", endpoint.ID, "partition", partitionKey)
 }
 
 // processFIFOQueue processes events from a single FIFO queue.
 func (w *FIFOWorker) processFIFOQueue(ctx context.Context, endpoint domain.Endpoint, partitionKey string) {
-	logger := w.logger.With(
+	logger := fifoLog.With(
 		"endpoint_id", endpoint.ID,
 		"partition", partitionKey,
 	)

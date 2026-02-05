@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -12,9 +11,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/logging"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 )
+
+var log = logging.Component("outbox")
 
 const (
 	// DefaultBatchSize is the default number of outbox entries to process per batch.
@@ -56,7 +58,6 @@ type Processor struct {
 	store    *event.Store
 	queue    *queue.Queue
 	config   ProcessorConfig
-	logger   *slog.Logger
 	metrics  *observability.Metrics
 	workerID string
 	stopCh   chan struct{}
@@ -64,12 +65,11 @@ type Processor struct {
 }
 
 // NewProcessor creates a new outbox processor.
-func NewProcessor(store *event.Store, q *queue.Queue, config ProcessorConfig, logger *slog.Logger) *Processor {
+func NewProcessor(store *event.Store, q *queue.Queue, config ProcessorConfig) *Processor {
 	return &Processor{
 		store:    store,
 		queue:    q,
 		config:   config,
-		logger:   logger,
 		workerID: uuid.New().String(),
 		stopCh:   make(chan struct{}),
 	}
@@ -83,7 +83,7 @@ func (p *Processor) WithMetrics(metrics *observability.Metrics) *Processor {
 
 // Start begins processing outbox entries.
 func (p *Processor) Start(ctx context.Context) {
-	p.logger.Info("starting outbox processor",
+	log.Info("starting outbox processor",
 		"batch_size", p.config.BatchSize,
 		"poll_interval", p.config.PollInterval,
 		"worker_id", p.workerID,
@@ -106,7 +106,7 @@ func (p *Processor) Start(ctx context.Context) {
 
 // Stop signals the processor to stop.
 func (p *Processor) Stop() {
-	p.logger.Info("stopping outbox processor")
+	log.Info("stopping outbox processor")
 	close(p.stopCh)
 }
 
@@ -145,7 +145,7 @@ func (p *Processor) processLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := p.processBatch(ctx); err != nil {
-				p.logger.Error("failed to process outbox batch", "error", err)
+				log.Error("failed to process outbox batch", "error", err)
 			}
 		}
 	}
@@ -167,7 +167,7 @@ func (p *Processor) processBatch(ctx context.Context) error {
 		p.metrics.OutboxPending(ctx, int64(len(entries)))
 	}
 
-	p.logger.Debug("processing outbox entries", "count", len(entries), "worker_id", p.workerID)
+	log.Debug("processing outbox entries", "count", len(entries), "worker_id", p.workerID)
 
 	for _, entry := range entries {
 		select {
@@ -180,14 +180,14 @@ func (p *Processor) processBatch(ctx context.Context) error {
 
 		start := time.Now()
 		if err := p.processEntry(ctx, entry); err != nil {
-			p.logger.Error("failed to process outbox entry",
+			log.Error("failed to process outbox entry",
 				"outbox_id", entry.ID,
 				"event_id", entry.EventID,
 				"error", err,
 			)
 			// Mark as failed but continue processing other entries
 			if markErr := p.store.MarkOutboxFailed(ctx, entry.ID, err.Error()); markErr != nil {
-				p.logger.Error("failed to mark outbox entry as failed",
+				log.Error("failed to mark outbox entry as failed",
 					"outbox_id", entry.ID,
 					"error", markErr,
 				)
@@ -201,7 +201,7 @@ func (p *Processor) processBatch(ctx context.Context) error {
 
 		// Mark as processed
 		if err := p.store.MarkOutboxProcessed(ctx, entry.ID); err != nil {
-			p.logger.Error("failed to mark outbox entry as processed",
+			log.Error("failed to mark outbox entry as processed",
 				"outbox_id", entry.ID,
 				"error", err,
 			)
@@ -234,7 +234,7 @@ func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) e
 				partitionKey, extractErr = extractPartitionKey(evt.Payload, endpoint.FIFOPartitionKey)
 				if extractErr != nil {
 					// Log the error but continue with empty partition key (default queue)
-					p.logger.Warn("failed to extract FIFO partition key, using default partition",
+					log.Warn("failed to extract FIFO partition key, using default partition",
 						"event_id", entry.EventID,
 						"endpoint_id", endpoint.ID,
 						"partition_key_path", endpoint.FIFOPartitionKey,
@@ -246,7 +246,7 @@ func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) e
 					}
 				} else if partitionKey == "" && endpoint.FIFOPartitionKey != "" {
 					// Path was valid but value not found in payload
-					p.logger.Warn("FIFO partition key path not found in payload, using default partition",
+					log.Warn("FIFO partition key path not found in payload, using default partition",
 						"event_id", entry.EventID,
 						"endpoint_id", endpoint.ID,
 						"partition_key_path", endpoint.FIFOPartitionKey,
@@ -262,7 +262,7 @@ func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) e
 				return err
 			}
 
-			p.logger.Debug("enqueued event to FIFO queue",
+			log.Debug("enqueued event to FIFO queue",
 				"outbox_id", entry.ID,
 				"event_id", entry.EventID,
 				"endpoint_id", endpoint.ID,
@@ -280,7 +280,7 @@ func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) e
 			if err := p.queue.EnqueueDelayedWithPriority(ctx, entry.EventID, evt.Priority, delay); err != nil {
 				return err
 			}
-			p.logger.Debug("enqueued scheduled event to delayed queue",
+			log.Debug("enqueued scheduled event to delayed queue",
 				"outbox_id", entry.ID,
 				"event_id", entry.EventID,
 				"scheduled_at", evt.ScheduledAt,
@@ -297,7 +297,7 @@ func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) e
 		if err := p.queue.EnqueueWithPriority(ctx, entry.EventID, evt.Priority); err != nil {
 			return err
 		}
-		p.logger.Debug("enqueued event to priority queue",
+		log.Debug("enqueued event to priority queue",
 			"outbox_id", entry.ID,
 			"event_id", entry.EventID,
 			"priority", evt.Priority,
@@ -310,7 +310,7 @@ func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) e
 		return err
 	}
 
-	p.logger.Debug("enqueued event from outbox",
+	log.Debug("enqueued event from outbox",
 		"outbox_id", entry.ID,
 		"event_id", entry.EventID,
 	)
@@ -400,7 +400,7 @@ func (p *Processor) cleanupLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := p.cleanup(ctx); err != nil {
-				p.logger.Error("failed to cleanup outbox", "error", err)
+				log.Error("failed to cleanup outbox", "error", err)
 			}
 		}
 	}
@@ -413,7 +413,7 @@ func (p *Processor) cleanup(ctx context.Context) error {
 	}
 
 	if deleted > 0 {
-		p.logger.Info("cleaned up processed outbox entries", "count", deleted)
+		log.Info("cleaned up processed outbox entries", "count", deleted)
 	}
 
 	return nil

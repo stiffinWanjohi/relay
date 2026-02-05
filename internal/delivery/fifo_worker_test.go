@@ -2,8 +2,6 @@ package delivery
 
 import (
 	"context"
-	"log/slog"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -69,14 +67,14 @@ func TestFIFOWorker_NewFIFOWorker(t *testing.T) {
 	defer client.Close()
 
 	q := queue.NewQueue(client)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	config := FIFOWorkerConfig{
 		SigningKey:    "test-key",
 		CircuitConfig: DefaultCircuitConfig(),
 	}
 
-	worker := NewFIFOWorker(q, nil, config, logger)
+	worker := NewFIFOWorker(q, nil, config)
 
 	if worker == nil {
 		t.Fatal("expected worker to be created")
@@ -106,7 +104,7 @@ func TestFIFOWorker_StartStop(t *testing.T) {
 	defer client.Close()
 
 	q := queue.NewQueue(client)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	config := FIFOWorkerConfig{
 		SigningKey:    "test-key",
@@ -114,7 +112,7 @@ func TestFIFOWorker_StartStop(t *testing.T) {
 	}
 
 	// Use NewFIFOWorker which properly initializes all fields
-	worker := NewFIFOWorker(q, nil, config, logger)
+	worker := NewFIFOWorker(q, nil, config)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -145,14 +143,14 @@ func TestFIFOWorker_ensureProcessorRunning(t *testing.T) {
 	defer client.Close()
 
 	q := queue.NewQueue(client)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	worker := &FIFOWorker{
 		queue:            q,
 		store:            nil,
 		circuit:          NewCircuitBreaker(DefaultCircuitConfig()),
 		retry:            NewRetryPolicy(),
-		logger:           logger,
+		
 		stopCh:           make(chan struct{}),
 		activeProcessors: make(map[string]context.CancelFunc),
 		wg:               sync.WaitGroup{},
@@ -206,14 +204,14 @@ func TestFIFOWorker_maxProcessorsLimit(t *testing.T) {
 	defer client.Close()
 
 	q := queue.NewQueue(client)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	worker := &FIFOWorker{
 		queue:            q,
 		store:            nil,
 		circuit:          NewCircuitBreaker(DefaultCircuitConfig()),
 		retry:            NewRetryPolicy(),
-		logger:           logger,
+		
 		stopCh:           make(chan struct{}),
 		activeProcessors: make(map[string]context.CancelFunc),
 		wg:               sync.WaitGroup{},
@@ -302,14 +300,14 @@ func TestFIFOWorker_StopCancelsProcessors(t *testing.T) {
 	defer client.Close()
 
 	q := queue.NewQueue(client)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	worker := &FIFOWorker{
 		queue:            q,
 		store:            nil,
 		circuit:          NewCircuitBreaker(DefaultCircuitConfig()),
 		retry:            NewRetryPolicy(),
-		logger:           logger,
+		
 		stopCh:           make(chan struct{}),
 		activeProcessors: make(map[string]context.CancelFunc),
 		wg:               sync.WaitGroup{},
@@ -515,13 +513,13 @@ func TestParseFIFOQueueKey(t *testing.T) {
 }
 
 func TestFIFOWorker_StopAndWait_Timeout(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	worker := &FIFOWorker{
 		stopCh:           make(chan struct{}),
 		activeProcessors: make(map[string]context.CancelFunc),
 		wg:               sync.WaitGroup{},
-		logger:           logger,
+		
 	}
 
 	// Channel to allow the stuck goroutine to exit after test
@@ -563,14 +561,14 @@ func TestFIFOWorker_InFlightDeliveryTracking(t *testing.T) {
 	defer client.Close()
 
 	q := queue.NewQueue(client)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	worker := &FIFOWorker{
 		queue:               q,
 		store:               nil,
 		circuit:             NewCircuitBreaker(DefaultCircuitConfig()),
 		retry:               NewRetryPolicy(),
-		logger:              logger,
+		
 		stopCh:              make(chan struct{}),
 		activeProcessors:    make(map[string]context.CancelFunc),
 		inFlightDeliveries:  make(map[string]struct{}),

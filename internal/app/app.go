@@ -210,7 +210,7 @@ func NewMetricsProvider(ctx context.Context, cfg *config.Config) (observability.
 }
 
 // NewNotificationService creates a notification service based on configuration.
-func NewNotificationService(cfg *config.Config, logger *slog.Logger) *notification.Service {
+func NewNotificationService(cfg *config.Config) *notification.Service {
 	return notification.NewService(notification.Config{
 		Enabled:         cfg.Notification.Enabled,
 		Async:           cfg.Notification.Async,
@@ -223,7 +223,7 @@ func NewNotificationService(cfg *config.Config, logger *slog.Logger) *notificati
 		EmailTo:         cfg.Notification.EmailTo,
 		NotifyOnTrip:    cfg.Notification.NotifyOnTrip,
 		NotifyOnRecover: cfg.Notification.NotifyOnRecover,
-	}, logger)
+	})
 }
 
 // InitAll initializes all services needed for the full application.
@@ -249,7 +249,7 @@ func InitAll(ctx context.Context, cfg *config.Config) (*Services, error) {
 		return nil, err
 	}
 
-	notificationService := NewNotificationService(cfg, logger)
+	notificationService := NewNotificationService(cfg)
 
 	return &Services{
 		Config:          cfg,

@@ -2,7 +2,6 @@ package outbox
 
 import (
 	"context"
-	"log/slog"
 	"os"
 	"testing"
 	"time"
@@ -97,8 +96,7 @@ func setupTestProcessor(t *testing.T) (*Processor, *pgxpool.Pool, *miniredis.Min
 		RetentionPeriod: 24 * time.Hour,
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	processor := NewProcessor(store, q, config, logger)
+	processor := NewProcessor(store, q, config)
 
 	t.Cleanup(func() {
 		_ = redisClient.Close()
@@ -117,9 +115,6 @@ func TestNewProcessor(t *testing.T) {
 	}
 	if processor.queue == nil {
 		t.Error("expected queue to be set")
-	}
-	if processor.logger == nil {
-		t.Error("expected logger to be set")
 	}
 	if processor.workerID == "" {
 		t.Error("expected workerID to be set")
@@ -217,8 +212,7 @@ func TestProcessor_StopAndWait_Timeout(t *testing.T) {
 		RetentionPeriod: 24 * time.Hour,
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	processor := NewProcessor(store, q, config, logger)
+	processor := NewProcessor(store, q, config)
 
 	ctx := context.Background()
 	processor.Start(ctx)
@@ -288,10 +282,9 @@ func TestProcessor_WorkerIDUnique(t *testing.T) {
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
 	config := DefaultProcessorConfig()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	p1 := NewProcessor(store, q, config, logger)
-	p2 := NewProcessor(store, q, config, logger)
+	p1 := NewProcessor(store, q, config)
+	p2 := NewProcessor(store, q, config)
 
 	if p1.workerID == p2.workerID {
 		t.Error("expected different worker IDs for different processors")

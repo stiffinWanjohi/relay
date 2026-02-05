@@ -229,14 +229,14 @@ func runServer(svc *app.Services) {
 		BatchSize:       cfg.Outbox.BatchSize,
 		CleanupInterval: cfg.Outbox.CleanupInterval,
 		RetentionPeriod: cfg.Outbox.RetentionPeriod,
-	}, logger).WithMetrics(svc.Metrics)
+	}).WithMetrics(svc.Metrics)
 	outboxProcessor.Start(ctx)
 
 	serverCfg := api.ServerConfig{
 		EnableAuth:       cfg.Auth.Enabled,
 		EnablePlayground: cfg.Auth.EnablePlayground,
 	}
-	server := api.NewServer(store, eventTypeStore, q, dedupChecker, authStore, serverCfg, logger)
+	server := api.NewServer(store, eventTypeStore, q, dedupChecker, authStore, serverCfg)
 
 	httpServer := &http.Server{
 		Addr:         cfg.API.Addr,
@@ -267,7 +267,7 @@ func runServer(svc *app.Services) {
 		EnablePriorityQueue: true, // Enable priority queue processing
 	}
 
-	worker := delivery.NewWorker(q, store, workerConfig, logger)
+	worker := delivery.NewWorker(q, store, workerConfig)
 	worker.Start(ctx)
 
 	// Start FIFO worker for ordered delivery endpoints
@@ -280,7 +280,7 @@ func runServer(svc *app.Services) {
 		NotifyOnTrip:        cfg.Notification.NotifyOnTrip,
 		NotifyOnRecover:     cfg.Notification.NotifyOnRecover,
 	}
-	fifoWorker := delivery.NewFIFOWorker(q, store, fifoWorkerConfig, logger)
+	fifoWorker := delivery.NewFIFOWorker(q, store, fifoWorkerConfig)
 	fifoWorker.Start(ctx)
 
 	wg.Add(1)

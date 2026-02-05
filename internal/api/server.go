@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -17,8 +16,11 @@ import (
 	"github.com/stiffinWanjohi/relay/internal/dedup"
 	"github.com/stiffinWanjohi/relay/internal/event"
 	"github.com/stiffinWanjohi/relay/internal/eventtype"
+	"github.com/stiffinWanjohi/relay/internal/logging"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 )
+
+var apiLog = logging.Component("api")
 
 // ServerConfig holds server configuration.
 type ServerConfig struct {
@@ -31,11 +33,10 @@ type ServerConfig struct {
 // Server represents the HTTP server.
 type Server struct {
 	router *chi.Mux
-	logger *slog.Logger
 }
 
 // NewServer creates a new HTTP server.
-func NewServer(store *event.Store, eventTypeStore *eventtype.Store, q *queue.Queue, d *dedup.Checker, authValidator auth.APIKeyValidator, cfg ServerConfig, logger *slog.Logger) *Server {
+func NewServer(store *event.Store, eventTypeStore *eventtype.Store, q *queue.Queue, d *dedup.Checker, authValidator auth.APIKeyValidator, cfg ServerConfig) *Server {
 	r := chi.NewRouter()
 
 	// Middleware
@@ -43,7 +44,7 @@ func NewServer(store *event.Store, eventTypeStore *eventtype.Store, q *queue.Que
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
-	r.Use(loggingMiddleware(logger))
+	r.Use(loggingMiddleware())
 
 	// Create resolver
 	resolver := graphql.NewResolver(store, eventTypeStore, q, d)
@@ -55,7 +56,6 @@ func NewServer(store *event.Store, eventTypeStore *eventtype.Store, q *queue.Que
 
 	s := &Server{
 		router: r,
-		logger: logger,
 	}
 
 	// Public routes (no auth required)
@@ -96,13 +96,13 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-func loggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
+func loggingMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			next.ServeHTTP(ww, r)
-			logger.Info("request",
+			apiLog.Info("request",
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", ww.Status(),

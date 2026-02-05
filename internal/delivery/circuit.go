@@ -6,9 +6,12 @@ import (
 	"time"
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/logging"
 	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 )
+
+var circuitLog = logging.Component("circuit_breaker")
 
 // CircuitState represents the state of a circuit breaker.
 type CircuitState int
@@ -153,11 +156,17 @@ func (cb *CircuitBreaker) cleanup() {
 	defer cb.mu.Unlock()
 
 	cutoff := time.Now().Add(-cb.ttl)
+	removed := 0
 	for dest, c := range cb.circuits {
 		// Only remove closed circuits that have been idle
 		if c.state == CircuitClosed && c.lastAccess.Before(cutoff) {
 			delete(cb.circuits, dest)
+			removed++
 		}
+	}
+
+	if removed > 0 {
+		circuitLog.Debug("cleaned up idle circuits", "count", removed)
 	}
 }
 
@@ -180,6 +189,11 @@ func (cb *CircuitBreaker) IsOpen(destination string) bool {
 			c.state = CircuitHalfOpen
 			c.successes = 0
 			c.lastStateChange = time.Now()
+
+			circuitLog.Info("circuit breaker transitioning to half-open",
+				"destination", destination,
+				"open_duration", cb.config.OpenDuration,
+			)
 			return false // Allow request through in half-open state
 		}
 		return true // Circuit is open, block request
@@ -222,6 +236,12 @@ func (cb *CircuitBreaker) RecordSuccess(destination string) {
 
 	// Record metrics and send notifications after releasing the lock
 	if stateChanged {
+		circuitLog.Info("circuit breaker recovered",
+			"destination", destination,
+			"previous_state", previousState.String(),
+			"new_state", newState.String(),
+		)
+
 		if cb.metrics != nil {
 			cb.metrics.CircuitBreakerStateChange(context.Background(), destination, newState.String())
 		}
@@ -273,6 +293,13 @@ func (cb *CircuitBreaker) RecordFailure(destination string) {
 
 	// Record metrics and send notifications after releasing the lock
 	if tripped {
+		circuitLog.Warn("circuit breaker tripped",
+			"destination", destination,
+			"failures", failures,
+			"threshold", cb.config.FailureThreshold,
+			"open_duration", cb.config.OpenDuration,
+		)
+
 		if cb.metrics != nil {
 			cb.metrics.CircuitBreakerTrip(context.Background(), destination)
 			cb.metrics.CircuitBreakerStateChange(context.Background(), destination, CircuitOpen.String())
@@ -297,9 +324,15 @@ func (cb *CircuitBreaker) GetState(destination string) CircuitState {
 
 	// Also check for state transition here for consistency
 	if c.state == CircuitOpen && time.Since(c.lastStateChange) >= cb.config.OpenDuration {
+		previousState := c.state
 		c.state = CircuitHalfOpen
 		c.successes = 0
 		c.lastStateChange = time.Now()
+
+		circuitLog.Info("circuit breaker transitioning to half-open",
+			"destination", destination,
+			"previous_state", previousState.String(),
+		)
 	}
 
 	return c.state
@@ -310,7 +343,10 @@ func (cb *CircuitBreaker) Reset(destination string) {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	delete(cb.circuits, destination)
+	if _, exists := cb.circuits[destination]; exists {
+		delete(cb.circuits, destination)
+		circuitLog.Debug("circuit breaker reset", "destination", destination)
+	}
 }
 
 // Stats returns statistics about circuit breakers.

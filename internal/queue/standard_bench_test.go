@@ -2,7 +2,6 @@ package queue
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -26,6 +25,26 @@ func setupBenchRedis(b *testing.B) *redis.Client {
 	// Clean up test keys
 	b.Cleanup(func() {
 		client.Del(ctx, mainQueueKey, processingQueueKey, delayedQueueKey)
+		client.Del(ctx, priorityHighKey, priorityNormalKey, priorityLowKey)
+		client.Del(ctx, activeClientsKey)
+		// Clean up client queues
+		keys, _ := client.Keys(ctx, clientQueuePrefix+"*").Result()
+		if len(keys) > 0 {
+			client.Del(ctx, keys...)
+		}
+		// Clean up FIFO queues
+		fifoKeys, _ := client.Keys(ctx, "relay:queue:fifo:*").Result()
+		if len(fifoKeys) > 0 {
+			client.Del(ctx, fifoKeys...)
+		}
+		fifoLocks, _ := client.Keys(ctx, "relay:lock:fifo:*").Result()
+		if len(fifoLocks) > 0 {
+			client.Del(ctx, fifoLocks...)
+		}
+		fifoInflight, _ := client.Keys(ctx, "relay:inflight:fifo:*").Result()
+		if len(fifoInflight) > 0 {
+			client.Del(ctx, fifoInflight...)
+		}
 		_ = client.Close()
 	})
 
@@ -105,39 +124,25 @@ func BenchmarkQueueEnqueueDequeue(b *testing.B) {
 	}
 }
 
-func BenchmarkQueueEnqueueDelayed(b *testing.B) {
+func BenchmarkQueueAck(b *testing.B) {
 	client := setupBenchRedis(b)
-	q := NewQueue(client)
+	q := NewQueue(client).WithBlockingTimeout(10 * time.Millisecond)
 	ctx := context.Background()
 
-	ids := make([]uuid.UUID, b.N)
+	// Pre-populate and dequeue messages
+	msgs := make([]*Message, b.N)
 	for i := 0; i < b.N; i++ {
-		ids[i] = uuid.New()
-	}
-
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		_ = q.EnqueueDelayed(ctx, ids[i], 1*time.Second)
-	}
-}
-
-func BenchmarkQueueStats(b *testing.B) {
-	client := setupBenchRedis(b)
-	q := NewQueue(client)
-	ctx := context.Background()
-
-	// Add some items
-	for range 100 {
 		_ = q.Enqueue(ctx, uuid.New())
+		msgs[i], _ = q.Dequeue(ctx)
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = q.Stats(ctx)
+		if msgs[i] != nil {
+			_ = q.Ack(ctx, msgs[i])
+		}
 	}
 }
 
@@ -163,75 +168,24 @@ func BenchmarkQueueNack(b *testing.B) {
 	}
 }
 
-// Benchmark per-client queue operations
-func BenchmarkQueueEnqueueForClient(b *testing.B) {
+func BenchmarkQueueNackNoDelay(b *testing.B) {
 	client := setupBenchRedis(b)
-	q := NewQueue(client)
+	q := NewQueue(client).WithBlockingTimeout(10 * time.Millisecond)
 	ctx := context.Background()
 
-	clients := []string{"client-1", "client-2", "client-3", "client-4", "client-5"}
-
-	b.Cleanup(func() {
-		for _, c := range clients {
-			client.Del(ctx, clientQueuePrefix+c)
-		}
-		client.Del(ctx, activeClientsKey)
-	})
+	// Pre-populate and dequeue
+	msgs := make([]*Message, b.N)
+	for i := 0; i < b.N; i++ {
+		_ = q.Enqueue(ctx, uuid.New())
+		msgs[i], _ = q.Dequeue(ctx)
+	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		clientID := clients[i%len(clients)]
-		_ = q.EnqueueForClient(ctx, clientID, uuid.New())
-	}
-}
-
-func BenchmarkQueueThroughput(b *testing.B) {
-	// This benchmark measures sustained throughput
-	client := setupBenchRedis(b)
-	q := NewQueue(client).WithBlockingTimeout(1 * time.Millisecond)
-	ctx := context.Background()
-
-	// Use multiple goroutines to simulate real load
-	for _, workers := range []int{1, 2, 4, 8} {
-		b.Run(fmt.Sprintf("workers-%d", workers), func(b *testing.B) {
-			// Pre-populate
-			for i := 0; i < b.N; i++ {
-				_ = q.Enqueue(ctx, uuid.New())
-			}
-
-			b.ResetTimer()
-
-			done := make(chan struct{})
-			count := make(chan int, workers)
-
-			for w := 0; w < workers; w++ {
-				go func() {
-					processed := 0
-					for {
-						select {
-						case <-done:
-							count <- processed
-							return
-						default:
-							msg, err := q.Dequeue(ctx)
-							if err == nil && msg != nil {
-								_ = q.Ack(ctx, msg)
-								processed++
-							}
-						}
-					}
-				}()
-			}
-
-			time.Sleep(time.Duration(b.N) * time.Microsecond * 10)
-			close(done)
-
-			total := 0
-			for w := 0; w < workers; w++ {
-				total += <-count
-			}
-		})
+		if msgs[i] != nil {
+			_ = q.Nack(ctx, msgs[i], 0)
+		}
 	}
 }

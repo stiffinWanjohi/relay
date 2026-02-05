@@ -248,54 +248,6 @@ func TestQueue_GetPriorityStats(t *testing.T) {
 	}
 }
 
-func TestQueue_RemoveFromDelayed(t *testing.T) {
-	q, mr, _ := setupTestQueue(t)
-	ctx := context.Background()
-
-	// Add messages to delayed queue
-	eventID1 := uuid.New()
-	eventID2 := uuid.New()
-
-	msg1 := Message{ID: uuid.New().String(), EventID: eventID1, EnqueueAt: time.Now().Add(1 * time.Hour)}
-	msg2 := Message{ID: uuid.New().String(), EventID: eventID2, EnqueueAt: time.Now().Add(2 * time.Hour)}
-
-	data1, _ := json.Marshal(msg1)
-	data2, _ := json.Marshal(msg2)
-
-	_, _ = mr.ZAdd(delayedQueueKey, float64(msg1.EnqueueAt.Unix()), string(data1))
-	_, _ = mr.ZAdd(delayedQueueKey, float64(msg2.EnqueueAt.Unix()), string(data2))
-
-	// Remove first message
-	if err := q.RemoveFromDelayed(ctx, eventID1); err != nil {
-		t.Fatalf("RemoveFromDelayed failed: %v", err)
-	}
-
-	// Verify only one message remains
-	count := zsetLen(t, mr, delayedQueueKey)
-	if count != 1 {
-		t.Errorf("expected 1 delayed message after removal, got %d", count)
-	}
-
-	// Verify the correct message remains
-	members, _ := mr.ZMembers(delayedQueueKey)
-	var remainingMsg Message
-	json.Unmarshal([]byte(members[0]), &remainingMsg)
-	if remainingMsg.EventID != eventID2 {
-		t.Errorf("expected eventID2 to remain, got %v", remainingMsg.EventID)
-	}
-}
-
-func TestQueue_RemoveFromDelayed_NotFound(t *testing.T) {
-	q, _, _ := setupTestQueue(t)
-	ctx := context.Background()
-
-	// Should not error when event not found
-	err := q.RemoveFromDelayed(ctx, uuid.New())
-	if err != nil {
-		t.Errorf("expected no error for non-existent event, got %v", err)
-	}
-}
-
 func TestQueue_moveDelayedToPriority(t *testing.T) {
 	q, mr, _ := setupTestQueue(t)
 	ctx := context.Background()

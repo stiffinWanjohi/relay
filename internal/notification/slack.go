@@ -5,16 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/stiffinWanjohi/relay/internal/logging"
 )
+
+var slackLog = logging.Component("notification.slack")
 
 // SlackNotifier sends notifications to Slack via webhook.
 type SlackNotifier struct {
 	webhookURL string
 	client     *http.Client
-	logger     *slog.Logger
 }
 
 // slackMessage represents a Slack webhook message.
@@ -39,21 +41,19 @@ type slackField struct {
 }
 
 // NewSlackNotifier creates a new Slack notifier.
-func NewSlackNotifier(webhookURL string, logger *slog.Logger) *SlackNotifier {
-	if logger == nil {
-		logger = slog.Default()
-	}
+func NewSlackNotifier(webhookURL string) *SlackNotifier {
 	return &SlackNotifier{
 		webhookURL: webhookURL,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		logger: logger,
 	}
 }
 
 // NotifyCircuitTrip sends a circuit breaker trip notification to Slack.
 func (s *SlackNotifier) NotifyCircuitTrip(ctx context.Context, endpoint, destination string, failures int) error {
+	slackLog.Debug("sending circuit trip notification", "endpoint", endpoint, "destination", destination, "failures", failures)
+
 	msg := slackMessage{
 		Attachments: []slackAttachment{
 			{
@@ -71,11 +71,13 @@ func (s *SlackNotifier) NotifyCircuitTrip(ctx context.Context, endpoint, destina
 		},
 	}
 
-	return s.send(ctx, msg)
+	return s.send(ctx, msg, "circuit_trip")
 }
 
 // NotifyCircuitRecover sends a circuit breaker recovery notification to Slack.
 func (s *SlackNotifier) NotifyCircuitRecover(ctx context.Context, endpoint, destination string) error {
+	slackLog.Debug("sending circuit recovery notification", "endpoint", endpoint, "destination", destination)
+
 	msg := slackMessage{
 		Attachments: []slackAttachment{
 			{
@@ -92,11 +94,13 @@ func (s *SlackNotifier) NotifyCircuitRecover(ctx context.Context, endpoint, dest
 		},
 	}
 
-	return s.send(ctx, msg)
+	return s.send(ctx, msg, "circuit_recover")
 }
 
 // NotifyEndpointDisabled sends an endpoint disabled notification to Slack.
 func (s *SlackNotifier) NotifyEndpointDisabled(ctx context.Context, endpoint, reason string) error {
+	slackLog.Debug("sending endpoint disabled notification", "endpoint", endpoint, "reason", reason)
+
 	msg := slackMessage{
 		Attachments: []slackAttachment{
 			{
@@ -113,33 +117,37 @@ func (s *SlackNotifier) NotifyEndpointDisabled(ctx context.Context, endpoint, re
 		},
 	}
 
-	return s.send(ctx, msg)
+	return s.send(ctx, msg, "endpoint_disabled")
 }
 
 // send posts a message to the Slack webhook.
-func (s *SlackNotifier) send(ctx context.Context, msg slackMessage) error {
+func (s *SlackNotifier) send(ctx context.Context, msg slackMessage, notificationType string) error {
 	body, err := json.Marshal(msg)
 	if err != nil {
+		slackLog.Error("failed to marshal slack message", "type", notificationType, "error", err)
 		return fmt.Errorf("failed to marshal slack message: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.webhookURL, bytes.NewReader(body))
 	if err != nil {
+		slackLog.Error("failed to create request", "type", notificationType, "error", err)
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		slackLog.Error("failed to send slack notification", "type", notificationType, "error", err)
 		return fmt.Errorf("failed to send slack notification: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		slackLog.Warn("slack webhook returned error", "type", notificationType, "status_code", resp.StatusCode)
 		return fmt.Errorf("slack webhook returned status %d", resp.StatusCode)
 	}
 
-	s.logger.Debug("slack notification sent successfully")
+	slackLog.Debug("slack notification sent", "type", notificationType)
 	return nil
 }
 

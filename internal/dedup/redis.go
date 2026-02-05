@@ -9,7 +9,10 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/logging"
 )
+
+var log = logging.Component("dedup")
 
 const (
 	// Default TTL for idempotency keys
@@ -51,14 +54,17 @@ func (c *Checker) Check(ctx context.Context, idempotencyKey string) (uuid.UUID, 
 		return uuid.Nil, nil
 	}
 	if err != nil {
+		log.Error("failed to check idempotency key", "key", idempotencyKey, "error", err)
 		return uuid.Nil, err
 	}
 
 	eventID, err := uuid.Parse(result)
 	if err != nil {
+		log.Error("failed to parse event ID from idempotency key", "key", idempotencyKey, "error", err)
 		return uuid.Nil, err
 	}
 
+	log.Debug("duplicate detected", "idempotency_key", idempotencyKey, "existing_event_id", eventID)
 	return eventID, nil
 }
 
@@ -70,6 +76,7 @@ func (c *Checker) Set(ctx context.Context, idempotencyKey string, eventID uuid.U
 	// Use SETNX (SetNX) to atomically set only if not exists
 	wasSet, err := c.client.SetNX(ctx, key, eventID.String(), c.ttl).Result()
 	if err != nil {
+		log.Error("failed to set idempotency key", "key", idempotencyKey, "event_id", eventID, "error", err)
 		return err
 	}
 
@@ -80,10 +87,12 @@ func (c *Checker) Set(ctx context.Context, idempotencyKey string, eventID uuid.U
 			return err
 		}
 		if existing != eventID {
+			log.Debug("duplicate event rejected", "idempotency_key", idempotencyKey, "new_event_id", eventID, "existing_event_id", existing)
 			return domain.ErrDuplicateEvent
 		}
 	}
 
+	log.Debug("idempotency key set", "idempotency_key", idempotencyKey, "event_id", eventID, "ttl", c.ttl)
 	return nil
 }
 
@@ -105,29 +114,43 @@ func (c *Checker) CheckAndSet(ctx context.Context, idempotencyKey string, eventI
 	result, err := script.Run(ctx, c.client, []string{key}, eventID.String(), int(c.ttl.Seconds())).Result()
 	if errors.Is(err, redis.Nil) {
 		// Key was set successfully
+		log.Debug("idempotency key set (atomic)", "idempotency_key", idempotencyKey, "event_id", eventID)
 		return uuid.Nil, nil
 	}
 	if err != nil {
+		log.Error("failed to check-and-set idempotency key", "key", idempotencyKey, "error", err)
 		return uuid.Nil, err
 	}
 
 	// Key already existed, parse the existing event ID
 	existingID, err := uuid.Parse(result.(string))
 	if err != nil {
+		log.Error("failed to parse existing event ID", "key", idempotencyKey, "error", err)
 		return uuid.Nil, err
 	}
 
+	log.Debug("duplicate detected (atomic)", "idempotency_key", idempotencyKey, "existing_event_id", existingID)
 	return existingID, nil
 }
 
 // Delete removes an idempotency key.
 func (c *Checker) Delete(ctx context.Context, idempotencyKey string) error {
 	key := keyPrefix + idempotencyKey
-	return c.client.Del(ctx, key).Err()
+	if err := c.client.Del(ctx, key).Err(); err != nil {
+		log.Error("failed to delete idempotency key", "key", idempotencyKey, "error", err)
+		return err
+	}
+	log.Debug("idempotency key deleted", "idempotency_key", idempotencyKey)
+	return nil
 }
 
 // Extend extends the TTL of an existing idempotency key.
 func (c *Checker) Extend(ctx context.Context, idempotencyKey string) error {
 	key := keyPrefix + idempotencyKey
-	return c.client.Expire(ctx, key, c.ttl).Err()
+	if err := c.client.Expire(ctx, key, c.ttl).Err(); err != nil {
+		log.Error("failed to extend idempotency key TTL", "key", idempotencyKey, "error", err)
+		return err
+	}
+	log.Debug("idempotency key TTL extended", "idempotency_key", idempotencyKey, "ttl", c.ttl)
+	return nil
 }

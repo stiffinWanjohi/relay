@@ -2,7 +2,6 @@ package delivery
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -70,7 +69,7 @@ func TestWorker_Integration_SuccessfulDelivery(t *testing.T) {
 	// Setup components
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient).WithBlockingTimeout(100 * time.Millisecond)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	config := WorkerConfig{
 		Concurrency:    1,
@@ -79,7 +78,7 @@ func TestWorker_Integration_SuccessfulDelivery(t *testing.T) {
 		CircuitConfig:  DefaultCircuitConfig(),
 	}
 
-	worker := NewWorker(q, store, config, logger)
+	worker := NewWorker(q, store, config)
 	defer worker.circuit.Stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -153,7 +152,7 @@ func TestWorker_Integration_FailedDeliveryWithRetry(t *testing.T) {
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient).WithBlockingTimeout(100 * time.Millisecond)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	config := WorkerConfig{
 		Concurrency:    1,
@@ -162,7 +161,7 @@ func TestWorker_Integration_FailedDeliveryWithRetry(t *testing.T) {
 		CircuitConfig:  DefaultCircuitConfig(),
 	}
 
-	worker := NewWorker(q, store, config, logger)
+	worker := NewWorker(q, store, config)
 	defer worker.circuit.Stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -234,7 +233,7 @@ func TestWorker_Integration_CircuitBreaker(t *testing.T) {
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient).WithBlockingTimeout(100 * time.Millisecond)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	// Low failure threshold for testing
 	circuitConfig := CircuitConfig{
@@ -250,7 +249,7 @@ func TestWorker_Integration_CircuitBreaker(t *testing.T) {
 		CircuitConfig:  circuitConfig,
 	}
 
-	worker := NewWorker(q, store, config, logger)
+	worker := NewWorker(q, store, config)
 	defer worker.circuit.Stop()
 
 	// Manually record failures to open circuit
@@ -285,7 +284,7 @@ func TestWorker_Integration_RateLimiting(t *testing.T) {
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
 	rateLimiter := NewRateLimiter(redisClient)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	config := WorkerConfig{
 		Concurrency:    1,
@@ -295,7 +294,7 @@ func TestWorker_Integration_RateLimiting(t *testing.T) {
 		RateLimiter:    rateLimiter,
 	}
 
-	worker := NewWorker(q, store, config, logger)
+	worker := NewWorker(q, store, config)
 	defer worker.circuit.Stop()
 
 	// Test rate limiter is set
@@ -330,13 +329,13 @@ func TestWorker_HandleSuccess_Unit(t *testing.T) {
 	defer func() { _ = redisClient.Close() }()
 
 	q := queue.NewQueue(redisClient)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 	config := DefaultWorkerConfig()
 
 	worker := &Worker{
 		queue:   q,
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		logger:  logger,
+		
 	}
 	defer worker.circuit.Stop()
 
@@ -367,7 +366,7 @@ func TestWorker_HandleFailure_CircuitBreaker(t *testing.T) {
 	defer func() { _ = redisClient.Close() }()
 
 	q := queue.NewQueue(redisClient)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	// logger removed - using centralized logging
 
 	circuitConfig := CircuitConfig{
 		FailureThreshold: 3,
@@ -379,7 +378,7 @@ func TestWorker_HandleFailure_CircuitBreaker(t *testing.T) {
 		queue:   q,
 		circuit: NewCircuitBreaker(circuitConfig),
 		retry:   NewRetryPolicy(),
-		logger:  logger,
+		
 	}
 	defer worker.circuit.Stop()
 

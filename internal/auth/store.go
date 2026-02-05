@@ -10,7 +10,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/stiffinWanjohi/relay/internal/logging"
 )
+
+var log = logging.Component("auth")
 
 // APIKey represents an API key record.
 type APIKey struct {
@@ -54,6 +58,7 @@ func NewStore(pool *pgxpool.Pool) *Store {
 // ValidateAPIKey validates an API key and returns the client ID.
 func (s *Store) ValidateAPIKey(ctx context.Context, apiKey string) (string, error) {
 	keyHash := hashAPIKey(apiKey)
+	keyPrefix := apiKey[:min(8, len(apiKey))]
 
 	var clientID string
 	var isActive bool
@@ -66,17 +71,21 @@ func (s *Store) ValidateAPIKey(ctx context.Context, apiKey string) (string, erro
 	`, keyHash).Scan(&clientID, &isActive, &expiresAt)
 
 	if errors.Is(err, pgx.ErrNoRows) {
+		log.Debug("API key not found", "key_prefix", keyPrefix)
 		return "", ErrInvalidAPIKey
 	}
 	if err != nil {
+		log.Error("failed to validate API key", "key_prefix", keyPrefix, "error", err)
 		return "", err
 	}
 
 	if !isActive {
+		log.Debug("API key is inactive", "key_prefix", keyPrefix, "client_id", clientID)
 		return "", ErrInvalidAPIKey
 	}
 
 	if expiresAt != nil && time.Now().After(*expiresAt) {
+		log.Debug("API key expired", "key_prefix", keyPrefix, "client_id", clientID, "expired_at", expiresAt)
 		return "", ErrInvalidAPIKey
 	}
 
@@ -87,6 +96,7 @@ func (s *Store) ValidateAPIKey(ctx context.Context, apiKey string) (string, erro
 		`, keyHash)
 	}()
 
+	log.Debug("API key validated", "key_prefix", keyPrefix, "client_id", clientID)
 	return clientID, nil
 }
 
@@ -107,9 +117,11 @@ func (s *Store) GetClient(ctx context.Context, clientID string) (*Client, error)
 	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
+		log.Debug("client not found", "client_id", clientID)
 		return nil, ErrUnauthorized
 	}
 	if err != nil {
+		log.Error("failed to get client", "client_id", clientID, "error", err)
 		return nil, err
 	}
 
@@ -127,9 +139,11 @@ func (s *Store) CreateClient(ctx context.Context, client Client) (*Client, error
 	).Scan(&client.CreatedAt, &client.UpdatedAt)
 
 	if err != nil {
+		log.Error("failed to create client", "client_id", client.ID, "error", err)
 		return nil, err
 	}
 
+	log.Info("client created", "client_id", client.ID, "name", client.Name)
 	return &client, nil
 }
 
@@ -152,9 +166,11 @@ func (s *Store) CreateAPIKey(ctx context.Context, clientID string, name string, 
 	)
 
 	if err != nil {
+		log.Error("failed to create API key", "client_id", clientID, "name", name, "error", err)
 		return "", nil, err
 	}
 
+	log.Info("API key created", "key_id", apiKey.ID, "client_id", clientID, "key_prefix", keyPrefix, "name", name)
 	return rawKey, &apiKey, nil
 }
 
@@ -166,13 +182,16 @@ func (s *Store) RevokeAPIKey(ctx context.Context, keyID string) error {
 	`, keyID)
 
 	if err != nil {
+		log.Error("failed to revoke API key", "key_id", keyID, "error", err)
 		return err
 	}
 
 	if result.RowsAffected() == 0 {
+		log.Debug("API key not found for revocation", "key_id", keyID)
 		return ErrInvalidAPIKey
 	}
 
+	log.Info("API key revoked", "key_id", keyID)
 	return nil
 }
 
@@ -187,6 +206,7 @@ func (s *Store) ListAPIKeys(ctx context.Context, clientID string) ([]APIKey, err
 	`, clientID)
 
 	if err != nil {
+		log.Error("failed to list API keys", "client_id", clientID, "error", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -200,12 +220,18 @@ func (s *Store) ListAPIKeys(ctx context.Context, clientID string) ([]APIKey, err
 			&key.CreatedAt, &key.UpdatedAt, &key.LastUsedAt,
 		)
 		if err != nil {
+			log.Error("failed to scan API key row", "client_id", clientID, "error", err)
 			return nil, err
 		}
 		keys = append(keys, key)
 	}
 
-	return keys, rows.Err()
+	if err := rows.Err(); err != nil {
+		log.Error("error iterating API keys", "client_id", clientID, "error", err)
+		return nil, err
+	}
+
+	return keys, nil
 }
 
 // hashAPIKey creates a SHA-256 hash of the API key.

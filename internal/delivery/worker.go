@@ -11,11 +11,14 @@ import (
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/logging"
 	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 	"github.com/stiffinWanjohi/relay/internal/transform"
 )
+
+var workerLog = logging.Component("delivery.worker")
 
 const (
 	// Default delay for circuit-open nack
@@ -35,7 +38,6 @@ type Worker struct {
 	retry               *RetryPolicy
 	rateLimiter         *RateLimiter
 	transformer         domain.TransformationExecutor
-	logger              *slog.Logger
 	metrics             *observability.Metrics
 	stopCh              chan struct{}
 	wg                  sync.WaitGroup
@@ -69,7 +71,7 @@ func DefaultWorkerConfig() WorkerConfig {
 }
 
 // NewWorker creates a new delivery worker.
-func NewWorker(q *queue.Queue, store *event.Store, config WorkerConfig, logger *slog.Logger) *Worker {
+func NewWorker(q *queue.Queue, store *event.Store, config WorkerConfig) *Worker {
 	circuit := NewCircuitBreaker(config.CircuitConfig)
 	if config.NotificationService != nil {
 		circuit.WithNotifier(config.NotificationService, config.NotifyOnTrip, config.NotifyOnRecover)
@@ -83,7 +85,6 @@ func NewWorker(q *queue.Queue, store *event.Store, config WorkerConfig, logger *
 		retry:               NewRetryPolicy(),
 		rateLimiter:         config.RateLimiter,
 		transformer:         transform.NewDefaultV8Executor(),
-		logger:              logger,
 		metrics:             config.Metrics,
 		stopCh:              make(chan struct{}),
 		concurrency:         config.Concurrency,
@@ -94,7 +95,7 @@ func NewWorker(q *queue.Queue, store *event.Store, config WorkerConfig, logger *
 
 // Start begins processing events.
 func (w *Worker) Start(ctx context.Context) {
-	w.logger.Info("workers started", "count", w.concurrency)
+	workerLog.Info("workers started", "count", w.concurrency)
 
 	for i := 0; i < w.concurrency; i++ {
 		w.wg.Add(1)
@@ -107,7 +108,7 @@ func (w *Worker) Start(ctx context.Context) {
 
 // Stop signals the worker to stop processing.
 func (w *Worker) Stop() {
-	w.logger.Info("stopping worker")
+	workerLog.Info("stopping worker")
 	close(w.stopCh)
 }
 
@@ -135,7 +136,7 @@ func (w *Worker) StopAndWait(timeout time.Duration) error {
 }
 
 func (w *Worker) processLoop(ctx context.Context, workerID int) {
-	logger := w.logger.With("worker_id", workerID)
+	logger := workerLog.With("worker_id", workerID)
 	// Individual worker start logs removed for cleaner output
 
 	backoff := minEmptyQueueBackoff

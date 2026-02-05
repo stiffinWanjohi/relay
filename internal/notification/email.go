@@ -3,11 +3,14 @@ package notification
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/smtp"
 	"strings"
 	"time"
+
+	"github.com/stiffinWanjohi/relay/internal/logging"
 )
+
+var emailLog = logging.Component("notification.email")
 
 // EmailNotifier sends notifications via email using SMTP.
 type EmailNotifier struct {
@@ -17,14 +20,10 @@ type EmailNotifier struct {
 	password string
 	from     string
 	to       []string
-	logger   *slog.Logger
 }
 
 // NewEmailNotifier creates a new email notifier.
-func NewEmailNotifier(host string, port int, username, password, from string, to []string, logger *slog.Logger) *EmailNotifier {
-	if logger == nil {
-		logger = slog.Default()
-	}
+func NewEmailNotifier(host string, port int, username, password, from string, to []string) *EmailNotifier {
 	return &EmailNotifier{
 		host:     host,
 		port:     port,
@@ -32,12 +31,13 @@ func NewEmailNotifier(host string, port int, username, password, from string, to
 		password: password,
 		from:     from,
 		to:       to,
-		logger:   logger,
 	}
 }
 
 // NotifyCircuitTrip sends a circuit breaker trip notification via email.
 func (e *EmailNotifier) NotifyCircuitTrip(_ context.Context, endpoint, destination string, failures int) error {
+	emailLog.Debug("sending circuit trip notification", "endpoint", endpoint, "destination", destination, "failures", failures)
+
 	subject := "[ALERT] Circuit Breaker Tripped - Relay Webhook Service"
 	body := fmt.Sprintf(`Circuit Breaker Alert
 
@@ -54,11 +54,13 @@ Deliveries to this endpoint have been temporarily suspended. The circuit breaker
 --
 Relay Webhook Service`, failures, endpoint, destination, failures, time.Now().UTC().Format(time.RFC3339))
 
-	return e.send(subject, body)
+	return e.send(subject, body, "circuit_trip")
 }
 
 // NotifyCircuitRecover sends a circuit breaker recovery notification via email.
 func (e *EmailNotifier) NotifyCircuitRecover(_ context.Context, endpoint, destination string) error {
+	emailLog.Debug("sending circuit recovery notification", "endpoint", endpoint, "destination", destination)
+
 	subject := "[RESOLVED] Circuit Breaker Recovered - Relay Webhook Service"
 	body := fmt.Sprintf(`Circuit Breaker Recovery
 
@@ -74,11 +76,13 @@ Normal delivery operations have resumed.
 --
 Relay Webhook Service`, endpoint, destination, time.Now().UTC().Format(time.RFC3339))
 
-	return e.send(subject, body)
+	return e.send(subject, body, "circuit_recover")
 }
 
 // NotifyEndpointDisabled sends an endpoint disabled notification via email.
 func (e *EmailNotifier) NotifyEndpointDisabled(_ context.Context, endpoint, reason string) error {
+	emailLog.Debug("sending endpoint disabled notification", "endpoint", endpoint, "reason", reason)
+
 	subject := "[WARNING] Endpoint Disabled - Relay Webhook Service"
 	body := fmt.Sprintf(`Endpoint Disabled
 
@@ -94,11 +98,11 @@ Please review the endpoint configuration and re-enable it when the issue is reso
 --
 Relay Webhook Service`, endpoint, reason, time.Now().UTC().Format(time.RFC3339))
 
-	return e.send(subject, body)
+	return e.send(subject, body, "endpoint_disabled")
 }
 
 // send sends an email via SMTP.
-func (e *EmailNotifier) send(subject, body string) error {
+func (e *EmailNotifier) send(subject, body, notificationType string) error {
 	addr := fmt.Sprintf("%s:%d", e.host, e.port)
 
 	// Build message
@@ -118,10 +122,11 @@ func (e *EmailNotifier) send(subject, body string) error {
 	}
 
 	if err := smtp.SendMail(addr, auth, e.from, e.to, []byte(msg.String())); err != nil {
+		emailLog.Error("failed to send email notification", "type", notificationType, "smtp_host", e.host, "error", err)
 		return fmt.Errorf("failed to send email: %w", err)
 	}
 
-	e.logger.Debug("email notification sent", "recipients", e.to)
+	emailLog.Debug("email notification sent", "type", notificationType, "recipients", e.to)
 	return nil
 }
 

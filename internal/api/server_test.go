@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -70,15 +69,13 @@ func setupTestServer(t *testing.T, cfg ServerConfig, authValidator auth.APIKeyVa
 	q := queue.NewQueue(redisClient)
 	d := dedup.NewChecker(redisClient)
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-
 	t.Cleanup(func() {
 		_ = redisClient.Close()
 		mr.Close()
 		pool.Close()
 	})
 
-	return NewServer(store, eventTypeStore, q, d, authValidator, cfg, logger)
+	return NewServer(store, eventTypeStore, q, d, authValidator, cfg)
 }
 
 func TestNewServer(t *testing.T) {
@@ -93,9 +90,6 @@ func TestNewServer(t *testing.T) {
 	}
 	if server.router == nil {
 		t.Error("expected router to be set")
-	}
-	if server.logger == nil {
-		t.Error("expected logger to be set")
 	}
 }
 
@@ -247,9 +241,7 @@ func TestServer_HealthNoAuth(t *testing.T) {
 }
 
 func TestLoggingMiddleware(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-
-	mw := loggingMiddleware(logger)
+	mw := loggingMiddleware()
 
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
