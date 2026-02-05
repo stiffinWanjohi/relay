@@ -20,24 +20,24 @@ import (
 
 // CompiledScript holds a pre-compiled script for reuse.
 type CompiledScript struct {
-	program   *goja.Program
-	code      string
+	program    *goja.Program
+	code       string
 	compiledAt time.Time
 }
 
 // TransformationMetrics tracks transformation execution metrics.
 type TransformationMetrics struct {
-	TotalExecutions   int64
-	SuccessCount      int64
-	FailureCount      int64
-	TimeoutCount      int64
-	CancelledCount    int64
-	MemoryLimitCount  int64
-	TotalExecutionMs  int64
-	LastExecutionMs   int64
-	CacheHits         int64
-	CacheMisses       int64
-	mu                sync.RWMutex
+	TotalExecutions  int64
+	SuccessCount     int64
+	FailureCount     int64
+	TimeoutCount     int64
+	CancelledCount   int64
+	MemoryLimitCount int64
+	TotalExecutionMs int64
+	LastExecutionMs  int64
+	CacheHits        int64
+	CacheMisses      int64
+	mu               sync.RWMutex
 }
 
 // Snapshot returns a copy of the current metrics.

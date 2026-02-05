@@ -18,6 +18,8 @@ All configuration is via environment variables.
 | `API_ADDR` | `:8080` | Listen address |
 | `ENABLE_PLAYGROUND` | `false` | Enable GraphQL playground |
 | `AUTH_ENABLED` | `true` | Require API key auth |
+| `GLOBAL_RATE_LIMIT_RPS` | `0` | Global requests per second (0 = unlimited) |
+| `CLIENT_RATE_LIMIT_RPS` | `0` | Per-client requests per second (0 = unlimited) |
 
 ### Redis
 
@@ -54,6 +56,21 @@ All configuration is via environment variables.
 | `OUTBOX_CLEANUP_INTERVAL` | `1h` | Cleanup job frequency |
 | `OUTBOX_RETENTION_PERIOD` | `24h` | Processed entry retention |
 
+### Notifications
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NOTIFICATION_ENABLED` | `false` | Enable failure notifications |
+| `NOTIFICATION_SLACK_WEBHOOK_URL` | `` | Slack webhook URL for alerts |
+| `NOTIFICATION_SMTP_HOST` | `` | SMTP server host |
+| `NOTIFICATION_SMTP_PORT` | `587` | SMTP server port |
+| `NOTIFICATION_SMTP_USERNAME` | `` | SMTP username |
+| `NOTIFICATION_SMTP_PASSWORD` | `` | SMTP password |
+| `NOTIFICATION_EMAIL_FROM` | `` | From address for emails |
+| `NOTIFICATION_EMAIL_TO` | `` | Comma-separated recipient emails |
+| `NOTIFICATION_NOTIFY_ON_TRIP` | `true` | Notify on circuit breaker trip |
+| `NOTIFICATION_NOTIFY_ON_RECOVER` | `true` | Notify on circuit breaker recovery |
+
 ### Observability
 
 | Variable | Default | Description |
@@ -82,4 +99,16 @@ WORKER_CONCURRENCY=5
 # WORKER_CONCURRENCY=20
 # METRICS_PROVIDER=otel
 # METRICS_ENDPOINT=otel-collector:4317
+
+# Rate Limiting (optional)
+# GLOBAL_RATE_LIMIT_RPS=1000
+# CLIENT_RATE_LIMIT_RPS=100
+
+# Notifications (optional)
+# NOTIFICATION_ENABLED=true
+# NOTIFICATION_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+# NOTIFICATION_SMTP_HOST=smtp.example.com
+# NOTIFICATION_SMTP_PORT=587
+# NOTIFICATION_EMAIL_FROM=relay@example.com
+# NOTIFICATION_EMAIL_TO=ops@example.com,oncall@example.com
 ```

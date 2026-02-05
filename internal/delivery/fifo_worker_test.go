@@ -146,11 +146,11 @@ func TestFIFOWorker_ensureProcessorRunning(t *testing.T) {
 	// logger removed - using centralized logging
 
 	worker := &FIFOWorker{
-		queue:            q,
-		store:            nil,
-		circuit:          NewCircuitBreaker(DefaultCircuitConfig()),
-		retry:            NewRetryPolicy(),
-		
+		queue:   q,
+		store:   nil,
+		circuit: NewCircuitBreaker(DefaultCircuitConfig()),
+		retry:   NewRetryPolicy(),
+
 		stopCh:           make(chan struct{}),
 		activeProcessors: make(map[string]context.CancelFunc),
 		wg:               sync.WaitGroup{},
@@ -207,11 +207,11 @@ func TestFIFOWorker_maxProcessorsLimit(t *testing.T) {
 	// logger removed - using centralized logging
 
 	worker := &FIFOWorker{
-		queue:            q,
-		store:            nil,
-		circuit:          NewCircuitBreaker(DefaultCircuitConfig()),
-		retry:            NewRetryPolicy(),
-		
+		queue:   q,
+		store:   nil,
+		circuit: NewCircuitBreaker(DefaultCircuitConfig()),
+		retry:   NewRetryPolicy(),
+
 		stopCh:           make(chan struct{}),
 		activeProcessors: make(map[string]context.CancelFunc),
 		wg:               sync.WaitGroup{},
@@ -303,11 +303,11 @@ func TestFIFOWorker_StopCancelsProcessors(t *testing.T) {
 	// logger removed - using centralized logging
 
 	worker := &FIFOWorker{
-		queue:            q,
-		store:            nil,
-		circuit:          NewCircuitBreaker(DefaultCircuitConfig()),
-		retry:            NewRetryPolicy(),
-		
+		queue:   q,
+		store:   nil,
+		circuit: NewCircuitBreaker(DefaultCircuitConfig()),
+		retry:   NewRetryPolicy(),
+
 		stopCh:           make(chan struct{}),
 		activeProcessors: make(map[string]context.CancelFunc),
 		wg:               sync.WaitGroup{},
@@ -519,7 +519,6 @@ func TestFIFOWorker_StopAndWait_Timeout(t *testing.T) {
 		stopCh:           make(chan struct{}),
 		activeProcessors: make(map[string]context.CancelFunc),
 		wg:               sync.WaitGroup{},
-		
 	}
 
 	// Channel to allow the stuck goroutine to exit after test
@@ -564,11 +563,11 @@ func TestFIFOWorker_InFlightDeliveryTracking(t *testing.T) {
 	// logger removed - using centralized logging
 
 	worker := &FIFOWorker{
-		queue:               q,
-		store:               nil,
-		circuit:             NewCircuitBreaker(DefaultCircuitConfig()),
-		retry:               NewRetryPolicy(),
-		
+		queue:   q,
+		store:   nil,
+		circuit: NewCircuitBreaker(DefaultCircuitConfig()),
+		retry:   NewRetryPolicy(),
+
 		stopCh:              make(chan struct{}),
 		activeProcessors:    make(map[string]context.CancelFunc),
 		inFlightDeliveries:  make(map[string]struct{}),

@@ -5,11 +5,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/stiffinWanjohi/relay/internal/alerting"
+	"github.com/stiffinWanjohi/relay/internal/connector"
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/event"
+	"github.com/stiffinWanjohi/relay/internal/metrics"
 )
 
 // validateScheduling validates and computes the scheduled delivery time from input parameters.
@@ -426,5 +430,410 @@ func domainEventTypeToGQL(et domain.EventType) *EventType {
 		SchemaVersion: schemaVersion,
 		CreatedAt:     et.CreatedAt,
 		UpdatedAt:     et.UpdatedAt,
+	}
+}
+
+// granularityToDuration converts a TimeGranularity enum to a time.Duration.
+func granularityToDuration(g TimeGranularity) time.Duration {
+	switch g {
+	case TimeGranularityMinute:
+		return time.Minute
+	case TimeGranularityHour:
+		return time.Hour
+	case TimeGranularityDay:
+		return 24 * time.Hour
+	case TimeGranularityWeek:
+		return 7 * 24 * time.Hour
+	default:
+		return time.Hour // default to hourly
+	}
+}
+
+// computeStatsFromRecords computes analytics stats from a slice of delivery records.
+func computeStatsFromRecords(records []metrics.DeliveryRecord, period time.Time) *AnalyticsStats {
+	stats := &AnalyticsStats{
+		Period: period.Format(time.RFC3339),
+	}
+
+	if len(records) == 0 {
+		return stats
+	}
+
+	var totalLatency int64
+	var minLatency, maxLatency int64 = -1, 0
+	latencies := make([]int64, 0, len(records))
+
+	for _, r := range records {
+		stats.TotalCount++
+		latencies = append(latencies, r.LatencyMs)
+		totalLatency += r.LatencyMs
+
+		if minLatency == -1 || r.LatencyMs < minLatency {
+			minLatency = r.LatencyMs
+		}
+		if r.LatencyMs > maxLatency {
+			maxLatency = r.LatencyMs
+		}
+
+		switch r.Outcome {
+		case metrics.OutcomeSuccess:
+			stats.SuccessCount++
+		case metrics.OutcomeFailure:
+			stats.FailureCount++
+		case metrics.OutcomeTimeout:
+			stats.TimeoutCount++
+		}
+	}
+
+	if stats.TotalCount > 0 {
+		stats.SuccessRate = float64(stats.SuccessCount) / float64(stats.TotalCount)
+		stats.FailureRate = float64(stats.FailureCount+stats.TimeoutCount) / float64(stats.TotalCount)
+		stats.AvgLatencyMs = float64(totalLatency) / float64(stats.TotalCount)
+		stats.MinLatencyMs = int(minLatency)
+		stats.MaxLatencyMs = int(maxLatency)
+
+		// Calculate percentiles
+		slices.Sort(latencies)
+		stats.P50LatencyMs = float64(latencies[len(latencies)*50/100])
+		stats.P95LatencyMs = float64(latencies[len(latencies)*95/100])
+		p99Index := len(latencies) * 99 / 100
+		if p99Index >= len(latencies) {
+			p99Index = len(latencies) - 1
+		}
+		stats.P99LatencyMs = float64(latencies[p99Index])
+	}
+
+	return stats
+}
+
+// Alerting type conversion helpers
+
+func parseDurationOrDefault(s string, def time.Duration) time.Duration {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return def
+	}
+	return d
+}
+
+func gqlMetricToAlertingMetric(m AlertMetric) alerting.ConditionType {
+	switch m {
+	case AlertMetricFailureRate:
+		return alerting.ConditionTypeFailureRate
+	case AlertMetricSuccessRate:
+		return alerting.ConditionTypeSuccessRate
+	case AlertMetricLatency:
+		return alerting.ConditionTypeLatency
+	case AlertMetricQueueDepth:
+		return alerting.ConditionTypeQueueDepth
+	case AlertMetricErrorCount:
+		return alerting.ConditionTypeErrorCount
+	case AlertMetricDeliveryCount:
+		return alerting.ConditionTypeDeliveryCount
+	default:
+		return alerting.ConditionTypeFailureRate
+	}
+}
+
+func gqlOperatorToAlertingOperator(o AlertOperator) alerting.Operator {
+	switch o {
+	case AlertOperatorGt:
+		return alerting.OperatorGreaterThan
+	case AlertOperatorGte:
+		return alerting.OperatorGreaterThanOrEqual
+	case AlertOperatorLt:
+		return alerting.OperatorLessThan
+	case AlertOperatorLte:
+		return alerting.OperatorLessThanOrEqual
+	case AlertOperatorEq:
+		return alerting.OperatorEqual
+	case AlertOperatorNe:
+		return alerting.OperatorNotEqual
+	default:
+		return alerting.OperatorGreaterThan
+	}
+}
+
+func gqlActionTypeToAlertingActionType(t AlertActionType) alerting.ActionType {
+	switch t {
+	case AlertActionTypeSLACk:
+		return alerting.ActionTypeSlack
+	case AlertActionTypeEmail:
+		return alerting.ActionTypeEmail
+	case AlertActionTypeWebhook:
+		return alerting.ActionTypeWebhook
+	case AlertActionTypePagerduty:
+		return alerting.ActionTypePagerDuty
+	default:
+		return alerting.ActionTypeSlack
+	}
+}
+
+func gqlActionConfigToAlertingConfig(input *AlertActionInput) alerting.ActionConfig {
+	cfg := alerting.ActionConfig{}
+	if input.WebhookURL != nil {
+		cfg.WebhookURL = *input.WebhookURL
+		cfg.URL = *input.WebhookURL
+	}
+	if input.Channel != nil {
+		cfg.Channel = *input.Channel
+	}
+	if input.To != nil {
+		cfg.To = input.To
+	}
+	if input.Subject != nil {
+		cfg.Subject = *input.Subject
+	}
+	if input.RoutingKey != nil {
+		cfg.RoutingKey = *input.RoutingKey
+	}
+	if input.Severity != nil {
+		cfg.Severity = *input.Severity
+	}
+	return cfg
+}
+
+func alertingMetricToGQL(m alerting.ConditionType) AlertMetric {
+	switch m {
+	case alerting.ConditionTypeFailureRate:
+		return AlertMetricFailureRate
+	case alerting.ConditionTypeSuccessRate:
+		return AlertMetricSuccessRate
+	case alerting.ConditionTypeLatency:
+		return AlertMetricLatency
+	case alerting.ConditionTypeQueueDepth:
+		return AlertMetricQueueDepth
+	case alerting.ConditionTypeErrorCount:
+		return AlertMetricErrorCount
+	case alerting.ConditionTypeDeliveryCount:
+		return AlertMetricDeliveryCount
+	default:
+		return AlertMetricFailureRate
+	}
+}
+
+func alertingOperatorToGQL(o alerting.Operator) AlertOperator {
+	switch o {
+	case alerting.OperatorGreaterThan:
+		return AlertOperatorGt
+	case alerting.OperatorGreaterThanOrEqual:
+		return AlertOperatorGte
+	case alerting.OperatorLessThan:
+		return AlertOperatorLt
+	case alerting.OperatorLessThanOrEqual:
+		return AlertOperatorLte
+	case alerting.OperatorEqual:
+		return AlertOperatorEq
+	case alerting.OperatorNotEqual:
+		return AlertOperatorNe
+	default:
+		return AlertOperatorGt
+	}
+}
+
+func alertingActionTypeToGQL(t alerting.ActionType) AlertActionType {
+	switch t {
+	case alerting.ActionTypeSlack:
+		return AlertActionTypeSLACk
+	case alerting.ActionTypeEmail:
+		return AlertActionTypeEmail
+	case alerting.ActionTypeWebhook:
+		return AlertActionTypeWebhook
+	case alerting.ActionTypePagerDuty:
+		return AlertActionTypePagerduty
+	default:
+		return AlertActionTypeSLACk
+	}
+}
+
+func alertingRuleToGQL(rule *alerting.Rule) *AlertRule {
+	var desc *string
+	if rule.Description != "" {
+		desc = &rule.Description
+	}
+
+	var lastFired *time.Time
+	if !rule.LastFiredAt().IsZero() {
+		t := rule.LastFiredAt()
+		lastFired = &t
+	}
+
+	return &AlertRule{
+		ID:          rule.ID.String(),
+		Name:        rule.Name,
+		Description: desc,
+		Enabled:     rule.Enabled,
+		Condition: &AlertCondition{
+			Metric:   alertingMetricToGQL(rule.Condition.Metric),
+			Operator: alertingOperatorToGQL(rule.Condition.Operator),
+			Value:    rule.Condition.Value,
+			Window:   rule.Condition.Window.Duration().String(),
+		},
+		Action: &AlertAction{
+			Type:       alertingActionTypeToGQL(rule.Action.Type),
+			WebhookURL: strPtrOrNil(rule.Action.Config.WebhookURL),
+			Channel:    strPtrOrNil(rule.Action.Config.Channel),
+			To:         rule.Action.Config.To,
+			Subject:    strPtrOrNil(rule.Action.Config.Subject),
+			RoutingKey: strPtrOrNil(rule.Action.Config.RoutingKey),
+			Severity:   strPtrOrNil(rule.Action.Config.Severity),
+			Message:    strPtrOrNil(rule.Action.Message),
+		},
+		Cooldown:    rule.Cooldown.Duration().String(),
+		LastFiredAt: lastFired,
+		CreatedAt:   rule.CreatedAt,
+		UpdatedAt:   rule.UpdatedAt,
+	}
+}
+
+func strPtrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func alertingAlertToGQL(alert alerting.Alert) Alert {
+	return Alert{
+		ID:        alert.ID.String(),
+		RuleID:    alert.RuleID.String(),
+		RuleName:  alert.RuleName,
+		Metric:    alert.Metric,
+		Value:     alert.Value,
+		Threshold: alert.Threshold,
+		Message:   alert.Message,
+		FiredAt:   alert.FiredAt,
+	}
+}
+
+// Connector type conversion helpers
+
+func gqlConnectorTypeToConnector(t ConnectorType) connector.ConnectorType {
+	switch t {
+	case ConnectorTypeSLACk:
+		return connector.ConnectorTypeSlack
+	case ConnectorTypeDiscord:
+		return connector.ConnectorTypeDiscord
+	case ConnectorTypeTeams:
+		return connector.ConnectorTypeTeams
+	case ConnectorTypeEmail:
+		return connector.ConnectorTypeEmail
+	case ConnectorTypeWebhook:
+		return connector.ConnectorTypeWebhook
+	default:
+		return connector.ConnectorTypeWebhook
+	}
+}
+
+func connectorTypeToGQL(t connector.ConnectorType) ConnectorType {
+	switch t {
+	case connector.ConnectorTypeSlack:
+		return ConnectorTypeSLACk
+	case connector.ConnectorTypeDiscord:
+		return ConnectorTypeDiscord
+	case connector.ConnectorTypeTeams:
+		return ConnectorTypeTeams
+	case connector.ConnectorTypeEmail:
+		return ConnectorTypeEmail
+	case connector.ConnectorTypeWebhook:
+		return ConnectorTypeWebhook
+	default:
+		return ConnectorTypeWebhook
+	}
+}
+
+func gqlConnectorConfigToConnector(input *ConnectorConfigInput) connector.Config {
+	if input == nil {
+		return connector.Config{}
+	}
+
+	cfg := connector.Config{}
+	if input.WebhookURL != nil {
+		cfg.WebhookURL = *input.WebhookURL
+	}
+	if input.Channel != nil {
+		cfg.Channel = *input.Channel
+	}
+	if input.Username != nil {
+		cfg.Username = *input.Username
+	}
+	if input.IconEmoji != nil {
+		cfg.IconEmoji = *input.IconEmoji
+	}
+	if input.IconURL != nil {
+		cfg.IconURL = *input.IconURL
+	}
+	if input.SMTPHost != nil {
+		cfg.SMTPHost = *input.SMTPHost
+	}
+	if input.SMTPPort != nil {
+		cfg.SMTPPort = *input.SMTPPort
+	}
+	if input.SMTPUsername != nil {
+		cfg.SMTPUsername = *input.SMTPUsername
+	}
+	if input.SMTPPassword != nil {
+		cfg.SMTPPassword = *input.SMTPPassword
+	}
+	if input.FromEmail != nil {
+		cfg.FromEmail = *input.FromEmail
+	}
+	if input.ToEmails != nil {
+		cfg.ToEmails = input.ToEmails
+	}
+	return cfg
+}
+
+func gqlConnectorTemplateToConnector(input *ConnectorTemplateInput) connector.Template {
+	if input == nil {
+		return connector.Template{}
+	}
+
+	tmpl := connector.Template{}
+	if input.Text != nil {
+		tmpl.Text = *input.Text
+	}
+	if input.Title != nil {
+		tmpl.Title = *input.Title
+	}
+	if input.Body != nil {
+		tmpl.Body = *input.Body
+	}
+	if input.Color != nil {
+		tmpl.Color = *input.Color
+	}
+	if input.Subject != nil {
+		tmpl.Subject = *input.Subject
+	}
+	return tmpl
+}
+
+func connectorToGQL(name string, c *connector.Connector) *Connector {
+	var smtpPort *int
+	if c.Config.SMTPPort > 0 {
+		smtpPort = &c.Config.SMTPPort
+	}
+
+	return &Connector{
+		Name: name,
+		Type: connectorTypeToGQL(c.Type),
+		Config: &ConnectorConfig{
+			WebhookURL: strPtrOrNil(c.Config.WebhookURL),
+			Channel:    strPtrOrNil(c.Config.Channel),
+			Username:   strPtrOrNil(c.Config.Username),
+			IconEmoji:  strPtrOrNil(c.Config.IconEmoji),
+			IconURL:    strPtrOrNil(c.Config.IconURL),
+			SMTPHost:   strPtrOrNil(c.Config.SMTPHost),
+			SMTPPort:   smtpPort,
+			FromEmail:  strPtrOrNil(c.Config.FromEmail),
+			ToEmails:   c.Config.ToEmails,
+		},
+		Template: &ConnectorTemplate{
+			Text:    strPtrOrNil(c.Template.Text),
+			Title:   strPtrOrNil(c.Template.Title),
+			Body:    strPtrOrNil(c.Template.Body),
+			Color:   strPtrOrNil(c.Template.Color),
+			Subject: strPtrOrNil(c.Template.Subject),
+		},
 	}
 }

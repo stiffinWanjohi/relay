@@ -15,14 +15,19 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/stiffinWanjohi/relay/internal/alerting"
 	"github.com/stiffinWanjohi/relay/internal/api"
 	"github.com/stiffinWanjohi/relay/internal/app"
 	"github.com/stiffinWanjohi/relay/internal/auth"
 	"github.com/stiffinWanjohi/relay/internal/config"
+	"github.com/stiffinWanjohi/relay/internal/connector"
+	"github.com/stiffinWanjohi/relay/internal/debug"
 	"github.com/stiffinWanjohi/relay/internal/dedup"
 	"github.com/stiffinWanjohi/relay/internal/delivery"
 	"github.com/stiffinWanjohi/relay/internal/event"
 	"github.com/stiffinWanjohi/relay/internal/eventtype"
+	"github.com/stiffinWanjohi/relay/internal/logstream"
+	"github.com/stiffinWanjohi/relay/internal/metrics"
 	_ "github.com/stiffinWanjohi/relay/internal/observability/otel"
 	"github.com/stiffinWanjohi/relay/internal/outbox"
 	"github.com/stiffinWanjohi/relay/internal/queue"
@@ -223,6 +228,30 @@ func runServer(svc *app.Services) {
 	dedupChecker := dedup.NewChecker(svc.Redis)
 	authStore := auth.NewStore(svc.Pool)
 	rateLimiter := delivery.NewRateLimiter(svc.Redis)
+	debugService := debug.NewService(svc.Redis, fmt.Sprintf("http://localhost%s", cfg.API.Addr))
+	metricsStore := metrics.NewStore(svc.Redis)
+	logStreamHub := logstream.NewHub(100, 100) // 100 buffer, 100 entries/sec limit
+
+	// Create alerting engine with metrics adapter and persistence
+	alertingAdapter := metrics.NewAlertingAdapter(metricsStore)
+	alertingCfg := alerting.DefaultEngineConfig()
+	if cfg.Notification.SMTPHost != "" {
+		alertingCfg.SMTPHost = cfg.Notification.SMTPHost
+		alertingCfg.SMTPPort = cfg.Notification.SMTPPort
+		alertingCfg.SMTPUsername = cfg.Notification.SMTPUsername
+		alertingCfg.SMTPPassword = cfg.Notification.SMTPPassword
+		alertingCfg.SMTPFrom = cfg.Notification.EmailFrom
+	}
+	alertEngine := alerting.NewEngine(alertingAdapter, alertingCfg)
+
+	// Set up alerting persistence store (PostgreSQL)
+	alertingStore := alerting.NewStore(svc.Pool)
+	alertEngine.WithStore(alertingStore).WithClientID(config.DefaultClientID)
+
+	// Load existing alert rules from persistence
+	if err := alertEngine.LoadRules(ctx); err != nil {
+		logger.Warn("failed to load alert rules", "error", err)
+	}
 
 	outboxProcessor := outbox.NewProcessor(store, q, outbox.ProcessorConfig{
 		PollInterval:    cfg.Outbox.PollInterval,
@@ -232,9 +261,37 @@ func runServer(svc *app.Services) {
 	}).WithMetrics(svc.Metrics)
 	outboxProcessor.Start(ctx)
 
+	// Create connector store and registry
+	connectorStore := connector.NewStore(svc.Pool)
+	connectorRegistry := connector.NewRegistry()
+
+	// Load existing connectors from persistence (for default client)
+	if connectors, err := connectorStore.List(ctx, config.DefaultClientID); err != nil {
+		logger.Warn("failed to load connectors", "error", err)
+	} else {
+		for _, sc := range connectors {
+			if sc.Enabled {
+				if err := connectorRegistry.Register(sc.Name, sc.ToConnector()); err != nil {
+					logger.Warn("failed to register connector", "name", sc.Name, "error", err)
+				}
+			}
+		}
+		logger.Info("loaded connectors", "count", len(connectors))
+	}
+
 	serverCfg := api.ServerConfig{
-		EnableAuth:       cfg.Auth.Enabled,
-		EnablePlayground: cfg.Auth.EnablePlayground,
+		EnableAuth:        cfg.Auth.Enabled,
+		EnablePlayground:  cfg.Auth.EnablePlayground,
+		RateLimiter:       rateLimiter,
+		GlobalRateLimit:   cfg.API.GlobalRateLimit,
+		ClientRateLimit:   cfg.API.ClientRateLimit,
+		DebugService:      debugService,
+		MetricsStore:      metricsStore,
+		LogStreamHub:      logStreamHub,
+		AlertEngine:       alertEngine,
+		AlertingStore:     alertingStore,
+		ConnectorRegistry: connectorRegistry,
+		ConnectorStore:    connectorStore,
 	}
 	server := api.NewServer(store, eventTypeStore, q, dedupChecker, authStore, serverCfg)
 
@@ -260,6 +317,8 @@ func runServer(svc *app.Services) {
 		SigningKey:          cfg.Worker.SigningKey,
 		CircuitConfig:       delivery.DefaultCircuitConfig(),
 		Metrics:             svc.Metrics,
+		MetricsStore:        metricsStore,
+		LogStreamHub:        logStreamHub,
 		RateLimiter:         rateLimiter,
 		NotificationService: svc.Notification,
 		NotifyOnTrip:        cfg.Notification.NotifyOnTrip,
@@ -275,6 +334,8 @@ func runServer(svc *app.Services) {
 		SigningKey:          cfg.Worker.SigningKey,
 		CircuitConfig:       delivery.DefaultCircuitConfig(),
 		Metrics:             svc.Metrics,
+		MetricsStore:        metricsStore,
+		LogStreamHub:        logStreamHub,
 		RateLimiter:         rateLimiter,
 		NotificationService: svc.Notification,
 		NotifyOnTrip:        cfg.Notification.NotifyOnTrip,
@@ -282,6 +343,9 @@ func runServer(svc *app.Services) {
 	}
 	fifoWorker := delivery.NewFIFOWorker(q, store, fifoWorkerConfig)
 	fifoWorker.Start(ctx)
+
+	// Start alerting engine
+	alertEngine.Start(ctx)
 
 	wg.Add(1)
 	go func() {
@@ -319,6 +383,7 @@ func runServer(svc *app.Services) {
 	_ = worker.StopAndWait(cfg.Worker.ShutdownTimeout)
 	_ = fifoWorker.StopAndWait(cfg.Worker.ShutdownTimeout)
 	_ = outboxProcessor.StopAndWait(cfg.API.ShutdownTimeout)
+	alertEngine.Stop()
 
 	done := make(chan struct{})
 	go func() {

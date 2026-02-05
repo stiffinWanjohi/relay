@@ -95,6 +95,8 @@ type APIConfig struct {
 	WriteTimeout    time.Duration
 	IdleTimeout     time.Duration
 	ShutdownTimeout time.Duration
+	GlobalRateLimit int // Global requests per second (0 = unlimited)
+	ClientRateLimit int // Per-client requests per second (0 = unlimited)
 }
 
 // WorkerConfig holds worker configuration.
@@ -159,6 +161,8 @@ func LoadConfig() (*Config, error) {
 	cfg.API.WriteTimeout = getEnvDuration("API_WRITE_TIMEOUT", 15*time.Second)
 	cfg.API.IdleTimeout = getEnvDuration("API_IDLE_TIMEOUT", 60*time.Second)
 	cfg.API.ShutdownTimeout = getEnvDuration("API_SHUTDOWN_TIMEOUT", 30*time.Second)
+	cfg.API.GlobalRateLimit = getEnvInt("GLOBAL_RATE_LIMIT_RPS", 0) // 0 = unlimited
+	cfg.API.ClientRateLimit = getEnvInt("CLIENT_RATE_LIMIT_RPS", 0) // 0 = unlimited
 
 	// Worker config
 	cfg.Worker.Concurrency = getEnvInt("WORKER_CONCURRENCY", DefaultWorkerConcurrency)
@@ -288,7 +292,7 @@ func ValidatePayloadAgainstSchema(payload, schemaBytes []byte) error {
 		return fmt.Errorf("failed to compile schema: %w", err)
 	}
 
-	var v interface{}
+	var v any
 	if err := json.Unmarshal(payload, &v); err != nil {
 		return fmt.Errorf("%w: invalid JSON payload: %v", domain.ErrPayloadValidation, err)
 	}

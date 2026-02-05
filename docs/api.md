@@ -4,6 +4,8 @@ GraphQL endpoint: `POST /graphql`
 
 Playground (if enabled): `GET /playground`
 
+Debug endpoints: `POST /debug/endpoints`
+
 ## Authentication
 
 When `AUTH_ENABLED=true`, include API key:
@@ -639,3 +641,447 @@ Common error codes:
 - `DUPLICATE` - Idempotency key already used
 - `INVALID_INPUT` - Validation failed
 - `UNAUTHORIZED` - Missing or invalid API key
+
+---
+
+## Alerting API (REST)
+
+The Alerting API provides management of alert rules and alert history.
+
+### List Alert Rules
+
+Get all configured alert rules.
+
+```bash
+GET /api/v1/alerting/rules
+X-API-Key: your-api-key
+```
+
+**Response:**
+```json
+{
+  "rules": [
+    {
+      "id": "abc123",
+      "name": "High Failure Rate",
+      "description": "Alert when failure rate exceeds 10%",
+      "enabled": true,
+      "condition": {
+        "metric": "failure_rate",
+        "operator": "gt",
+        "value": 0.1,
+        "window": "5m"
+      },
+      "action": {
+        "type": "slack",
+        "webhookUrl": "https://hooks.slack.com/...",
+        "channel": "#alerts"
+      },
+      "cooldown": "15m",
+      "createdAt": "2026-02-05T10:00:00Z",
+      "updatedAt": "2026-02-05T10:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+### Get Alert Rule
+
+Get a specific alert rule by ID.
+
+```bash
+GET /api/v1/alerting/rules/{ruleId}
+X-API-Key: your-api-key
+```
+
+### Create Alert Rule
+
+Create a new alert rule.
+
+```bash
+POST /api/v1/alerting/rules
+X-API-Key: your-api-key
+Content-Type: application/json
+
+{
+  "name": "High Failure Rate",
+  "description": "Alert when failure rate exceeds 10%",
+  "condition": {
+    "metric": "failure_rate",
+    "operator": "gt",
+    "value": 0.1,
+    "window": "5m"
+  },
+  "action": {
+    "type": "slack",
+    "webhookUrl": "https://hooks.slack.com/...",
+    "channel": "#alerts"
+  },
+  "cooldown": "15m"
+}
+```
+
+### Update Alert Rule
+
+Update an existing alert rule.
+
+```bash
+PUT /api/v1/alerting/rules/{ruleId}
+X-API-Key: your-api-key
+Content-Type: application/json
+
+{
+  "name": "Updated Rule Name",
+  "enabled": false
+}
+```
+
+### Delete Alert Rule
+
+Delete an alert rule.
+
+```bash
+DELETE /api/v1/alerting/rules/{ruleId}
+X-API-Key: your-api-key
+```
+
+### Enable Alert Rule
+
+Enable a previously disabled alert rule.
+
+```bash
+POST /api/v1/alerting/rules/{ruleId}/enable
+X-API-Key: your-api-key
+```
+
+### Disable Alert Rule
+
+Disable an alert rule without deleting it.
+
+```bash
+POST /api/v1/alerting/rules/{ruleId}/disable
+X-API-Key: your-api-key
+```
+
+### Evaluate Alert Rules
+
+Manually trigger evaluation of all enabled alert rules.
+
+```bash
+POST /api/v1/alerting/evaluate
+X-API-Key: your-api-key
+```
+
+### Get Alert History
+
+Get the history of triggered alerts.
+
+```bash
+GET /api/v1/alerting/history?limit=100
+X-API-Key: your-api-key
+```
+
+**Response:**
+```json
+{
+  "alerts": [
+    {
+      "id": "alert123",
+      "ruleId": "rule456",
+      "ruleName": "High Failure Rate",
+      "metric": "failure_rate",
+      "value": 0.15,
+      "threshold": 0.1,
+      "message": "Failure rate exceeded 10%",
+      "firedAt": "2026-02-05T10:30:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+## Connectors API (REST)
+
+The Connectors API provides management of pre-built integrations.
+
+### List Connectors
+
+Get all registered connectors.
+
+```bash
+GET /api/v1/connectors
+X-API-Key: your-api-key
+```
+
+**Response:**
+```json
+{
+  "connectors": [
+    {
+      "id": "conn123",
+      "name": "slack-alerts",
+      "type": "slack",
+      "enabled": true,
+      "config": {
+        "webhookUrl": "https://hooks.slack.com/...",
+        "channel": "#alerts"
+      },
+      "template": {
+        "text": "{{.event_type}}: {{.message}}"
+      },
+      "createdAt": "2026-02-05T10:00:00Z",
+      "updatedAt": "2026-02-05T10:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+### Get Connector
+
+Get a specific connector by name.
+
+```bash
+GET /api/v1/connectors/{name}
+X-API-Key: your-api-key
+```
+
+### Create Connector
+
+Create a new connector.
+
+```bash
+POST /api/v1/connectors
+X-API-Key: your-api-key
+Content-Type: application/json
+
+{
+  "name": "slack-alerts",
+  "type": "slack",
+  "config": {
+    "webhookUrl": "https://hooks.slack.com/...",
+    "channel": "#alerts",
+    "username": "Relay Bot"
+  },
+  "template": {
+    "text": "{{.event_type}}: {{.message}}",
+    "color": "danger"
+  }
+}
+```
+
+**Supported Connector Types:**
+- `slack` - Slack webhooks
+- `discord` - Discord webhooks
+- `teams` - Microsoft Teams webhooks
+- `email` - SMTP email
+- `webhook` - Generic webhook (pass-through)
+
+### Update Connector
+
+Update an existing connector.
+
+```bash
+PUT /api/v1/connectors/{name}
+X-API-Key: your-api-key
+Content-Type: application/json
+
+{
+  "config": {
+    "webhookUrl": "https://hooks.slack.com/new-url"
+  }
+}
+```
+
+### Delete Connector
+
+Delete a connector.
+
+```bash
+DELETE /api/v1/connectors/{name}
+X-API-Key: your-api-key
+```
+
+---
+
+## Metrics API (REST)
+
+The Metrics API provides access to rate limiting and performance metrics.
+
+### Get Rate Limit Statistics
+
+Get aggregated rate limit metrics across all endpoints.
+
+```bash
+GET /api/v1/metrics/rate-limits?limit=100
+X-API-Key: your-api-key
+```
+
+**Response:**
+```json
+{
+  "totalEvents": 150,
+  "eventsByEndpoint": {
+    "ep_123": 100,
+    "ep_456": 50
+  },
+  "events": [
+    {
+      "endpointId": "ep_123",
+      "eventId": "evt_789",
+      "limitPerSecond": 100,
+      "queueDepth": 50,
+      "timestamp": "2026-02-05T10:30:00Z"
+    }
+  ]
+}
+```
+
+### Get Rate Limit Statistics by Endpoint
+
+Get rate limit metrics for a specific endpoint.
+
+```bash
+GET /api/v1/metrics/rate-limits/endpoint/{endpointId}?limit=100
+X-API-Key: your-api-key
+```
+
+---
+
+## Debug API (REST)
+
+The Debug API provides webhook testing capabilities with temporary endpoints.
+
+### Create Debug Endpoint
+
+Create a new temporary debug endpoint.
+
+```bash
+POST /debug/endpoints
+```
+
+**Response:**
+```json
+{
+  "id": "abc123def456789",
+  "created_at": "2026-02-05T10:00:00Z",
+  "expires_at": "2026-02-05T11:00:00Z",
+  "url": "http://localhost:8080/debug/abc123def456789"
+}
+```
+
+### Get Debug Endpoint
+
+Get details of an existing debug endpoint.
+
+```bash
+GET /debug/endpoints/{endpointId}
+```
+
+### Delete Debug Endpoint
+
+Delete a debug endpoint and all captured requests.
+
+```bash
+DELETE /debug/endpoints/{endpointId}
+```
+
+### List Captured Requests
+
+Get all captured requests for a debug endpoint.
+
+```bash
+GET /debug/endpoints/{endpointId}/requests
+```
+
+**Response:**
+```json
+{
+  "requests": [
+    {
+      "id": "req123",
+      "received_at": "2026-02-05T10:05:00Z",
+      "method": "POST",
+      "path": "/webhook",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Custom-Header": "value"
+      },
+      "body": "{\"event\": \"test\"}",
+      "content_type": "application/json",
+      "remote_addr": "192.168.1.1:54321",
+      "duration_ns": 1234567
+    }
+  ],
+  "count": 1
+}
+```
+
+### Get Captured Request
+
+Get a specific captured request by ID.
+
+```bash
+GET /debug/endpoints/{endpointId}/requests/{requestId}
+```
+
+### Replay Request
+
+Replay a captured request to a specified URL.
+
+```bash
+POST /debug/endpoints/{endpointId}/requests/{requestId}/replay
+Content-Type: application/json
+
+{
+  "url": "https://your-server.com/webhook"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "status_code": 200,
+  "duration_ms": 150,
+  "response": "{\"received\": true}"
+}
+```
+
+### Stream Requests (SSE)
+
+Stream captured requests in real-time using Server-Sent Events.
+
+```bash
+GET /debug/endpoints/{endpointId}/stream
+Accept: text/event-stream
+```
+
+**Event Format:**
+```
+event: request
+data: {"id":"req123","method":"POST","path":"/webhook",...}
+
+event: request
+data: {"id":"req124","method":"POST","path":"/webhook",...}
+```
+
+### Capture Webhook
+
+Send webhooks to a debug endpoint for capture. Accepts any HTTP method and path.
+
+```bash
+POST /debug/{endpointId}
+POST /debug/{endpointId}/any/path/here
+```
+
+**Response:**
+```json
+{
+  "message": "request captured",
+  "request_id": "req123"
+}
+```

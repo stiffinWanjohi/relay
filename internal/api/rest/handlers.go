@@ -8,21 +8,29 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/stiffinWanjohi/relay/internal/alerting"
 	"github.com/stiffinWanjohi/relay/internal/auth"
 	"github.com/stiffinWanjohi/relay/internal/config"
+	"github.com/stiffinWanjohi/relay/internal/connector"
 	"github.com/stiffinWanjohi/relay/internal/dedup"
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/event"
 	"github.com/stiffinWanjohi/relay/internal/eventtype"
+	"github.com/stiffinWanjohi/relay/internal/metrics"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
 // Handler provides REST API handlers.
 type Handler struct {
-	store          *event.Store
-	eventTypeStore *eventtype.Store
-	queue          *queue.Queue
-	dedup          *dedup.Checker
+	store             *event.Store
+	eventTypeStore    *eventtype.Store
+	queue             *queue.Queue
+	dedup             *dedup.Checker
+	alertEngine       *alerting.Engine
+	alertingStore     *alerting.Store
+	connectorRegistry *connector.Registry
+	connectorStore    *connector.Store
+	metricsStore      *metrics.Store
 }
 
 // NewHandler creates a new REST API handler.
@@ -33,6 +41,36 @@ func NewHandler(store *event.Store, eventTypeStore *eventtype.Store, q *queue.Qu
 		queue:          q,
 		dedup:          d,
 	}
+}
+
+// WithAlertEngine sets the alerting engine for the handler.
+func (h *Handler) WithAlertEngine(engine *alerting.Engine) *Handler {
+	h.alertEngine = engine
+	return h
+}
+
+// WithAlertingStore sets the alerting store for the handler.
+func (h *Handler) WithAlertingStore(store *alerting.Store) *Handler {
+	h.alertingStore = store
+	return h
+}
+
+// WithConnectorRegistry sets the connector registry for the handler.
+func (h *Handler) WithConnectorRegistry(registry *connector.Registry) *Handler {
+	h.connectorRegistry = registry
+	return h
+}
+
+// WithConnectorStore sets the connector store for the handler.
+func (h *Handler) WithConnectorStore(store *connector.Store) *Handler {
+	h.connectorStore = store
+	return h
+}
+
+// WithMetricsStore sets the metrics store for the handler.
+func (h *Handler) WithMetricsStore(store *metrics.Store) *Handler {
+	h.metricsStore = store
+	return h
 }
 
 // Response helpers

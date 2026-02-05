@@ -34,6 +34,34 @@ func (h *Handler) Router() chi.Router {
 
 		// Stats
 		r.Get("/stats", h.GetStats)
+
+		// Alerting
+		r.Route("/alerting", func(r chi.Router) {
+			r.Get("/rules", h.ListAlertRules)
+			r.Post("/rules", h.CreateAlertRule)
+			r.Get("/rules/{ruleId}", h.GetAlertRule)
+			r.Put("/rules/{ruleId}", h.UpdateAlertRule)
+			r.Delete("/rules/{ruleId}", h.DeleteAlertRule)
+			r.Post("/rules/{ruleId}/enable", h.EnableAlertRule)
+			r.Post("/rules/{ruleId}/disable", h.DisableAlertRule)
+			r.Post("/evaluate", h.EvaluateAlertRules)
+			r.Get("/history", h.GetAlertHistory)
+		})
+
+		// Connectors
+		r.Route("/connectors", func(r chi.Router) {
+			r.Get("/", h.ListConnectors)
+			r.Post("/", h.CreateConnector)
+			r.Get("/{name}", h.GetConnector)
+			r.Put("/{name}", h.UpdateConnector)
+			r.Delete("/{name}", h.DeleteConnector)
+		})
+
+		// Metrics
+		r.Route("/metrics", func(r chi.Router) {
+			r.Get("/rate-limits", h.GetRateLimitStats)
+			r.Get("/rate-limits/endpoint/{endpointId}", h.GetRateLimitStatsByEndpoint)
+		})
 	})
 
 	// OpenAPI spec

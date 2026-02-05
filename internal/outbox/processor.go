@@ -335,7 +335,7 @@ func extractJSONPathValue(payload []byte, path string) (string, error) {
 		return "", nil
 	}
 
-	var data interface{}
+	var data any
 	if err := json.Unmarshal(payload, &data); err != nil {
 		return "", err
 	}
@@ -349,7 +349,7 @@ func extractJSONPathValue(payload []byte, path string) (string, error) {
 
 	current := data
 	for _, part := range parts {
-		m, ok := current.(map[string]interface{})
+		m, ok := current.(map[string]any)
 		if !ok {
 			return "", nil
 		}

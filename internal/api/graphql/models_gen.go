@@ -10,6 +10,87 @@ import (
 	"time"
 )
 
+type Alert struct {
+	ID        string    `json:"id"`
+	RuleID    string    `json:"ruleId"`
+	RuleName  string    `json:"ruleName"`
+	Metric    string    `json:"metric"`
+	Value     float64   `json:"value"`
+	Threshold float64   `json:"threshold"`
+	Message   string    `json:"message"`
+	FiredAt   time.Time `json:"firedAt"`
+}
+
+type AlertAction struct {
+	Type       AlertActionType `json:"type"`
+	WebhookURL *string         `json:"webhookUrl,omitempty"`
+	Channel    *string         `json:"channel,omitempty"`
+	To         []string        `json:"to,omitempty"`
+	Subject    *string         `json:"subject,omitempty"`
+	RoutingKey *string         `json:"routingKey,omitempty"`
+	Severity   *string         `json:"severity,omitempty"`
+	Message    *string         `json:"message,omitempty"`
+}
+
+type AlertActionInput struct {
+	Type       AlertActionType `json:"type"`
+	WebhookURL *string         `json:"webhookUrl,omitempty"`
+	Channel    *string         `json:"channel,omitempty"`
+	To         []string        `json:"to,omitempty"`
+	Subject    *string         `json:"subject,omitempty"`
+	RoutingKey *string         `json:"routingKey,omitempty"`
+	Severity   *string         `json:"severity,omitempty"`
+	Message    *string         `json:"message,omitempty"`
+}
+
+type AlertCondition struct {
+	Metric   AlertMetric   `json:"metric"`
+	Operator AlertOperator `json:"operator"`
+	Value    float64       `json:"value"`
+	Window   string        `json:"window"`
+}
+
+type AlertConditionInput struct {
+	Metric   AlertMetric   `json:"metric"`
+	Operator AlertOperator `json:"operator"`
+	Value    float64       `json:"value"`
+	Window   string        `json:"window"`
+}
+
+type AlertRule struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description *string         `json:"description,omitempty"`
+	Enabled     bool            `json:"enabled"`
+	Condition   *AlertCondition `json:"condition"`
+	Action      *AlertAction    `json:"action"`
+	Cooldown    string          `json:"cooldown"`
+	LastFiredAt *time.Time      `json:"lastFiredAt,omitempty"`
+	CreatedAt   time.Time       `json:"createdAt"`
+	UpdatedAt   time.Time       `json:"updatedAt"`
+}
+
+type AnalyticsStats struct {
+	Period       string  `json:"period"`
+	TotalCount   int     `json:"totalCount"`
+	SuccessCount int     `json:"successCount"`
+	FailureCount int     `json:"failureCount"`
+	TimeoutCount int     `json:"timeoutCount"`
+	SuccessRate  float64 `json:"successRate"`
+	FailureRate  float64 `json:"failureRate"`
+	AvgLatencyMs float64 `json:"avgLatencyMs"`
+	P50LatencyMs float64 `json:"p50LatencyMs"`
+	P95LatencyMs float64 `json:"p95LatencyMs"`
+	P99LatencyMs float64 `json:"p99LatencyMs"`
+	MinLatencyMs int     `json:"minLatencyMs"`
+	MaxLatencyMs int     `json:"maxLatencyMs"`
+}
+
+type AnalyticsTimeRange struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+}
+
 type BatchRetryError struct {
 	EventID string `json:"eventId"`
 	Error   string `json:"error"`
@@ -20,6 +101,77 @@ type BatchRetryResult struct {
 	Failed         []BatchRetryError `json:"failed"`
 	TotalRequested int               `json:"totalRequested"`
 	TotalSucceeded int               `json:"totalSucceeded"`
+}
+
+type BreakdownItem struct {
+	Key          string  `json:"key"`
+	Count        int     `json:"count"`
+	SuccessRate  float64 `json:"successRate"`
+	AvgLatencyMs float64 `json:"avgLatencyMs"`
+}
+
+type Connector struct {
+	Name     string             `json:"name"`
+	Type     ConnectorType      `json:"type"`
+	Config   *ConnectorConfig   `json:"config"`
+	Template *ConnectorTemplate `json:"template"`
+}
+
+type ConnectorConfig struct {
+	WebhookURL *string  `json:"webhookUrl,omitempty"`
+	Channel    *string  `json:"channel,omitempty"`
+	Username   *string  `json:"username,omitempty"`
+	IconEmoji  *string  `json:"iconEmoji,omitempty"`
+	IconURL    *string  `json:"iconUrl,omitempty"`
+	SMTPHost   *string  `json:"smtpHost,omitempty"`
+	SMTPPort   *int     `json:"smtpPort,omitempty"`
+	FromEmail  *string  `json:"fromEmail,omitempty"`
+	ToEmails   []string `json:"toEmails,omitempty"`
+}
+
+type ConnectorConfigInput struct {
+	WebhookURL   *string  `json:"webhookUrl,omitempty"`
+	Channel      *string  `json:"channel,omitempty"`
+	Username     *string  `json:"username,omitempty"`
+	IconEmoji    *string  `json:"iconEmoji,omitempty"`
+	IconURL      *string  `json:"iconUrl,omitempty"`
+	SMTPHost     *string  `json:"smtpHost,omitempty"`
+	SMTPPort     *int     `json:"smtpPort,omitempty"`
+	SMTPUsername *string  `json:"smtpUsername,omitempty"`
+	SMTPPassword *string  `json:"smtpPassword,omitempty"`
+	FromEmail    *string  `json:"fromEmail,omitempty"`
+	ToEmails     []string `json:"toEmails,omitempty"`
+}
+
+type ConnectorTemplate struct {
+	Text    *string `json:"text,omitempty"`
+	Title   *string `json:"title,omitempty"`
+	Body    *string `json:"body,omitempty"`
+	Color   *string `json:"color,omitempty"`
+	Subject *string `json:"subject,omitempty"`
+}
+
+type ConnectorTemplateInput struct {
+	Text    *string `json:"text,omitempty"`
+	Title   *string `json:"title,omitempty"`
+	Body    *string `json:"body,omitempty"`
+	Color   *string `json:"color,omitempty"`
+	Subject *string `json:"subject,omitempty"`
+}
+
+type CreateAlertRuleInput struct {
+	Name        string               `json:"name"`
+	Description *string              `json:"description,omitempty"`
+	Condition   *AlertConditionInput `json:"condition"`
+	Action      *AlertActionInput    `json:"action"`
+	Cooldown    *string              `json:"cooldown,omitempty"`
+}
+
+type CreateConnectorInput struct {
+	Name     string                  `json:"name"`
+	Type     ConnectorType           `json:"type"`
+	Config   *ConnectorConfigInput   `json:"config"`
+	Template *ConnectorTemplateInput `json:"template,omitempty"`
 }
 
 type CreateEndpointInput struct {
@@ -203,6 +355,12 @@ type FIFORecoveryResult struct {
 	MessagesRecovered int `json:"messagesRecovered"`
 }
 
+type LatencyPercentiles struct {
+	P50 float64 `json:"p50"`
+	P95 float64 `json:"p95"`
+	P99 float64 `json:"p99"`
+}
+
 type Mutation struct {
 }
 
@@ -248,6 +406,11 @@ type TestTransformationInput struct {
 	Webhook *WebhookInput `json:"webhook"`
 }
 
+type TimeSeriesPoint struct {
+	Timestamp time.Time `json:"timestamp"`
+	Value     float64   `json:"value"`
+}
+
 type TransformationResult struct {
 	Method  string         `json:"method"`
 	URL     string         `json:"url"`
@@ -261,6 +424,20 @@ type TransformationTestResult struct {
 	Result      *TransformationResult `json:"result,omitempty"`
 	Error       *string               `json:"error,omitempty"`
 	ExecutionMs int                   `json:"executionMs"`
+}
+
+type UpdateAlertRuleInput struct {
+	Name        *string              `json:"name,omitempty"`
+	Description *string              `json:"description,omitempty"`
+	Enabled     *bool                `json:"enabled,omitempty"`
+	Condition   *AlertConditionInput `json:"condition,omitempty"`
+	Action      *AlertActionInput    `json:"action,omitempty"`
+	Cooldown    *string              `json:"cooldown,omitempty"`
+}
+
+type UpdateConnectorInput struct {
+	Config   *ConnectorConfigInput   `json:"config,omitempty"`
+	Template *ConnectorTemplateInput `json:"template,omitempty"`
 }
 
 type UpdateEndpointInput struct {
@@ -294,6 +471,252 @@ type WebhookInput struct {
 	URL     string         `json:"url"`
 	Headers map[string]any `json:"headers,omitempty"`
 	Payload map[string]any `json:"payload"`
+}
+
+type AlertActionType string
+
+const (
+	AlertActionTypeSLACk     AlertActionType = "SLACK"
+	AlertActionTypeEmail     AlertActionType = "EMAIL"
+	AlertActionTypeWebhook   AlertActionType = "WEBHOOK"
+	AlertActionTypePagerduty AlertActionType = "PAGERDUTY"
+)
+
+var AllAlertActionType = []AlertActionType{
+	AlertActionTypeSLACk,
+	AlertActionTypeEmail,
+	AlertActionTypeWebhook,
+	AlertActionTypePagerduty,
+}
+
+func (e AlertActionType) IsValid() bool {
+	switch e {
+	case AlertActionTypeSLACk, AlertActionTypeEmail, AlertActionTypeWebhook, AlertActionTypePagerduty:
+		return true
+	}
+	return false
+}
+
+func (e AlertActionType) String() string {
+	return string(e)
+}
+
+func (e *AlertActionType) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = AlertActionType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid AlertActionType", str)
+	}
+	return nil
+}
+
+func (e AlertActionType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *AlertActionType) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e AlertActionType) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type AlertMetric string
+
+const (
+	AlertMetricFailureRate   AlertMetric = "FAILURE_RATE"
+	AlertMetricSuccessRate   AlertMetric = "SUCCESS_RATE"
+	AlertMetricLatency       AlertMetric = "LATENCY"
+	AlertMetricQueueDepth    AlertMetric = "QUEUE_DEPTH"
+	AlertMetricErrorCount    AlertMetric = "ERROR_COUNT"
+	AlertMetricDeliveryCount AlertMetric = "DELIVERY_COUNT"
+)
+
+var AllAlertMetric = []AlertMetric{
+	AlertMetricFailureRate,
+	AlertMetricSuccessRate,
+	AlertMetricLatency,
+	AlertMetricQueueDepth,
+	AlertMetricErrorCount,
+	AlertMetricDeliveryCount,
+}
+
+func (e AlertMetric) IsValid() bool {
+	switch e {
+	case AlertMetricFailureRate, AlertMetricSuccessRate, AlertMetricLatency, AlertMetricQueueDepth, AlertMetricErrorCount, AlertMetricDeliveryCount:
+		return true
+	}
+	return false
+}
+
+func (e AlertMetric) String() string {
+	return string(e)
+}
+
+func (e *AlertMetric) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = AlertMetric(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid AlertMetric", str)
+	}
+	return nil
+}
+
+func (e AlertMetric) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *AlertMetric) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e AlertMetric) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type AlertOperator string
+
+const (
+	AlertOperatorGt  AlertOperator = "GT"
+	AlertOperatorGte AlertOperator = "GTE"
+	AlertOperatorLt  AlertOperator = "LT"
+	AlertOperatorLte AlertOperator = "LTE"
+	AlertOperatorEq  AlertOperator = "EQ"
+	AlertOperatorNe  AlertOperator = "NE"
+)
+
+var AllAlertOperator = []AlertOperator{
+	AlertOperatorGt,
+	AlertOperatorGte,
+	AlertOperatorLt,
+	AlertOperatorLte,
+	AlertOperatorEq,
+	AlertOperatorNe,
+}
+
+func (e AlertOperator) IsValid() bool {
+	switch e {
+	case AlertOperatorGt, AlertOperatorGte, AlertOperatorLt, AlertOperatorLte, AlertOperatorEq, AlertOperatorNe:
+		return true
+	}
+	return false
+}
+
+func (e AlertOperator) String() string {
+	return string(e)
+}
+
+func (e *AlertOperator) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = AlertOperator(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid AlertOperator", str)
+	}
+	return nil
+}
+
+func (e AlertOperator) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *AlertOperator) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e AlertOperator) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type ConnectorType string
+
+const (
+	ConnectorTypeSLACk   ConnectorType = "SLACK"
+	ConnectorTypeDiscord ConnectorType = "DISCORD"
+	ConnectorTypeTeams   ConnectorType = "TEAMS"
+	ConnectorTypeEmail   ConnectorType = "EMAIL"
+	ConnectorTypeWebhook ConnectorType = "WEBHOOK"
+)
+
+var AllConnectorType = []ConnectorType{
+	ConnectorTypeSLACk,
+	ConnectorTypeDiscord,
+	ConnectorTypeTeams,
+	ConnectorTypeEmail,
+	ConnectorTypeWebhook,
+}
+
+func (e ConnectorType) IsValid() bool {
+	switch e {
+	case ConnectorTypeSLACk, ConnectorTypeDiscord, ConnectorTypeTeams, ConnectorTypeEmail, ConnectorTypeWebhook:
+		return true
+	}
+	return false
+}
+
+func (e ConnectorType) String() string {
+	return string(e)
+}
+
+func (e *ConnectorType) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ConnectorType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ConnectorType", str)
+	}
+	return nil
+}
+
+func (e ConnectorType) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ConnectorType) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ConnectorType) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }
 
 type EndpointStatus string
@@ -409,6 +832,65 @@ func (e *EventStatus) UnmarshalJSON(b []byte) error {
 }
 
 func (e EventStatus) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type TimeGranularity string
+
+const (
+	TimeGranularityMinute TimeGranularity = "MINUTE"
+	TimeGranularityHour   TimeGranularity = "HOUR"
+	TimeGranularityDay    TimeGranularity = "DAY"
+	TimeGranularityWeek   TimeGranularity = "WEEK"
+)
+
+var AllTimeGranularity = []TimeGranularity{
+	TimeGranularityMinute,
+	TimeGranularityHour,
+	TimeGranularityDay,
+	TimeGranularityWeek,
+}
+
+func (e TimeGranularity) IsValid() bool {
+	switch e {
+	case TimeGranularityMinute, TimeGranularityHour, TimeGranularityDay, TimeGranularityWeek:
+		return true
+	}
+	return false
+}
+
+func (e TimeGranularity) String() string {
+	return string(e)
+}
+
+func (e *TimeGranularity) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = TimeGranularity(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid TimeGranularity", str)
+	}
+	return nil
+}
+
+func (e TimeGranularity) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *TimeGranularity) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e TimeGranularity) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

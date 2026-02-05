@@ -719,7 +719,7 @@ func TestGojaExecutor_HelperFunctions_JSON(t *testing.T) {
 	}
 
 	// Verify stringified JSON is valid
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(result.Headers["X-Stringified"]), &parsed); err != nil {
 		t.Errorf("expected valid JSON in X-Stringified, got %s: %v", result.Headers["X-Stringified"], err)
 	}

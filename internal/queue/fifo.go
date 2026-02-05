@@ -206,7 +206,7 @@ func (q *Queue) DequeueFIFO(ctx context.Context, endpointID string, partitionKey
 	}
 
 	// Parse result: [message_data, error_code]
-	resultSlice, ok := result.([]interface{})
+	resultSlice, ok := result.([]any)
 	if !ok || len(resultSlice) != 2 {
 		return nil, domain.ErrQueueEmpty
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/logging"
+	"github.com/stiffinWanjohi/relay/internal/logstream"
 	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 )
@@ -86,15 +87,16 @@ type circuit struct {
 
 // CircuitBreaker manages circuit breakers per destination.
 type CircuitBreaker struct {
-	config        CircuitConfig
-	circuits      map[string]*circuit
-	mu            sync.Mutex // Use single Mutex to avoid race condition between RLock and Lock
-	ttl           time.Duration
-	cleanupStop   chan struct{}
-	metrics       *observability.Metrics
-	notifier      *notification.Service
-	notifyTrip    bool
-	notifyRecover bool
+	config         CircuitConfig
+	circuits       map[string]*circuit
+	mu             sync.Mutex // Use single Mutex to avoid race condition between RLock and Lock
+	ttl            time.Duration
+	cleanupStop    chan struct{}
+	metrics        *observability.Metrics
+	notifier       *notification.Service
+	notifyTrip     bool
+	notifyRecover  bool
+	deliveryLogger *logstream.DeliveryLogger
 }
 
 const (
@@ -127,6 +129,12 @@ func (cb *CircuitBreaker) WithNotifier(notifier *notification.Service, notifyTri
 	cb.notifier = notifier
 	cb.notifyTrip = notifyTrip
 	cb.notifyRecover = notifyRecover
+	return cb
+}
+
+// WithDeliveryLogger sets a delivery logger for the circuit breaker.
+func (cb *CircuitBreaker) WithDeliveryLogger(logger *logstream.DeliveryLogger) *CircuitBreaker {
+	cb.deliveryLogger = logger
 	return cb
 }
 
@@ -250,6 +258,11 @@ func (cb *CircuitBreaker) RecordSuccess(destination string) {
 		if cb.notifier != nil && cb.notifyRecover && previousState == CircuitHalfOpen && newState == CircuitClosed {
 			cb.notifier.NotifyCircuitRecover(context.Background(), "", destination)
 		}
+
+		// Log to delivery stream
+		if cb.deliveryLogger != nil && previousState == CircuitHalfOpen && newState == CircuitClosed {
+			cb.deliveryLogger.LogCircuitRecovered(context.Background(), "", destination, "")
+		}
 	}
 }
 
@@ -308,6 +321,11 @@ func (cb *CircuitBreaker) RecordFailure(destination string) {
 		// Send trip notification
 		if cb.notifier != nil && cb.notifyTrip {
 			cb.notifier.NotifyCircuitTrip(context.Background(), "", destination, failures)
+		}
+
+		// Log to delivery stream
+		if cb.deliveryLogger != nil {
+			cb.deliveryLogger.LogCircuitTripped(context.Background(), "", destination, "", failures)
 		}
 	}
 }

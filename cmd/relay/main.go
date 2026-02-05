@@ -35,6 +35,10 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+	case "debug":
+		runDebug()
+	case "logs":
+		runLogs()
 	case "version", "-v", "--version":
 		fmt.Printf("relay version %s\n", version)
 	case "help", "-h", "--help":
@@ -82,6 +86,18 @@ Commands:
                   create      Create a new API key
                   list        List API keys for a client
                   revoke      Revoke an API key
+
+  debug           Start a webhook debugger session
+                  --endpoint  Use existing endpoint ID
+                  --list      List captured requests and exit
+
+  logs            Stream delivery logs in real-time
+                  -f, --follow  Follow log output (required)
+                  --event-type  Filter by event type (comma-separated)
+                  --endpoint    Filter by endpoint ID (comma-separated)
+                  --status      Filter by status (queued,delivering,delivered,failed,dead)
+                  --level       Minimum log level (debug, info, warn, error)
+                  --json        Output as JSON
 
   version         Show version
   help            Show this help

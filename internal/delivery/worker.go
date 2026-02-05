@@ -12,6 +12,8 @@ import (
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/event"
 	"github.com/stiffinWanjohi/relay/internal/logging"
+	"github.com/stiffinWanjohi/relay/internal/logstream"
+	"github.com/stiffinWanjohi/relay/internal/metrics"
 	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 	"github.com/stiffinWanjohi/relay/internal/queue"
@@ -39,6 +41,8 @@ type Worker struct {
 	rateLimiter         *RateLimiter
 	transformer         domain.TransformationExecutor
 	metrics             *observability.Metrics
+	metricsStore        *metrics.Store
+	deliveryLogger      *logstream.DeliveryLogger
 	stopCh              chan struct{}
 	wg                  sync.WaitGroup
 	concurrency         int
@@ -53,6 +57,8 @@ type WorkerConfig struct {
 	SigningKey          string
 	CircuitConfig       CircuitConfig
 	Metrics             *observability.Metrics
+	MetricsStore        *metrics.Store
+	LogStreamHub        *logstream.Hub
 	RateLimiter         *RateLimiter
 	NotificationService *notification.Service
 	NotifyOnTrip        bool
@@ -72,9 +78,17 @@ func DefaultWorkerConfig() WorkerConfig {
 
 // NewWorker creates a new delivery worker.
 func NewWorker(q *queue.Queue, store *event.Store, config WorkerConfig) *Worker {
+	var deliveryLogger *logstream.DeliveryLogger
+	if config.LogStreamHub != nil {
+		deliveryLogger = logstream.NewDeliveryLogger(config.LogStreamHub)
+	}
+
 	circuit := NewCircuitBreaker(config.CircuitConfig)
 	if config.NotificationService != nil {
 		circuit.WithNotifier(config.NotificationService, config.NotifyOnTrip, config.NotifyOnRecover)
+	}
+	if deliveryLogger != nil {
+		circuit.WithDeliveryLogger(deliveryLogger)
 	}
 
 	return &Worker{
@@ -86,6 +100,8 @@ func NewWorker(q *queue.Queue, store *event.Store, config WorkerConfig) *Worker 
 		rateLimiter:         config.RateLimiter,
 		transformer:         transform.NewDefaultV8Executor(),
 		metrics:             config.Metrics,
+		metricsStore:        config.MetricsStore,
+		deliveryLogger:      deliveryLogger,
 		stopCh:              make(chan struct{}),
 		concurrency:         config.Concurrency,
 		visibilityTime:      config.VisibilityTime,
@@ -216,6 +232,16 @@ func (w *Worker) processOne(ctx context.Context, logger *slog.Logger) error {
 	if w.rateLimiter != nil && endpoint != nil && endpoint.RateLimitPerSec > 0 {
 		if !w.rateLimiter.Allow(ctx, endpoint.ID.String(), endpoint.RateLimitPerSec) {
 			logger.Debug("rate limited, delaying", "limit", endpoint.RateLimitPerSec)
+
+			// Record rate limit metric
+			if w.metricsStore != nil {
+				_ = w.metricsStore.RecordRateLimit(ctx, metrics.RateLimitEvent{
+					EndpointID: endpoint.ID.String(),
+					EventID:    evt.ID.String(),
+					Limit:      endpoint.RateLimitPerSec,
+				})
+			}
+
 			// Short delay for rate limiting - try again soon
 			return w.queue.Nack(ctx, msg, 100*time.Millisecond)
 		}
@@ -275,15 +301,18 @@ func (w *Worker) processOne(ctx context.Context, logger *slog.Logger) error {
 		logger.Error("failed to create delivery attempt", "error", err)
 	}
 
+	// Record delivery metrics
+	w.recordDeliveryMetrics(ctx, evt, endpoint, result)
+
 	// Handle result with endpoint config for retry decisions
 	deliveryDuration := time.Duration(result.DurationMs) * time.Millisecond
 	if result.Success {
-		return w.handleSuccess(ctx, msg, evt, circuitKey, deliveryDuration, logger)
+		return w.handleSuccess(ctx, msg, evt, endpoint, circuitKey, deliveryDuration, result.StatusCode, logger)
 	}
 	return w.handleFailure(ctx, msg, evt, endpoint, circuitKey, result, logger)
 }
 
-func (w *Worker) handleSuccess(ctx context.Context, msg *queue.Message, evt domain.Event, circuitKey string, duration time.Duration, logger *slog.Logger) error {
+func (w *Worker) handleSuccess(ctx context.Context, msg *queue.Message, evt domain.Event, endpoint *domain.Endpoint, circuitKey string, duration time.Duration, statusCode int, logger *slog.Logger) error {
 	logger.Info("delivery successful", "attempts", evt.Attempts)
 
 	// Mark as delivered
@@ -299,6 +328,15 @@ func (w *Worker) handleSuccess(ctx context.Context, msg *queue.Message, evt doma
 	if w.metrics != nil {
 		destHost := extractHost(evt.Destination)
 		w.metrics.EventDelivered(ctx, evt.ClientID, destHost, duration)
+	}
+
+	// Stream log entry
+	if w.deliveryLogger != nil {
+		endpointID := ""
+		if endpoint != nil {
+			endpointID = endpoint.ID.String()
+		}
+		w.deliveryLogger.LogDeliverySuccess(ctx, evt.ID.String(), evt.EventType, endpointID, evt.Destination, evt.ClientID, statusCode, duration.Milliseconds(), evt.Attempts, evt.MaxAttempts)
 	}
 
 	// Ack the message
@@ -323,6 +361,19 @@ func (w *Worker) handleFailure(ctx context.Context, msg *queue.Message, evt doma
 
 	// Check if we should retry using endpoint-specific configuration
 	shouldRetry := evt.ShouldRetry() && w.retry.ShouldRetryForEndpoint(evt.Attempts, endpoint)
+
+	// Stream log entry
+	if w.deliveryLogger != nil {
+		endpointID := ""
+		if endpoint != nil {
+			endpointID = endpoint.ID.String()
+		}
+		errMsg := ""
+		if result.Error != nil {
+			errMsg = result.Error.Error()
+		}
+		w.deliveryLogger.LogDeliveryFailure(ctx, evt.ID.String(), evt.EventType, endpointID, evt.Destination, evt.ClientID, result.StatusCode, result.DurationMs, errMsg, evt.Attempts, evt.MaxAttempts, shouldRetry)
+	}
 
 	if shouldRetry {
 		// Calculate delay using endpoint-specific backoff
@@ -456,4 +507,53 @@ func containsAt(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// recordDeliveryMetrics records delivery metrics to the metrics store.
+func (w *Worker) recordDeliveryMetrics(_ context.Context, evt domain.Event, endpoint *domain.Endpoint, result domain.DeliveryResult) {
+	if w.metricsStore == nil {
+		return
+	}
+
+	// Determine outcome
+	var outcome metrics.DeliveryOutcome
+	if result.Success {
+		outcome = metrics.OutcomeSuccess
+	} else if result.Error != nil && contains(result.Error.Error(), "timeout") {
+		outcome = metrics.OutcomeTimeout
+	} else {
+		outcome = metrics.OutcomeFailure
+	}
+
+	// Build record
+	record := metrics.DeliveryRecord{
+		EventID:    evt.ID.String(),
+		Outcome:    outcome,
+		StatusCode: result.StatusCode,
+		LatencyMs:  result.DurationMs,
+		AttemptNum: evt.Attempts,
+		ClientID:   evt.ClientID,
+	}
+
+	// Add endpoint ID if available
+	if endpoint != nil {
+		record.EndpointID = endpoint.ID.String()
+	}
+
+	// Add event type if available
+	if evt.EventType != "" {
+		record.EventType = evt.EventType
+	}
+
+	// Add error message if present
+	if result.Error != nil {
+		record.Error = result.Error.Error()
+	}
+
+	// Record the delivery (fire and forget - don't block on metrics)
+	go func() {
+		if err := w.metricsStore.RecordDelivery(context.Background(), record); err != nil {
+			workerLog.Warn("failed to record delivery metrics", "error", err)
+		}
+	}()
 }

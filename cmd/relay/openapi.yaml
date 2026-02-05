@@ -35,6 +35,14 @@ tags:
     description: Webhook endpoint management
   - name: EventTypes
     description: Event type catalog and schema management
+  - name: Alerting
+    description: Alert rules and notifications management
+  - name: Connectors
+    description: Integration connectors for notifications and actions
+  - name: Metrics
+    description: Rate limiting and performance metrics
+  - name: Debug
+    description: Webhook debugger for testing and inspection
   - name: Health
     description: Service health checks
 
@@ -504,6 +512,575 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Alerting Endpoints
+  /api/v1/alerting/rules:
+    get:
+      tags:
+        - Alerting
+      summary: List alert rules
+      description: Returns all configured alert rules
+      operationId: listAlertRules
+      responses:
+        "200":
+          description: List of alert rules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AlertRule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      tags:
+        - Alerting
+      summary: Create an alert rule
+      description: Creates a new alert rule for monitoring webhook delivery
+      operationId: createAlertRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlertRuleRequest"
+      responses:
+        "201":
+          description: Alert rule created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/alerting/rules/{ruleId}:
+    get:
+      tags:
+        - Alerting
+      summary: Get alert rule by ID
+      description: Returns a single alert rule
+      operationId: getAlertRule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        "200":
+          description: Alert rule details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      tags:
+        - Alerting
+      summary: Update an alert rule
+      description: Updates an existing alert rule
+      operationId: updateAlertRule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAlertRuleRequest"
+      responses:
+        "200":
+          description: Alert rule updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags:
+        - Alerting
+      summary: Delete an alert rule
+      description: Deletes an alert rule
+      operationId: deleteAlertRule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        "204":
+          description: Alert rule deleted successfully
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/alerting/rules/{ruleId}/enable:
+    post:
+      tags:
+        - Alerting
+      summary: Enable an alert rule
+      description: Enables a previously disabled alert rule
+      operationId: enableAlertRule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        "200":
+          description: Alert rule enabled successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/alerting/rules/{ruleId}/disable:
+    post:
+      tags:
+        - Alerting
+      summary: Disable an alert rule
+      description: Disables an alert rule without deleting it
+      operationId: disableAlertRule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        "200":
+          description: Alert rule disabled successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/alerting/evaluate:
+    post:
+      tags:
+        - Alerting
+      summary: Evaluate alert rules
+      description: Manually triggers evaluation of all enabled alert rules
+      operationId: evaluateAlertRules
+      responses:
+        "200":
+          description: Evaluation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evaluated:
+                    type: integer
+                    description: Number of rules evaluated
+                  triggered:
+                    type: integer
+                    description: Number of alerts triggered
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/alerting/history:
+    get:
+      tags:
+        - Alerting
+      summary: Get alert history
+      description: Returns the history of triggered alerts
+      operationId: getAlertHistory
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of alerts to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: Alert history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Alert"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # Connector Endpoints
+  /api/v1/connectors:
+    get:
+      tags:
+        - Connectors
+      summary: List connectors
+      description: Returns all registered connectors
+      operationId: listConnectors
+      responses:
+        "200":
+          description: List of connectors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connectors:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Connector"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      tags:
+        - Connectors
+      summary: Create a connector
+      description: Creates a new connector for notifications or integrations
+      operationId: createConnector
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConnectorRequest"
+      responses:
+        "201":
+          description: Connector created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Connector"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Connector with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/connectors/{connectorName}:
+    get:
+      tags:
+        - Connectors
+      summary: Get connector by name
+      description: Returns a single connector by its name
+      operationId: getConnector
+      parameters:
+        - $ref: "#/components/parameters/ConnectorName"
+      responses:
+        "200":
+          description: Connector details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Connector"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      tags:
+        - Connectors
+      summary: Update a connector
+      description: Updates an existing connector configuration
+      operationId: updateConnector
+      parameters:
+        - $ref: "#/components/parameters/ConnectorName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateConnectorRequest"
+      responses:
+        "200":
+          description: Connector updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Connector"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags:
+        - Connectors
+      summary: Delete a connector
+      description: Deletes a connector
+      operationId: deleteConnector
+      parameters:
+        - $ref: "#/components/parameters/ConnectorName"
+      responses:
+        "204":
+          description: Connector deleted successfully
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Metrics Endpoints
+  /api/v1/metrics/rate-limits:
+    get:
+      tags:
+        - Metrics
+      summary: Get rate limit statistics
+      description: Returns aggregated rate limit metrics across all endpoints
+      operationId: getRateLimitStats
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of events to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: Rate limit statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/metrics/rate-limits/endpoint/{endpointId}:
+    get:
+      tags:
+        - Metrics
+      summary: Get rate limit statistics by endpoint
+      description: Returns rate limit metrics for a specific endpoint
+      operationId: getRateLimitStatsByEndpoint
+      parameters:
+        - $ref: "#/components/parameters/EndpointId"
+        - name: limit
+          in: query
+          description: Maximum number of events to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: Endpoint rate limit statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Debug Endpoints
+  /debug/endpoints:
+    post:
+      tags:
+        - Debug
+      summary: Create a debug endpoint
+      description: |
+        Creates a temporary debug endpoint for testing webhooks. The endpoint
+        captures all incoming requests for inspection. Debug endpoints
+        automatically expire after 1 hour.
+      operationId: createDebugEndpoint
+      security: []
+      responses:
+        "201":
+          description: Debug endpoint created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DebugEndpoint"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /debug/endpoints/{debugEndpointId}:
+    get:
+      tags:
+        - Debug
+      summary: Get debug endpoint
+      description: Returns details of a debug endpoint including its capture URL
+      operationId: getDebugEndpoint
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/DebugEndpointId"
+      responses:
+        "200":
+          description: Debug endpoint details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DebugEndpoint"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags:
+        - Debug
+      summary: Delete debug endpoint
+      description: Deletes a debug endpoint and all captured requests
+      operationId: deleteDebugEndpoint
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/DebugEndpointId"
+      responses:
+        "204":
+          description: Debug endpoint deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /debug/endpoints/{debugEndpointId}/requests:
+    get:
+      tags:
+        - Debug
+      summary: List captured requests
+      description: Returns all requests captured by this debug endpoint
+      operationId: listDebugRequests
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/DebugEndpointId"
+      responses:
+        "200":
+          description: List of captured requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CapturedRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /debug/endpoints/{debugEndpointId}/requests/{requestId}:
+    get:
+      tags:
+        - Debug
+      summary: Get captured request
+      description: Returns details of a specific captured request
+      operationId: getDebugRequest
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/DebugEndpointId"
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Captured request details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapturedRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /debug/endpoints/{debugEndpointId}/requests/{requestId}/replay:
+    post:
+      tags:
+        - Debug
+      summary: Replay captured request
+      description: Replays a captured request to a specified destination URL
+      operationId: replayDebugRequest
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/DebugEndpointId"
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplayRequest"
+      responses:
+        "200":
+          description: Replay result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /debug/endpoints/{debugEndpointId}/stream:
+    get:
+      tags:
+        - Debug
+      summary: Stream captured requests (SSE)
+      description: |
+        Opens a Server-Sent Events (SSE) stream to receive captured requests
+        in real-time. Each event contains a captured request in JSON format.
+      operationId: streamDebugRequests
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/DebugEndpointId"
+      responses:
+        "200":
+          description: SSE stream of captured requests
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /debug/{debugEndpointId}/webhook:
+    post:
+      tags:
+        - Debug
+      summary: Capture webhook request
+      description: |
+        Endpoint for capturing incoming webhook requests. Send any webhook
+        payload to this URL to capture it for inspection.
+      operationId: captureWebhook
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/DebugEndpointId"
+      requestBody:
+        description: Any JSON payload
+        content:
+          application/json:
+            schema:
+              type: object
+          "*/*":
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Request captured successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  captured:
+                    type: boolean
+                  request_id:
+                    type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -540,6 +1117,22 @@ components:
         type: string
         format: uuid
 
+    DebugEndpointId:
+      name: debugEndpointId
+      in: path
+      required: true
+      description: Debug endpoint ID
+      schema:
+        type: string
+
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      description: Captured request ID
+      schema:
+        type: string
+
     IdempotencyKey:
       name: X-Idempotency-Key
       in: header
@@ -549,6 +1142,22 @@ components:
         type: string
         minLength: 1
         maxLength: 255
+
+    RuleId:
+      name: ruleId
+      in: path
+      required: true
+      description: Alert rule ID
+      schema:
+        type: string
+
+    ConnectorName:
+      name: connectorName
+      in: path
+      required: true
+      description: Connector name
+      schema:
+        type: string
 
   schemas:
     HealthResponse:
@@ -1156,6 +1765,471 @@ components:
         total:
           type: integer
 
+    DebugEndpoint:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the debug endpoint
+        url:
+          type: string
+          format: uri
+          description: URL to send webhooks to for capture
+        createdAt:
+          type: string
+          format: date-time
+          description: When the debug endpoint was created
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the debug endpoint will automatically expire
+      required:
+        - id
+        - url
+        - createdAt
+        - expiresAt
+
+    CapturedRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the captured request
+        method:
+          type: string
+          description: HTTP method of the captured request
+          example: POST
+        headers:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: HTTP headers from the captured request
+        body:
+          type: string
+          description: Request body (base64 encoded if binary)
+        timestamp:
+          type: string
+          format: date-time
+          description: When the request was captured
+        remoteAddr:
+          type: string
+          description: IP address of the request origin
+      required:
+        - id
+        - method
+        - headers
+        - body
+        - timestamp
+
+    ReplayRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Destination URL to replay the captured request to
+      required:
+        - url
+
+    ReplayResult:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          description: HTTP status code from the replay destination
+        responseBody:
+          type: string
+          description: Response body from the replay destination
+        durationMs:
+          type: integer
+          description: Time taken for the replay request in milliseconds
+      required:
+        - statusCode
+        - durationMs
+
+    # Alerting Schemas
+    AlertRule:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the alert rule
+        name:
+          type: string
+          description: Human-readable name for the rule
+        description:
+          type: string
+          description: Optional description of what the rule monitors
+        enabled:
+          type: boolean
+          description: Whether the rule is actively being evaluated
+        condition:
+          $ref: "#/components/schemas/AlertCondition"
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertAction"
+          description: Actions to take when the alert fires
+        cooldownMinutes:
+          type: integer
+          description: Minimum minutes between repeated alerts for the same rule
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - enabled
+        - condition
+        - actions
+        - createdAt
+        - updatedAt
+
+    AlertCondition:
+      type: object
+      properties:
+        metric:
+          $ref: "#/components/schemas/AlertMetric"
+        operator:
+          $ref: "#/components/schemas/AlertOperator"
+        threshold:
+          type: number
+          description: Value to compare the metric against
+        windowMinutes:
+          type: integer
+          description: Time window in minutes for metric evaluation
+        endpointId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional endpoint ID to scope the metric to
+      required:
+        - metric
+        - operator
+        - threshold
+        - windowMinutes
+
+    AlertMetric:
+      type: string
+      enum:
+        - failure_rate
+        - dead_letter_count
+        - latency_p99
+        - queue_depth
+        - circuit_breaker_trips
+      description: |
+        Metric to monitor:
+        - failure_rate: Percentage of failed deliveries
+        - dead_letter_count: Number of events moved to dead letter queue
+        - latency_p99: 99th percentile delivery latency in milliseconds
+        - queue_depth: Number of events waiting in queue
+        - circuit_breaker_trips: Number of circuit breaker trips
+
+    AlertOperator:
+      type: string
+      enum:
+        - gt
+        - gte
+        - lt
+        - lte
+        - eq
+      description: |
+        Comparison operator:
+        - gt: Greater than
+        - gte: Greater than or equal
+        - lt: Less than
+        - lte: Less than or equal
+        - eq: Equal to
+
+    AlertAction:
+      type: object
+      properties:
+        type:
+          $ref: "#/components/schemas/AlertActionType"
+        config:
+          type: object
+          description: Configuration for the action (varies by type)
+      required:
+        - type
+        - config
+
+    AlertActionType:
+      type: string
+      enum:
+        - slack
+        - email
+        - webhook
+        - pagerduty
+      description: |
+        Type of action to perform:
+        - slack: Send Slack notification
+        - email: Send email notification
+        - webhook: Call a webhook URL
+        - pagerduty: Create PagerDuty incident
+
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the alert instance
+        ruleId:
+          type: string
+          description: ID of the rule that triggered this alert
+        ruleName:
+          type: string
+          description: Name of the rule that triggered this alert
+        metric:
+          $ref: "#/components/schemas/AlertMetric"
+        value:
+          type: number
+          description: Actual metric value that triggered the alert
+        threshold:
+          type: number
+          description: Threshold that was exceeded
+        message:
+          type: string
+          description: Human-readable alert message
+        triggeredAt:
+          type: string
+          format: date-time
+          description: When the alert was triggered
+      required:
+        - id
+        - ruleId
+        - ruleName
+        - metric
+        - value
+        - threshold
+        - message
+        - triggeredAt
+
+    CreateAlertRuleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the rule
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          description: Optional description of what the rule monitors
+        enabled:
+          type: boolean
+          default: true
+        condition:
+          $ref: "#/components/schemas/AlertCondition"
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertAction"
+          minItems: 1
+        cooldownMinutes:
+          type: integer
+          minimum: 1
+          default: 5
+      required:
+        - name
+        - condition
+        - actions
+
+    UpdateAlertRuleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the rule
+        description:
+          type: string
+          description: Optional description of what the rule monitors
+        enabled:
+          type: boolean
+        condition:
+          $ref: "#/components/schemas/AlertCondition"
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertAction"
+        cooldownMinutes:
+          type: integer
+          minimum: 1
+
+    # Connector Schemas
+    Connector:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Unique name for the connector
+        type:
+          $ref: "#/components/schemas/ConnectorType"
+        enabled:
+          type: boolean
+          description: Whether the connector is active
+        config:
+          $ref: "#/components/schemas/ConnectorConfig"
+        templates:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ConnectorTemplate"
+          description: Message templates keyed by notification type
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - name
+        - type
+        - enabled
+        - config
+        - createdAt
+        - updatedAt
+
+    ConnectorType:
+      type: string
+      enum:
+        - slack
+        - email
+        - webhook
+        - pagerduty
+      description: Type of integration connector
+
+    ConnectorConfig:
+      type: object
+      properties:
+        webhookUrl:
+          type: string
+          format: uri
+          description: Webhook URL (for slack, webhook types)
+        smtpHost:
+          type: string
+          description: SMTP server host (for email type)
+        smtpPort:
+          type: integer
+          description: SMTP server port (for email type)
+        smtpUser:
+          type: string
+          description: SMTP username (for email type)
+        smtpFrom:
+          type: string
+          format: email
+          description: From address for emails (for email type)
+        apiKey:
+          type: string
+          description: API key (for pagerduty type)
+        routingKey:
+          type: string
+          description: Routing/service key (for pagerduty type)
+
+    ConnectorTemplate:
+      type: object
+      properties:
+        subject:
+          type: string
+          description: Subject line template (for email)
+        body:
+          type: string
+          description: Message body template
+        format:
+          type: string
+          enum:
+            - text
+            - html
+            - markdown
+          description: Format of the message body
+
+    CreateConnectorRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Unique name for the connector
+          minLength: 1
+          maxLength: 255
+        type:
+          $ref: "#/components/schemas/ConnectorType"
+        enabled:
+          type: boolean
+          default: true
+        config:
+          $ref: "#/components/schemas/ConnectorConfig"
+        templates:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ConnectorTemplate"
+      required:
+        - name
+        - type
+        - config
+
+    UpdateConnectorRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        config:
+          $ref: "#/components/schemas/ConnectorConfig"
+        templates:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ConnectorTemplate"
+
+    # Metrics Schemas
+    RateLimitStats:
+      type: object
+      properties:
+        totalEvents:
+          type: integer
+          description: Total number of rate limit events
+        eventsByEndpoint:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Rate limit events grouped by endpoint ID
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/RateLimitEvent"
+          description: Individual rate limit events
+      required:
+        - totalEvents
+        - events
+
+    RateLimitEvent:
+      type: object
+      properties:
+        endpointId:
+          type: string
+          format: uuid
+          description: ID of the rate-limited endpoint
+        eventId:
+          type: string
+          format: uuid
+          description: ID of the event that was rate limited
+        limitPerSecond:
+          type: integer
+          description: The rate limit that was exceeded
+        queueDepth:
+          type: integer
+          description: Queue depth at the time of rate limiting
+        timestamp:
+          type: string
+          format: date-time
+          description: When the rate limit occurred
+      required:
+        - endpointId
+        - eventId
+        - limitPerSecond
+        - timestamp
+
     Error:
       type: object
       properties:
@@ -1208,6 +2282,16 @@ components:
           example:
             error: "URL scheme must be http or https"
             code: "VALIDATION_ERROR"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Internal server error"
+            code: "INTERNAL_ERROR"
 
 security:
   - ApiKeyAuth: []

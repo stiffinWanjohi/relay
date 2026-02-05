@@ -11,10 +11,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/stiffinWanjohi/relay/internal/alerting"
 	"github.com/stiffinWanjohi/relay/internal/auth"
 	"github.com/stiffinWanjohi/relay/internal/config"
+	"github.com/stiffinWanjohi/relay/internal/connector"
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 )
@@ -1075,6 +1078,233 @@ func (r *mutationResolver) CancelScheduledEvent(ctx context.Context, id string) 
 	return domainEventToGQL(evt), nil
 }
 
+// CreateAlertRule is the resolver for the createAlertRule field.
+func (r *mutationResolver) CreateAlertRule(ctx context.Context, input CreateAlertRuleInput) (*AlertRule, error) {
+	if r.AlertEngine == nil {
+		return nil, fmt.Errorf("alerting not configured")
+	}
+
+	condition := alerting.Condition{
+		Metric:   gqlMetricToAlertingMetric(input.Condition.Metric),
+		Operator: gqlOperatorToAlertingOperator(input.Condition.Operator),
+		Value:    input.Condition.Value,
+		Window:   alerting.Duration(parseDurationOrDefault(input.Condition.Window, 5*time.Minute)),
+	}
+
+	action := alerting.Action{
+		Type:   gqlActionTypeToAlertingActionType(input.Action.Type),
+		Config: gqlActionConfigToAlertingConfig(input.Action),
+	}
+	if input.Action.Message != nil {
+		action.Message = *input.Action.Message
+	}
+
+	rule := alerting.NewRule(input.Name, condition, action)
+	if input.Description != nil {
+		rule.Description = *input.Description
+	}
+	if input.Cooldown != nil {
+		rule.Cooldown = alerting.Duration(parseDurationOrDefault(*input.Cooldown, 15*time.Minute))
+	}
+
+	if err := r.AlertEngine.AddRule(rule); err != nil {
+		return nil, err
+	}
+
+	return alertingRuleToGQL(rule), nil
+}
+
+// UpdateAlertRule is the resolver for the updateAlertRule field.
+func (r *mutationResolver) UpdateAlertRule(ctx context.Context, id string, input UpdateAlertRuleInput) (*AlertRule, error) {
+	if r.AlertEngine == nil {
+		return nil, fmt.Errorf("alerting not configured")
+	}
+
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid rule ID: %w", err)
+	}
+
+	rule, err := r.AlertEngine.GetRule(uid)
+	if err != nil {
+		return nil, err
+	}
+
+	if input.Name != nil {
+		rule.Name = *input.Name
+	}
+	if input.Description != nil {
+		rule.Description = *input.Description
+	}
+	if input.Enabled != nil {
+		rule.Enabled = *input.Enabled
+	}
+	if input.Condition != nil {
+		rule.Condition = alerting.Condition{
+			Metric:   gqlMetricToAlertingMetric(input.Condition.Metric),
+			Operator: gqlOperatorToAlertingOperator(input.Condition.Operator),
+			Value:    input.Condition.Value,
+			Window:   alerting.Duration(parseDurationOrDefault(input.Condition.Window, 5*time.Minute)),
+		}
+	}
+	if input.Action != nil {
+		rule.Action = alerting.Action{
+			Type:   gqlActionTypeToAlertingActionType(input.Action.Type),
+			Config: gqlActionConfigToAlertingConfig(input.Action),
+		}
+		if input.Action.Message != nil {
+			rule.Action.Message = *input.Action.Message
+		}
+	}
+	if input.Cooldown != nil {
+		rule.Cooldown = alerting.Duration(parseDurationOrDefault(*input.Cooldown, 15*time.Minute))
+	}
+
+	if err := r.AlertEngine.UpdateRule(rule); err != nil {
+		return nil, err
+	}
+
+	return alertingRuleToGQL(rule), nil
+}
+
+// DeleteAlertRule is the resolver for the deleteAlertRule field.
+func (r *mutationResolver) DeleteAlertRule(ctx context.Context, id string) (bool, error) {
+	if r.AlertEngine == nil {
+		return false, fmt.Errorf("alerting not configured")
+	}
+
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return false, fmt.Errorf("invalid rule ID: %w", err)
+	}
+
+	if err := r.AlertEngine.RemoveRule(uid); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// EnableAlertRule is the resolver for the enableAlertRule field.
+func (r *mutationResolver) EnableAlertRule(ctx context.Context, id string) (*AlertRule, error) {
+	if r.AlertEngine == nil {
+		return nil, fmt.Errorf("alerting not configured")
+	}
+
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid rule ID: %w", err)
+	}
+
+	if err := r.AlertEngine.EnableRule(uid); err != nil {
+		return nil, err
+	}
+
+	rule, err := r.AlertEngine.GetRule(uid)
+	if err != nil {
+		return nil, err
+	}
+
+	return alertingRuleToGQL(rule), nil
+}
+
+// DisableAlertRule is the resolver for the disableAlertRule field.
+func (r *mutationResolver) DisableAlertRule(ctx context.Context, id string) (*AlertRule, error) {
+	if r.AlertEngine == nil {
+		return nil, fmt.Errorf("alerting not configured")
+	}
+
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid rule ID: %w", err)
+	}
+
+	if err := r.AlertEngine.DisableRule(uid); err != nil {
+		return nil, err
+	}
+
+	rule, err := r.AlertEngine.GetRule(uid)
+	if err != nil {
+		return nil, err
+	}
+
+	return alertingRuleToGQL(rule), nil
+}
+
+// EvaluateAlertRules is the resolver for the evaluateAlertRules field.
+func (r *mutationResolver) EvaluateAlertRules(ctx context.Context) (bool, error) {
+	if r.AlertEngine == nil {
+		return false, fmt.Errorf("alerting not configured")
+	}
+
+	r.AlertEngine.EvaluateNow(ctx)
+	return true, nil
+}
+
+// CreateConnector is the resolver for the createConnector field.
+func (r *mutationResolver) CreateConnector(ctx context.Context, input CreateConnectorInput) (*Connector, error) {
+	if r.ConnectorRegistry == nil {
+		return nil, fmt.Errorf("connector registry not configured")
+	}
+
+	c := &connector.Connector{
+		Type:     gqlConnectorTypeToConnector(input.Type),
+		Config:   gqlConnectorConfigToConnector(input.Config),
+		Template: gqlConnectorTemplateToConnector(input.Template),
+	}
+
+	if err := r.ConnectorRegistry.Register(input.Name, c); err != nil {
+		return nil, err
+	}
+
+	return connectorToGQL(input.Name, c), nil
+}
+
+// UpdateConnector is the resolver for the updateConnector field.
+func (r *mutationResolver) UpdateConnector(ctx context.Context, name string, input UpdateConnectorInput) (*Connector, error) {
+	if r.ConnectorRegistry == nil {
+		return nil, fmt.Errorf("connector registry not configured")
+	}
+
+	existing, ok := r.ConnectorRegistry.Get(name)
+	if !ok {
+		return nil, fmt.Errorf("connector not found: %s", name)
+	}
+
+	// Update config if provided
+	if input.Config != nil {
+		existing.Config = gqlConnectorConfigToConnector(input.Config)
+	}
+
+	// Update template if provided
+	if input.Template != nil {
+		existing.Template = gqlConnectorTemplateToConnector(input.Template)
+	}
+
+	// Re-register to validate
+	r.ConnectorRegistry.Delete(name)
+	if err := r.ConnectorRegistry.Register(name, existing); err != nil {
+		return nil, err
+	}
+
+	return connectorToGQL(name, existing), nil
+}
+
+// DeleteConnector is the resolver for the deleteConnector field.
+func (r *mutationResolver) DeleteConnector(ctx context.Context, name string) (bool, error) {
+	if r.ConnectorRegistry == nil {
+		return false, fmt.Errorf("connector registry not configured")
+	}
+
+	_, ok := r.ConnectorRegistry.Get(name)
+	if !ok {
+		return false, fmt.Errorf("connector not found: %s", name)
+	}
+
+	r.ConnectorRegistry.Delete(name)
+	return true, nil
+}
+
 // Event is the resolver for the event field.
 func (r *queryResolver) Event(ctx context.Context, id string) (*Event, error) {
 	uid, err := uuid.Parse(id)
@@ -1465,6 +1695,319 @@ func (r *queryResolver) PriorityQueueStats(ctx context.Context) (*PriorityQueueS
 		Low:     int(stats.Low),
 		Delayed: int(stats.Delayed),
 	}, nil
+}
+
+// AnalyticsStats is the resolver for the analyticsStats field.
+func (r *queryResolver) AnalyticsStats(ctx context.Context, timeRange AnalyticsTimeRange) (*AnalyticsStats, error) {
+	if r.MetricsStore == nil {
+		return nil, fmt.Errorf("metrics store not configured")
+	}
+
+	stats, err := r.MetricsStore.GetStats(ctx, timeRange.Start, timeRange.End)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AnalyticsStats{
+		Period:       stats.Period,
+		TotalCount:   int(stats.TotalCount),
+		SuccessCount: int(stats.SuccessCount),
+		FailureCount: int(stats.FailureCount),
+		TimeoutCount: int(stats.TimeoutCount),
+		SuccessRate:  stats.SuccessRate,
+		FailureRate:  stats.FailureRate,
+		AvgLatencyMs: stats.AvgLatencyMs,
+		P50LatencyMs: stats.P50LatencyMs,
+		P95LatencyMs: stats.P95LatencyMs,
+		P99LatencyMs: stats.P99LatencyMs,
+		MinLatencyMs: int(stats.MinLatencyMs),
+		MaxLatencyMs: int(stats.MaxLatencyMs),
+	}, nil
+}
+
+// SuccessRateTimeSeries is the resolver for the successRateTimeSeries field.
+func (r *queryResolver) SuccessRateTimeSeries(ctx context.Context, timeRange AnalyticsTimeRange, granularity TimeGranularity) ([]TimeSeriesPoint, error) {
+	if r.MetricsStore == nil {
+		return nil, fmt.Errorf("metrics store not configured")
+	}
+
+	duration := granularityToDuration(granularity)
+	points, err := r.MetricsStore.GetSuccessRateTimeSeries(ctx, timeRange.Start, timeRange.End, duration)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]TimeSeriesPoint, len(points))
+	for i, p := range points {
+		result[i] = TimeSeriesPoint{
+			Timestamp: p.Timestamp,
+			Value:     p.Value,
+		}
+	}
+	return result, nil
+}
+
+// LatencyTimeSeries is the resolver for the latencyTimeSeries field.
+func (r *queryResolver) LatencyTimeSeries(ctx context.Context, timeRange AnalyticsTimeRange, granularity TimeGranularity) ([]TimeSeriesPoint, error) {
+	if r.MetricsStore == nil {
+		return nil, fmt.Errorf("metrics store not configured")
+	}
+
+	duration := granularityToDuration(granularity)
+	points, err := r.MetricsStore.GetLatencyTimeSeries(ctx, timeRange.Start, timeRange.End, duration)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]TimeSeriesPoint, len(points))
+	for i, p := range points {
+		result[i] = TimeSeriesPoint{
+			Timestamp: p.Timestamp,
+			Value:     p.Value,
+		}
+	}
+	return result, nil
+}
+
+// DeliveryCountTimeSeries is the resolver for the deliveryCountTimeSeries field.
+func (r *queryResolver) DeliveryCountTimeSeries(ctx context.Context, timeRange AnalyticsTimeRange, granularity TimeGranularity) ([]TimeSeriesPoint, error) {
+	if r.MetricsStore == nil {
+		return nil, fmt.Errorf("metrics store not configured")
+	}
+
+	duration := granularityToDuration(granularity)
+	var points []TimeSeriesPoint
+
+	for t := timeRange.Start; t.Before(timeRange.End); t = t.Add(duration) {
+		periodEnd := t.Add(duration)
+		if periodEnd.After(timeRange.End) {
+			periodEnd = timeRange.End
+		}
+
+		count, err := r.MetricsStore.GetDeliveryCount(ctx, periodEnd.Sub(t))
+		if err != nil {
+			return nil, err
+		}
+
+		points = append(points, TimeSeriesPoint{
+			Timestamp: t,
+			Value:     float64(count),
+		})
+	}
+
+	return points, nil
+}
+
+// BreakdownByEventType is the resolver for the breakdownByEventType field.
+func (r *queryResolver) BreakdownByEventType(ctx context.Context, timeRange AnalyticsTimeRange, limit *int) ([]BreakdownItem, error) {
+	if r.MetricsStore == nil {
+		return nil, fmt.Errorf("metrics store not configured")
+	}
+
+	l := 10 // default limit
+	if limit != nil {
+		l = *limit
+	}
+
+	items, err := r.MetricsStore.GetBreakdownByEventType(ctx, timeRange.Start, timeRange.End, l)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]BreakdownItem, len(items))
+	for i, item := range items {
+		result[i] = BreakdownItem{
+			Key:          item.Key,
+			Count:        int(item.Count),
+			SuccessRate:  item.SuccessRate,
+			AvgLatencyMs: item.AvgLatency,
+		}
+	}
+	return result, nil
+}
+
+// BreakdownByEndpoint is the resolver for the breakdownByEndpoint field.
+func (r *queryResolver) BreakdownByEndpoint(ctx context.Context, timeRange AnalyticsTimeRange, limit *int) ([]BreakdownItem, error) {
+	if r.MetricsStore == nil {
+		return nil, fmt.Errorf("metrics store not configured")
+	}
+
+	l := 10 // default limit
+	if limit != nil {
+		l = *limit
+	}
+
+	items, err := r.MetricsStore.GetBreakdownByEndpoint(ctx, timeRange.Start, timeRange.End, l)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]BreakdownItem, len(items))
+	for i, item := range items {
+		result[i] = BreakdownItem{
+			Key:          item.Key,
+			Count:        int(item.Count),
+			SuccessRate:  item.SuccessRate,
+			AvgLatencyMs: item.AvgLatency,
+		}
+	}
+	return result, nil
+}
+
+// BreakdownByStatus is the resolver for the breakdownByStatus field.
+func (r *queryResolver) BreakdownByStatus(ctx context.Context, timeRange AnalyticsTimeRange) ([]BreakdownItem, error) {
+	if r.MetricsStore == nil {
+		return nil, fmt.Errorf("metrics store not configured")
+	}
+
+	items, err := r.MetricsStore.GetBreakdownByStatus(ctx, timeRange.Start, timeRange.End)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]BreakdownItem, len(items))
+	for i, item := range items {
+		result[i] = BreakdownItem{
+			Key:          item.Key,
+			Count:        int(item.Count),
+			SuccessRate:  item.SuccessRate,
+			AvgLatencyMs: item.AvgLatency,
+		}
+	}
+	return result, nil
+}
+
+// LatencyPercentiles is the resolver for the latencyPercentiles field.
+func (r *queryResolver) LatencyPercentiles(ctx context.Context, timeRange AnalyticsTimeRange) (*LatencyPercentiles, error) {
+	if r.MetricsStore == nil {
+		return nil, fmt.Errorf("metrics store not configured")
+	}
+
+	window := timeRange.End.Sub(timeRange.Start)
+	p50, p95, p99, err := r.MetricsStore.GetLatencyPercentiles(ctx, window)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LatencyPercentiles{
+		P50: p50,
+		P95: p95,
+		P99: p99,
+	}, nil
+}
+
+// EndpointAnalytics is the resolver for the endpointAnalytics field.
+func (r *queryResolver) EndpointAnalytics(ctx context.Context, endpointID string, timeRange AnalyticsTimeRange) (*AnalyticsStats, error) {
+	if r.MetricsStore == nil {
+		return nil, fmt.Errorf("metrics store not configured")
+	}
+
+	records, err := r.MetricsStore.GetDeliveryRecordsByEndpoint(ctx, endpointID, timeRange.Start, timeRange.End, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return computeStatsFromRecords(records, timeRange.Start), nil
+}
+
+// EventTypeAnalytics is the resolver for the eventTypeAnalytics field.
+func (r *queryResolver) EventTypeAnalytics(ctx context.Context, eventType string, timeRange AnalyticsTimeRange) (*AnalyticsStats, error) {
+	if r.MetricsStore == nil {
+		return nil, fmt.Errorf("metrics store not configured")
+	}
+
+	records, err := r.MetricsStore.GetDeliveryRecordsByEventType(ctx, eventType, timeRange.Start, timeRange.End, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return computeStatsFromRecords(records, timeRange.Start), nil
+}
+
+// AlertRule is the resolver for the alertRule field.
+func (r *queryResolver) AlertRule(ctx context.Context, id string) (*AlertRule, error) {
+	if r.AlertEngine == nil {
+		return nil, fmt.Errorf("alerting not configured")
+	}
+
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid rule ID: %w", err)
+	}
+
+	rule, err := r.AlertEngine.GetRule(uid)
+	if err != nil {
+		return nil, err
+	}
+
+	return alertingRuleToGQL(rule), nil
+}
+
+// AlertRules is the resolver for the alertRules field.
+func (r *queryResolver) AlertRules(ctx context.Context) ([]AlertRule, error) {
+	if r.AlertEngine == nil {
+		return nil, fmt.Errorf("alerting not configured")
+	}
+
+	rules := r.AlertEngine.ListRules()
+	result := make([]AlertRule, 0, len(rules))
+	for _, rule := range rules {
+		result = append(result, *alertingRuleToGQL(rule))
+	}
+
+	return result, nil
+}
+
+// AlertHistory is the resolver for the alertHistory field.
+func (r *queryResolver) AlertHistory(ctx context.Context, limit *int) ([]Alert, error) {
+	if r.AlertEngine == nil {
+		return nil, fmt.Errorf("alerting not configured")
+	}
+
+	historyLimit := 100
+	if limit != nil && *limit > 0 {
+		historyLimit = *limit
+	}
+
+	alerts := r.AlertEngine.GetAlertHistory(historyLimit)
+	result := make([]Alert, 0, len(alerts))
+	for _, alert := range alerts {
+		result = append(result, alertingAlertToGQL(alert))
+	}
+
+	return result, nil
+}
+
+// Connector is the resolver for the connector field.
+func (r *queryResolver) Connector(ctx context.Context, name string) (*Connector, error) {
+	if r.ConnectorRegistry == nil {
+		return nil, fmt.Errorf("connector registry not configured")
+	}
+
+	c, ok := r.ConnectorRegistry.Get(name)
+	if !ok {
+		return nil, nil
+	}
+
+	return connectorToGQL(name, c), nil
+}
+
+// Connectors is the resolver for the connectors field.
+func (r *queryResolver) Connectors(ctx context.Context) ([]Connector, error) {
+	if r.ConnectorRegistry == nil {
+		return nil, fmt.Errorf("connector registry not configured")
+	}
+
+	names := r.ConnectorRegistry.List()
+	result := make([]Connector, 0, len(names))
+	for _, name := range names {
+		c, ok := r.ConnectorRegistry.Get(name)
+		if ok {
+			result = append(result, *connectorToGQL(name, c))
+		}
+	}
+
+	return result, nil
 }
 
 // Endpoint returns EndpointResolver implementation.

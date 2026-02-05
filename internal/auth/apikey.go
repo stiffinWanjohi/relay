@@ -90,3 +90,9 @@ func RequireClientID(ctx context.Context) (string, error) {
 	}
 	return clientID, nil
 }
+
+// WithClientID adds a client ID to the context.
+// This is useful for testing and internal use.
+func WithClientID(ctx context.Context, clientID string) context.Context {
+	return context.WithValue(ctx, clientIDKey, clientID)
+}

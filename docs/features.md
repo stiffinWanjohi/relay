@@ -1,5 +1,541 @@
 # Features
 
+## Global Rate Limiting
+
+Protect your system from overload with configurable rate limits at both global and per-client levels.
+
+```bash
+# Set global rate limit (all requests)
+GLOBAL_RATE_LIMIT_RPS=1000
+
+# Set per-client rate limit (requires authentication)
+CLIENT_RATE_LIMIT_RPS=100
+```
+
+**Features:**
+- **Global limit**: Applies to all API requests across all clients
+- **Per-client limit**: Each authenticated client has independent limits
+- **429 response**: Returns `Too Many Requests` with helpful headers
+- **Redis-backed**: Distributed rate limiting across multiple instances
+
+**Response headers on rate limit:**
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 1
+X-RateLimit-Limit: 100
+X-RateLimit-Reset: 1707123456
+Content-Type: application/json
+
+{"error":"rate limit exceeded","retry_after":1}
+```
+
+Rate limits use a sliding window algorithm for accurate enforcement.
+
+---
+
+## Webhook Debugger
+
+Test and debug webhooks with temporary endpoints that capture full request details.
+
+**CLI Usage:**
+```bash
+# Start a debug session (creates temporary endpoint)
+relay debug
+
+# Use an existing endpoint
+relay debug --endpoint abc123def456
+
+# List captured requests
+relay debug --endpoint abc123def456 --list
+```
+
+**API Endpoints:**
+
+```bash
+# Create a debug endpoint
+curl -X POST http://localhost:8080/debug/endpoints
+
+# Response:
+{
+  "id": "abc123def456",
+  "url": "http://localhost:8080/debug/abc123def456",
+  "created_at": "2026-02-05T10:00:00Z",
+  "expires_at": "2026-02-05T11:00:00Z"
+}
+
+# Send webhooks to the debug URL
+curl -X POST http://localhost:8080/debug/abc123def456/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"event": "test"}'
+
+# List captured requests
+curl http://localhost:8080/debug/endpoints/abc123def456/requests
+
+# Stream requests in real-time (SSE)
+curl http://localhost:8080/debug/endpoints/abc123def456/stream
+
+# Replay a captured request
+curl -X POST http://localhost:8080/debug/endpoints/abc123def456/requests/req123/replay \
+  -d '{"url": "https://your-server.com/webhook"}'
+```
+
+**Features:**
+- **Temporary endpoints**: Auto-expire after 1 hour
+- **Full request capture**: Headers, body, timing, remote address
+- **Real-time streaming**: SSE for live updates in CLI or browser
+- **Request replay**: Resend captured requests to any URL
+- **Max 100 requests**: Per endpoint to prevent memory issues
+
+---
+
+## Connectors (Pre-built Integrations)
+
+Pre-built integrations for common destinations with automatic payload transformation.
+
+**Supported Connectors:**
+- **Slack** - Send messages to Slack channels via webhooks
+- **Discord** - Post to Discord channels with embeds
+- **Microsoft Teams** - Message cards for Teams channels
+- **Email** - SMTP-based email notifications
+- **Webhook** - Generic webhook (pass-through)
+
+**Connector Configuration:**
+
+```json
+{
+  "type": "slack",
+  "config": {
+    "webhook_url": "https://hooks.slack.com/services/xxx",
+    "channel": "#alerts",
+    "username": "Relay Bot",
+    "icon_emoji": ":robot_face:"
+  },
+  "template": {
+    "text": "{{.event_type}}: {{.message}}",
+    "title": "New Event",
+    "color": "danger"
+  }
+}
+```
+
+**Template Variables:**
+
+Templates use Go's `text/template` syntax with access to:
+- `{{.event_type}}` - The event type name
+- `{{.payload}}` - The full payload object
+- `{{.field_name}}` - Any top-level field from the payload
+
+**Slack Example:**
+
+```go
+connector.NewSlackConnector("https://hooks.slack.com/xxx",
+    connector.WithChannel("#alerts"),
+    connector.WithUsername("Relay"),
+    connector.WithTemplate(connector.Template{
+        Text:  "{{.event_type}}: {{.message}}",
+        Color: "danger",
+    }),
+)
+```
+
+**Discord Example:**
+
+```go
+connector.NewDiscordConnector("https://discord.com/api/webhooks/xxx",
+    connector.WithUsername("Relay"),
+    connector.WithTemplate(connector.Template{
+        Text:  "{{.message}}",
+        Title: "{{.event_type}}",
+        Color: "blue",
+    }),
+)
+```
+
+**Teams Example:**
+
+```go
+connector.NewTeamsConnector("https://outlook.office.com/webhook/xxx",
+    connector.WithTemplate(connector.Template{
+        Text:  "{{.message}}",
+        Title: "{{.event_type}}",
+        Color: "0076D7",
+    }),
+)
+```
+
+**Email Example:**
+
+```go
+connector.NewEmailConnector("smtp.example.com", 587, "from@example.com", []string{"to@example.com"},
+    connector.WithSMTPAuth("username", "password"),
+    connector.WithTemplate(connector.Template{
+        Subject: "[Alert] {{.event_type}}",
+        Body:    "Event: {{.event_type}}\nMessage: {{.message}}",
+    }),
+)
+```
+
+**Payload Transformation:**
+
+Connectors automatically transform event payloads to the format expected by each service:
+
+| Connector | Output Format |
+|-----------|--------------|
+| Slack | `{"text": "...", "channel": "...", "attachments": [...]}` |
+| Discord | `{"content": "...", "embeds": [...]}` |
+| Teams | `{"@type": "MessageCard", "sections": [...]}` |
+| Email | SMTP message with subject and body |
+
+---
+
+## Custom Alerting Rules
+
+Define custom conditions for triggering alerts beyond basic circuit breaker notifications.
+
+**Creating Alert Rules:**
+
+```go
+import "github.com/stiffinWanjohi/relay/internal/alerting"
+
+// Create a rule for high failure rates
+rule := alerting.NewRule(
+    "High Failure Rate",
+    alerting.Condition{
+        Metric:   alerting.ConditionFailureRate,
+        Operator: alerting.OpGreaterThan,
+        Value:    0.1,  // 10% failure rate
+        Window:   alerting.Duration(5 * time.Minute),
+    },
+    alerting.Action{
+        Type: alerting.ActionSlack,
+        Config: alerting.ActionConfig{
+            WebhookURL: "https://hooks.slack.com/services/xxx",
+            Channel:    "#oncall",
+        },
+        Message: "Failure rate exceeded 10% in the last 5 minutes",
+    },
+)
+
+// Set cooldown to prevent alert storms
+rule.Cooldown = alerting.Duration(15 * time.Minute)
+```
+
+**Supported Condition Metrics:**
+- `failure_rate` - Percentage of failed deliveries (0.0 - 1.0)
+- `latency` - Average delivery latency in milliseconds
+- `queue_depth` - Number of messages in queue
+- `error_count` - Total error count in window
+- `success_rate` - Percentage of successful deliveries
+
+**Supported Operators:**
+- `gt` (greater than), `gte` (greater than or equal)
+- `lt` (less than), `lte` (less than or equal)
+- `eq` (equal), `ne` (not equal)
+
+**Supported Actions:**
+- `slack` - Send to Slack webhook
+- `email` - Send via SMTP
+- `webhook` - POST to any URL
+- `pagerduty` - Create PagerDuty incident
+
+**Using the Alert Engine:**
+
+```go
+// Create engine with metrics provider
+engine := alerting.NewEngine(metricsProvider)
+
+// Add rules
+engine.AddRule(rule)
+
+// Start evaluation loop (checks every minute by default)
+engine.Start(ctx)
+
+// Query alert history
+history := engine.GetAlertHistory(10)  // Last 10 alerts
+for _, alert := range history {
+    fmt.Printf("Alert: %s fired at %v (value: %.2f)\n",
+        alert.RuleName, alert.FiredAt, alert.Value)
+}
+
+// Enable/disable rules
+engine.DisableRule(rule.ID)
+engine.EnableRule(rule.ID)
+
+// Remove rule
+engine.RemoveRule(rule.ID)
+
+// Stop engine
+engine.Stop()
+```
+
+**Alert Rule Example (JSON):**
+
+```json
+{
+  "name": "High Failure Rate",
+  "condition": {
+    "metric": "failure_rate",
+    "operator": "gt",
+    "value": 0.1,
+    "window": "5m"
+  },
+  "action": {
+    "type": "slack",
+    "config": {
+      "webhook_url": "https://hooks.slack.com/services/xxx",
+      "channel": "#oncall"
+    },
+    "message": "Failure rate exceeded 10% in last 5 minutes"
+  },
+  "cooldown": "15m"
+}
+```
+
+**Features:**
+- **Cooldown periods**: Prevent alert storms with configurable cooldowns
+- **Alert history**: Query past alerts with timestamps and values
+- **Enable/disable**: Temporarily disable rules without deleting them
+- **Multiple actions**: Slack, email, webhook, PagerDuty support
+- **Background evaluation**: Automatic periodic checks (default: 1 minute)
+
+---
+
+## Log Streaming
+
+Real-time streaming of delivery logs for monitoring and debugging.
+
+**CLI Usage:**
+
+```bash
+# Stream all logs
+relay logs --follow
+
+# Short form
+relay logs -f
+
+# Filter by event type
+relay logs -f --event-type=order.created,payment.completed
+
+# Filter by endpoint
+relay logs -f --endpoint=abc123,def456
+
+# Filter by status
+relay logs -f --status=failed,dead
+
+# Filter by log level (minimum level)
+relay logs -f --level=warn
+
+# Output as JSON (for piping to jq, etc.)
+relay logs -f --json
+
+# Combine filters
+relay logs -f --event-type=order.* --status=failed --level=error
+```
+
+**HTTP API:**
+
+```bash
+# Stream logs via SSE (Server-Sent Events)
+curl -N http://localhost:8080/logs/stream
+
+# With filters
+curl -N "http://localhost:8080/logs/stream?event_type=order.created&status=failed&level=warn"
+
+# Get streaming stats
+curl http://localhost:8080/logs/stats
+```
+
+**Log Entry Format:**
+
+```json
+{
+  "timestamp": "2026-02-05T14:30:00Z",
+  "level": "info",
+  "event_id": "evt_abc123",
+  "event_type": "order.created",
+  "endpoint_id": "ep_def456",
+  "destination": "https://example.com/webhook",
+  "status": "delivered",
+  "status_code": 200,
+  "duration_ms": 150,
+  "attempt": 1,
+  "max_attempts": 10,
+  "client_id": "client_xyz",
+  "message": "delivery successful"
+}
+```
+
+**Filter Parameters:**
+- `event_type` - Comma-separated list of event types to include
+- `endpoint_id` - Comma-separated list of endpoint IDs to include
+- `status` - Comma-separated list of statuses: `queued`, `delivering`, `delivered`, `failed`, `dead`
+- `client_id` - Comma-separated list of client IDs
+- `level` - Minimum log level: `debug`, `info`, `warn`, `error`
+
+**Log Levels:**
+- `debug` - Detailed information for debugging
+- `info` - Normal operational messages (delivery start, success)
+- `warn` - Warning messages (failures that will retry, circuit trips)
+- `error` - Error messages (max retries exceeded, dead letter)
+
+**Statuses:**
+- `delivering` - Delivery attempt in progress
+- `delivered` - Successfully delivered
+- `failed` - Delivery failed, will retry
+- `dead` - Max retries exceeded, moved to dead letter
+- `circuit_open` - Circuit breaker tripped
+- `circuit_closed` - Circuit breaker recovered
+
+**Features:**
+- **Real-time**: Uses Server-Sent Events (SSE) for instant updates
+- **Filtering**: Filter by event type, endpoint, status, client, and log level
+- **Rate limiting**: Built-in rate limiting to prevent stream overload
+- **Buffering**: Per-subscriber buffer to handle temporary slowdowns
+- **CLI formatting**: Colorized output with smart truncation
+
+---
+
+## Webhook Analytics
+
+Analytics and reporting for webhook delivery performance with time-series data and breakdowns.
+
+**GraphQL Queries:**
+
+```graphql
+# Get overall stats for a time range
+query {
+  analyticsStats(timeRange: { start: "2026-02-01T00:00:00Z", end: "2026-02-05T23:59:59Z" }) {
+    period
+    totalCount
+    successCount
+    failureCount
+    successRate
+    avgLatencyMs
+    p50LatencyMs
+    p95LatencyMs
+    p99LatencyMs
+  }
+}
+
+# Get success rate over time
+query {
+  successRateTimeSeries(
+    timeRange: { start: "2026-02-01T00:00:00Z", end: "2026-02-05T23:59:59Z" }
+    granularity: HOUR
+  ) {
+    timestamp
+    value
+  }
+}
+
+# Get breakdown by event type
+query {
+  breakdownByEventType(
+    timeRange: { start: "2026-02-01T00:00:00Z", end: "2026-02-05T23:59:59Z" }
+    limit: 10
+  ) {
+    key
+    count
+    successRate
+    avgLatencyMs
+  }
+}
+
+# Get breakdown by endpoint
+query {
+  breakdownByEndpoint(
+    timeRange: { start: "2026-02-01T00:00:00Z", end: "2026-02-05T23:59:59Z" }
+    limit: 10
+  ) {
+    key
+    count
+    successRate
+    avgLatencyMs
+  }
+}
+
+# Get breakdown by status code
+query {
+  breakdownByStatusCode(
+    timeRange: { start: "2026-02-01T00:00:00Z", end: "2026-02-05T23:59:59Z" }
+  ) {
+    key
+    count
+    successRate
+    avgLatencyMs
+  }
+}
+
+# Get latency percentiles over time
+query {
+  latencyTimeSeries(
+    timeRange: { start: "2026-02-01T00:00:00Z", end: "2026-02-05T23:59:59Z" }
+    granularity: HOUR
+    percentile: P95
+  ) {
+    timestamp
+    value
+  }
+}
+
+# Get throughput (events per minute/hour/day)
+query {
+  throughputTimeSeries(
+    timeRange: { start: "2026-02-01T00:00:00Z", end: "2026-02-05T23:59:59Z" }
+    granularity: HOUR
+  ) {
+    timestamp
+    value
+  }
+}
+```
+
+**Time Granularities:**
+- `MINUTE` - Per-minute data points
+- `HOUR` - Hourly aggregations  
+- `DAY` - Daily aggregations
+- `WEEK` - Weekly aggregations
+
+**Latency Percentiles:**
+- `P50` - Median latency
+- `P95` - 95th percentile
+- `P99` - 99th percentile
+
+**Metrics Collected:**
+- Delivery success/failure counts
+- Response latencies (stored for percentile calculations)
+- Event types and endpoint destinations
+- HTTP status codes
+
+**Storage:**
+- Redis-backed with sorted sets for time-series data
+- Configurable retention period (default: 7 days)
+- Efficient aggregation using Redis ZRANGEBYSCORE
+
+**Integration with Alerting:**
+
+The metrics store provides data for custom alerting rules:
+
+```go
+// Alerting adapter wraps metrics store
+adapter := metrics.NewAlertingAdapter(metricsStore)
+
+// Use with alerting engine
+engine := alerting.NewEngine(adapter)
+engine.AddRule(alerting.NewRule(
+    "High Failure Rate",
+    alerting.Condition{
+        Metric:   alerting.ConditionFailureRate,
+        Operator: alerting.OpGreaterThan,
+        Value:    0.1,
+        Window:   alerting.Duration(5 * time.Minute),
+    },
+    // ... action config
+))
+```
+
+---
+
 ## Event Type Catalog
 
 Define event types with optional JSONSchema validation. Event types become first-class entities that can be browsed, documented, and validated against.

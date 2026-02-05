@@ -10,13 +10,19 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/stiffinWanjohi/relay/internal/alerting"
 	"github.com/stiffinWanjohi/relay/internal/api/graphql"
 	"github.com/stiffinWanjohi/relay/internal/api/rest"
 	"github.com/stiffinWanjohi/relay/internal/auth"
+	"github.com/stiffinWanjohi/relay/internal/connector"
+	"github.com/stiffinWanjohi/relay/internal/debug"
 	"github.com/stiffinWanjohi/relay/internal/dedup"
+	"github.com/stiffinWanjohi/relay/internal/delivery"
 	"github.com/stiffinWanjohi/relay/internal/event"
 	"github.com/stiffinWanjohi/relay/internal/eventtype"
 	"github.com/stiffinWanjohi/relay/internal/logging"
+	"github.com/stiffinWanjohi/relay/internal/logstream"
+	"github.com/stiffinWanjohi/relay/internal/metrics"
 	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
@@ -26,8 +32,18 @@ var apiLog = logging.Component("api")
 type ServerConfig struct {
 	EnableAuth       bool
 	EnablePlayground bool
-	EnableDocs       bool         // Enable REST API docs (/docs)
-	MetricsHandler   http.Handler // Optional Prometheus metrics handler
+	EnableDocs       bool                  // Enable REST API docs (/docs)
+	MetricsHandler   http.Handler          // Optional Prometheus metrics handler
+	RateLimiter      *delivery.RateLimiter // Optional rate limiter
+	GlobalRateLimit  int                   // Global requests per second (0 = unlimited)
+	ClientRateLimit  int                   // Per-client requests per second (0 = unlimited)
+	DebugService      *debug.Service        // Optional debug service for webhook debugger
+	MetricsStore      *metrics.Store        // Optional metrics store for analytics
+	LogStreamHub      *logstream.Hub        // Optional log streaming hub
+	AlertEngine       *alerting.Engine      // Optional alerting engine
+	AlertingStore     *alerting.Store       // Optional alerting persistence store
+	ConnectorRegistry *connector.Registry   // Optional connector registry
+	ConnectorStore    *connector.Store      // Optional connector persistence store
 }
 
 // Server represents the HTTP server.
@@ -46,8 +62,25 @@ func NewServer(store *event.Store, eventTypeStore *eventtype.Store, q *queue.Que
 	r.Use(middleware.Timeout(60 * time.Second))
 	r.Use(loggingMiddleware())
 
+	// Rate limiting (applied to all routes)
+	if cfg.RateLimiter != nil && (cfg.GlobalRateLimit > 0 || cfg.ClientRateLimit > 0) {
+		r.Use(RateLimitMiddleware(cfg.RateLimiter, RateLimitConfig{
+			GlobalLimit: cfg.GlobalRateLimit,
+			ClientLimit: cfg.ClientRateLimit,
+		}))
+	}
+
 	// Create resolver
 	resolver := graphql.NewResolver(store, eventTypeStore, q, d)
+	if cfg.MetricsStore != nil {
+		resolver = resolver.WithMetricsStore(cfg.MetricsStore)
+	}
+	if cfg.AlertEngine != nil {
+		resolver = resolver.WithAlertEngine(cfg.AlertEngine)
+	}
+	if cfg.ConnectorRegistry != nil {
+		resolver = resolver.WithConnectorRegistry(cfg.ConnectorRegistry)
+	}
 
 	// Create GraphQL server
 	srv := handler.NewDefaultServer(graphql.NewExecutableSchema(graphql.Config{
@@ -81,7 +114,34 @@ func NewServer(store *event.Store, eventTypeStore *eventtype.Store, q *queue.Que
 
 	// REST API and documentation
 	restHandler := rest.NewHandler(store, eventTypeStore, q, d)
+	if cfg.AlertEngine != nil {
+		restHandler = restHandler.WithAlertEngine(cfg.AlertEngine)
+	}
+	if cfg.AlertingStore != nil {
+		restHandler = restHandler.WithAlertingStore(cfg.AlertingStore)
+	}
+	if cfg.ConnectorRegistry != nil {
+		restHandler = restHandler.WithConnectorRegistry(cfg.ConnectorRegistry)
+	}
+	if cfg.ConnectorStore != nil {
+		restHandler = restHandler.WithConnectorStore(cfg.ConnectorStore)
+	}
+	if cfg.MetricsStore != nil {
+		restHandler = restHandler.WithMetricsStore(cfg.MetricsStore)
+	}
 	r.Mount("/", restHandler.Router())
+
+	// Debug endpoints (webhook debugger)
+	if cfg.DebugService != nil {
+		debugHandler := debug.NewHandler(cfg.DebugService)
+		r.Mount("/debug", debugHandler.Router())
+	}
+
+	// Log streaming endpoints
+	if cfg.LogStreamHub != nil {
+		logHandler := logstream.NewHandler(cfg.LogStreamHub)
+		r.Mount("/logs", logHandler.Router())
+	}
 
 	return s
 }

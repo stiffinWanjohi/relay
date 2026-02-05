@@ -45,6 +45,10 @@ type Endpoint struct {
 	// JavaScript code to transform the webhook before delivery
 	Transformation string
 
+	// Connector configuration (optional)
+	// JSON-encoded connector config for pre-built integrations (Slack, Discord, etc.)
+	Connector []byte
+
 	// FIFO (ordered delivery) configuration
 	// When enabled, events are delivered sequentially - one at a time
 	FIFO bool
@@ -133,6 +137,7 @@ func (e Endpoint) Pause() Endpoint {
 		Status:           EndpointStatusPaused,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		Connector:        e.Connector,
 		FIFO:             e.FIFO,
 		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
@@ -163,6 +168,7 @@ func (e Endpoint) Resume() Endpoint {
 		Status:           EndpointStatusActive,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		Connector:        e.Connector,
 		FIFO:             e.FIFO,
 		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
@@ -193,6 +199,7 @@ func (e Endpoint) Disable() Endpoint {
 		Status:           EndpointStatusDisabled,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		Connector:        e.Connector,
 		FIFO:             e.FIFO,
 		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
@@ -223,6 +230,7 @@ func (e Endpoint) WithRetryConfig(maxRetries, backoffMs, backoffMax int, backoff
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		Connector:        e.Connector,
 		FIFO:             e.FIFO,
 		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       maxRetries,
@@ -253,6 +261,7 @@ func (e Endpoint) WithTimeout(timeoutMs int) Endpoint {
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		Connector:        e.Connector,
 		FIFO:             e.FIFO,
 		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
@@ -283,6 +292,7 @@ func (e Endpoint) WithRateLimit(rps int) Endpoint {
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		Connector:        e.Connector,
 		FIFO:             e.FIFO,
 		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
@@ -324,6 +334,7 @@ func (e Endpoint) RotateSecret(newSecret string) Endpoint {
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		Connector:        e.Connector,
 		FIFO:             e.FIFO,
 		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
@@ -355,6 +366,7 @@ func (e Endpoint) ClearPreviousSecret() Endpoint {
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		Connector:        e.Connector,
 		FIFO:             e.FIFO,
 		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
@@ -432,6 +444,7 @@ func (e Endpoint) WithFilter(filter []byte) Endpoint {
 		Status:           e.Status,
 		Filter:           filter,
 		Transformation:   e.Transformation,
+		Connector:        e.Connector,
 		FIFO:             e.FIFO,
 		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
@@ -467,6 +480,7 @@ func (e Endpoint) WithTransformation(transformation string) Endpoint {
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   transformation,
+		Connector:        e.Connector,
 		FIFO:             e.FIFO,
 		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
@@ -507,8 +521,45 @@ func (e Endpoint) WithFIFO(fifo bool, partitionKey string) Endpoint {
 		Status:           e.Status,
 		Filter:           e.Filter,
 		Transformation:   e.Transformation,
+		Connector:        e.Connector,
 		FIFO:             fifo,
 		FIFOPartitionKey: partitionKey,
+		MaxRetries:       e.MaxRetries,
+		RetryBackoffMs:   e.RetryBackoffMs,
+		RetryBackoffMax:  e.RetryBackoffMax,
+		RetryBackoffMult: e.RetryBackoffMult,
+		TimeoutMs:        e.TimeoutMs,
+		RateLimitPerSec:  e.RateLimitPerSec,
+		CircuitThreshold: e.CircuitThreshold,
+		CircuitResetMs:   e.CircuitResetMs,
+		CustomHeaders:    e.CustomHeaders,
+		SigningSecret:    e.SigningSecret,
+		PreviousSecret:   e.PreviousSecret,
+		SecretRotatedAt:  e.SecretRotatedAt,
+		CreatedAt:        e.CreatedAt,
+		UpdatedAt:        time.Now().UTC(),
+	}
+}
+
+// HasConnector returns true if the endpoint has a connector configured.
+func (e Endpoint) HasConnector() bool {
+	return len(e.Connector) > 0
+}
+
+// WithConnector returns a new endpoint with the specified connector.
+func (e Endpoint) WithConnector(connector []byte) Endpoint {
+	return Endpoint{
+		ID:               e.ID,
+		ClientID:         e.ClientID,
+		URL:              e.URL,
+		Description:      e.Description,
+		EventTypes:       e.EventTypes,
+		Status:           e.Status,
+		Filter:           e.Filter,
+		Transformation:   e.Transformation,
+		Connector:        connector,
+		FIFO:             e.FIFO,
+		FIFOPartitionKey: e.FIFOPartitionKey,
 		MaxRetries:       e.MaxRetries,
 		RetryBackoffMs:   e.RetryBackoffMs,
 		RetryBackoffMax:  e.RetryBackoffMax,

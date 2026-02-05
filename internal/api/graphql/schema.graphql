@@ -446,3 +446,354 @@ extend type Mutation {
     # Only works for events that are still in QUEUED status with a future scheduledAt
     cancelScheduledEvent(id: ID!): Event!
 }
+
+# ==========================================
+# Analytics Types
+# ==========================================
+
+# Aggregated statistics for a time period
+type AnalyticsStats {
+    period: String!
+    totalCount: Int!
+    successCount: Int!
+    failureCount: Int!
+    timeoutCount: Int!
+    successRate: Float!
+    failureRate: Float!
+    avgLatencyMs: Float!
+    p50LatencyMs: Float!
+    p95LatencyMs: Float!
+    p99LatencyMs: Float!
+    minLatencyMs: Int!
+    maxLatencyMs: Int!
+}
+
+# A single point in a time series
+type TimeSeriesPoint {
+    timestamp: DateTime!
+    value: Float!
+}
+
+# Breakdown item for analytics by dimension
+type BreakdownItem {
+    key: String!
+    count: Int!
+    successRate: Float!
+    avgLatencyMs: Float!
+}
+
+# Time granularity for analytics queries
+enum TimeGranularity {
+    MINUTE
+    HOUR
+    DAY
+    WEEK
+}
+
+# Analytics input for time range queries
+input AnalyticsTimeRange {
+    start: DateTime!
+    end: DateTime!
+}
+
+# Extend Query with analytics
+extend type Query {
+    # Get aggregated delivery statistics for a time range
+    analyticsStats(timeRange: AnalyticsTimeRange!): AnalyticsStats!
+    
+    # Get success rate time series with specified granularity
+    successRateTimeSeries(
+        timeRange: AnalyticsTimeRange!
+        granularity: TimeGranularity!
+    ): [TimeSeriesPoint!]!
+    
+    # Get latency time series (average) with specified granularity
+    latencyTimeSeries(
+        timeRange: AnalyticsTimeRange!
+        granularity: TimeGranularity!
+    ): [TimeSeriesPoint!]!
+    
+    # Get delivery count time series with specified granularity
+    deliveryCountTimeSeries(
+        timeRange: AnalyticsTimeRange!
+        granularity: TimeGranularity!
+    ): [TimeSeriesPoint!]!
+    
+    # Get breakdown by event type
+    breakdownByEventType(
+        timeRange: AnalyticsTimeRange!
+        limit: Int
+    ): [BreakdownItem!]!
+    
+    # Get breakdown by endpoint
+    breakdownByEndpoint(
+        timeRange: AnalyticsTimeRange!
+        limit: Int
+    ): [BreakdownItem!]!
+    
+    # Get breakdown by status (success/failure/timeout)
+    breakdownByStatus(timeRange: AnalyticsTimeRange!): [BreakdownItem!]!
+    
+    # Get latency percentiles for a time range
+    latencyPercentiles(timeRange: AnalyticsTimeRange!): LatencyPercentiles!
+    
+    # Get analytics for a specific endpoint
+    endpointAnalytics(
+        endpointId: ID!
+        timeRange: AnalyticsTimeRange!
+    ): AnalyticsStats!
+    
+    # Get analytics for a specific event type
+    eventTypeAnalytics(
+        eventType: String!
+        timeRange: AnalyticsTimeRange!
+    ): AnalyticsStats!
+}
+
+# Latency percentiles
+type LatencyPercentiles {
+    p50: Float!
+    p95: Float!
+    p99: Float!
+}
+
+# ==========================================
+# Alerting Types
+# ==========================================
+
+# Alert rule for monitoring webhook delivery
+type AlertRule {
+    id: ID!
+    name: String!
+    description: String
+    enabled: Boolean!
+    condition: AlertCondition!
+    action: AlertAction!
+    cooldown: String!
+    lastFiredAt: DateTime
+    createdAt: DateTime!
+    updatedAt: DateTime!
+}
+
+# Condition that triggers an alert
+type AlertCondition {
+    metric: AlertMetric!
+    operator: AlertOperator!
+    value: Float!
+    window: String!
+}
+
+# Action to take when alert fires
+type AlertAction {
+    type: AlertActionType!
+    webhookUrl: String
+    channel: String
+    to: [String!]
+    subject: String
+    routingKey: String
+    severity: String
+    message: String
+}
+
+# Alert that has been fired
+type Alert {
+    id: ID!
+    ruleId: ID!
+    ruleName: String!
+    metric: String!
+    value: Float!
+    threshold: Float!
+    message: String!
+    firedAt: DateTime!
+}
+
+# Metrics that can trigger alerts
+enum AlertMetric {
+    FAILURE_RATE
+    SUCCESS_RATE
+    LATENCY
+    QUEUE_DEPTH
+    ERROR_COUNT
+    DELIVERY_COUNT
+}
+
+# Comparison operators for alert conditions
+enum AlertOperator {
+    GT
+    GTE
+    LT
+    LTE
+    EQ
+    NE
+}
+
+# Types of alert actions
+enum AlertActionType {
+    SLACK
+    EMAIL
+    WEBHOOK
+    PAGERDUTY
+}
+
+# Input for creating/updating alert rules
+input CreateAlertRuleInput {
+    name: String!
+    description: String
+    condition: AlertConditionInput!
+    action: AlertActionInput!
+    cooldown: String
+}
+
+input UpdateAlertRuleInput {
+    name: String
+    description: String
+    enabled: Boolean
+    condition: AlertConditionInput
+    action: AlertActionInput
+    cooldown: String
+}
+
+input AlertConditionInput {
+    metric: AlertMetric!
+    operator: AlertOperator!
+    value: Float!
+    window: String!
+}
+
+input AlertActionInput {
+    type: AlertActionType!
+    webhookUrl: String
+    channel: String
+    to: [String!]
+    subject: String
+    routingKey: String
+    severity: String
+    message: String
+}
+
+# Extend Query with alerting
+extend type Query {
+    # Get a specific alert rule
+    alertRule(id: ID!): AlertRule
+    
+    # List all alert rules
+    alertRules: [AlertRule!]!
+    
+    # Get alert history
+    alertHistory(limit: Int): [Alert!]!
+}
+
+# Extend Mutation with alerting
+extend type Mutation {
+    # Create a new alert rule
+    createAlertRule(input: CreateAlertRuleInput!): AlertRule!
+    
+    # Update an existing alert rule
+    updateAlertRule(id: ID!, input: UpdateAlertRuleInput!): AlertRule!
+    
+    # Delete an alert rule
+    deleteAlertRule(id: ID!): Boolean!
+    
+    # Enable an alert rule
+    enableAlertRule(id: ID!): AlertRule!
+    
+    # Disable an alert rule
+    disableAlertRule(id: ID!): AlertRule!
+    
+    # Manually trigger evaluation of all alert rules (for testing)
+    evaluateAlertRules: Boolean!
+}
+
+# =============================================================================
+# Connector Types - Pre-built integrations for common services
+# =============================================================================
+
+enum ConnectorType {
+    SLACK
+    DISCORD
+    TEAMS
+    EMAIL
+    WEBHOOK
+}
+
+type Connector {
+    name: String!
+    type: ConnectorType!
+    config: ConnectorConfig!
+    template: ConnectorTemplate!
+}
+
+type ConnectorConfig {
+    webhookUrl: String
+    channel: String
+    username: String
+    iconEmoji: String
+    iconUrl: String
+    smtpHost: String
+    smtpPort: Int
+    fromEmail: String
+    toEmails: [String!]
+}
+
+type ConnectorTemplate {
+    text: String
+    title: String
+    body: String
+    color: String
+    subject: String
+}
+
+input ConnectorConfigInput {
+    webhookUrl: String
+    channel: String
+    username: String
+    iconEmoji: String
+    iconUrl: String
+    smtpHost: String
+    smtpPort: Int
+    smtpUsername: String
+    smtpPassword: String
+    fromEmail: String
+    toEmails: [String!]
+}
+
+input ConnectorTemplateInput {
+    text: String
+    title: String
+    body: String
+    color: String
+    subject: String
+}
+
+input CreateConnectorInput {
+    name: String!
+    type: ConnectorType!
+    config: ConnectorConfigInput!
+    template: ConnectorTemplateInput
+}
+
+input UpdateConnectorInput {
+    config: ConnectorConfigInput
+    template: ConnectorTemplateInput
+}
+
+# Extend Query with connectors
+extend type Query {
+    # Get a connector by name
+    connector(name: String!): Connector
+    
+    # List all registered connectors
+    connectors: [Connector!]!
+}
+
+# Extend Mutation with connectors
+extend type Mutation {
+    # Register a new connector
+    createConnector(input: CreateConnectorInput!): Connector!
+    
+    # Update a connector
+    updateConnector(name: String!, input: UpdateConnectorInput!): Connector!
+    
+    # Delete a connector
+    deleteConnector(name: String!): Boolean!
+}

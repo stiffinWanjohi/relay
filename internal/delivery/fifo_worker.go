@@ -13,6 +13,8 @@ import (
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/event"
 	"github.com/stiffinWanjohi/relay/internal/logging"
+	"github.com/stiffinWanjohi/relay/internal/logstream"
+	"github.com/stiffinWanjohi/relay/internal/metrics"
 	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 	"github.com/stiffinWanjohi/relay/internal/queue"
@@ -35,16 +37,18 @@ const (
 // FIFOWorker processes events from FIFO queues with ordered delivery guarantees.
 // Unlike the standard worker, FIFO queues process one event at a time per endpoint/partition.
 type FIFOWorker struct {
-	queue       *queue.Queue
-	store       *event.Store
-	sender      *Sender
-	circuit     *CircuitBreaker
-	retry       *RetryPolicy
-	rateLimiter *RateLimiter
-	transformer domain.TransformationExecutor
-	metrics     *observability.Metrics
-	stopCh      chan struct{}
-	wg          sync.WaitGroup
+	queue          *queue.Queue
+	store          *event.Store
+	sender         *Sender
+	circuit        *CircuitBreaker
+	retry          *RetryPolicy
+	rateLimiter    *RateLimiter
+	transformer    domain.TransformationExecutor
+	metrics        *observability.Metrics
+	metricsStore   *metrics.Store
+	deliveryLogger *logstream.DeliveryLogger
+	stopCh         chan struct{}
+	wg             sync.WaitGroup
 
 	// Track active FIFO queue processors
 	activeProcessors   map[string]context.CancelFunc // key: endpoint:partition
@@ -61,6 +65,8 @@ type FIFOWorkerConfig struct {
 	SigningKey          string
 	CircuitConfig       CircuitConfig
 	Metrics             *observability.Metrics
+	MetricsStore        *metrics.Store
+	LogStreamHub        *logstream.Hub
 	RateLimiter         *RateLimiter
 	NotificationService *notification.Service
 	NotifyOnTrip        bool
@@ -70,9 +76,17 @@ type FIFOWorkerConfig struct {
 
 // NewFIFOWorker creates a new FIFO delivery worker.
 func NewFIFOWorker(q *queue.Queue, store *event.Store, config FIFOWorkerConfig) *FIFOWorker {
+	var deliveryLogger *logstream.DeliveryLogger
+	if config.LogStreamHub != nil {
+		deliveryLogger = logstream.NewDeliveryLogger(config.LogStreamHub)
+	}
+
 	circuit := NewCircuitBreaker(config.CircuitConfig)
 	if config.NotificationService != nil {
 		circuit.WithNotifier(config.NotificationService, config.NotifyOnTrip, config.NotifyOnRecover)
+	}
+	if deliveryLogger != nil {
+		circuit.WithDeliveryLogger(deliveryLogger)
 	}
 
 	gracePeriod := config.ShutdownGracePeriod
@@ -89,6 +103,8 @@ func NewFIFOWorker(q *queue.Queue, store *event.Store, config FIFOWorkerConfig) 
 		rateLimiter:         config.RateLimiter,
 		transformer:         transform.NewDefaultV8Executor(),
 		metrics:             config.Metrics,
+		metricsStore:        config.MetricsStore,
+		deliveryLogger:      deliveryLogger,
 		stopCh:              make(chan struct{}),
 		activeProcessors:    make(map[string]context.CancelFunc),
 		inFlightDeliveries:  make(map[string]struct{}),
@@ -422,6 +438,16 @@ func (w *FIFOWorker) processOneFIFO(ctx context.Context, endpoint domain.Endpoin
 	if w.rateLimiter != nil && endpoint.RateLimitPerSec > 0 {
 		if !w.rateLimiter.Allow(ctx, circuitKey, endpoint.RateLimitPerSec) {
 			logger.Debug("rate limited, delaying")
+
+			// Record rate limit metric
+			if w.metricsStore != nil {
+				_ = w.metricsStore.RecordRateLimit(ctx, metrics.RateLimitEvent{
+					EndpointID: endpoint.ID.String(),
+					EventID:    evt.ID.String(),
+					Limit:      endpoint.RateLimitPerSec,
+				})
+			}
+
 			return w.queue.NackFIFO(ctx, endpointID, partitionKey, msg, 100*time.Millisecond)
 		}
 	}
@@ -475,6 +501,9 @@ func (w *FIFOWorker) processOneFIFO(ctx context.Context, endpoint domain.Endpoin
 		logger.Error("failed to create delivery attempt", "error", err)
 	}
 
+	// Record delivery metrics
+	w.recordFIFODeliveryMetrics(ctx, evt, &endpoint, result)
+
 	// Handle result
 	if result.Success {
 		return w.handleFIFOSuccess(ctx, endpointID, partitionKey, evt, circuitKey, result, logger)
@@ -498,6 +527,11 @@ func (w *FIFOWorker) handleFIFOSuccess(ctx context.Context, endpointID, partitio
 		w.metrics.EventDelivered(ctx, evt.ClientID, destHost, duration)
 	}
 
+	// Stream log entry
+	if w.deliveryLogger != nil {
+		w.deliveryLogger.LogDeliverySuccess(ctx, evt.ID.String(), evt.EventType, endpointID, evt.Destination, evt.ClientID, result.StatusCode, result.DurationMs, evt.Attempts, evt.MaxAttempts)
+	}
+
 	// Release the FIFO lock to allow next message
 	return w.queue.AckFIFO(ctx, endpointID, partitionKey)
 }
@@ -518,6 +552,15 @@ func (w *FIFOWorker) handleFIFOFailure(ctx context.Context, endpointID, partitio
 
 	// Check if we should retry
 	shouldRetry := evt.ShouldRetry() && w.retry.ShouldRetryForEndpoint(evt.Attempts, endpoint)
+
+	// Stream log entry
+	if w.deliveryLogger != nil {
+		errMsg := ""
+		if result.Error != nil {
+			errMsg = result.Error.Error()
+		}
+		w.deliveryLogger.LogDeliveryFailure(ctx, evt.ID.String(), evt.EventType, endpointID, evt.Destination, evt.ClientID, result.StatusCode, result.DurationMs, errMsg, evt.Attempts, evt.MaxAttempts, shouldRetry)
+	}
 
 	if shouldRetry {
 		delay := w.retry.NextRetryDelayForEndpoint(evt.Attempts, endpoint)
@@ -680,4 +723,53 @@ func (w *FIFOWorker) markQueuedEventsAsFailed(ctx context.Context, endpointID, p
 	if len(messages) > 0 {
 		logger.Info("marked orphaned events as dead", "count", len(messages))
 	}
+}
+
+// recordFIFODeliveryMetrics records delivery metrics to the metrics store.
+func (w *FIFOWorker) recordFIFODeliveryMetrics(_ context.Context, evt domain.Event, endpoint *domain.Endpoint, result domain.DeliveryResult) {
+	if w.metricsStore == nil {
+		return
+	}
+
+	// Determine outcome
+	var outcome metrics.DeliveryOutcome
+	if result.Success {
+		outcome = metrics.OutcomeSuccess
+	} else if result.Error != nil && contains(result.Error.Error(), "timeout") {
+		outcome = metrics.OutcomeTimeout
+	} else {
+		outcome = metrics.OutcomeFailure
+	}
+
+	// Build record
+	record := metrics.DeliveryRecord{
+		EventID:    evt.ID.String(),
+		Outcome:    outcome,
+		StatusCode: result.StatusCode,
+		LatencyMs:  result.DurationMs,
+		AttemptNum: evt.Attempts,
+		ClientID:   evt.ClientID,
+	}
+
+	// Add endpoint ID if available
+	if endpoint != nil {
+		record.EndpointID = endpoint.ID.String()
+	}
+
+	// Add event type if available
+	if evt.EventType != "" {
+		record.EventType = evt.EventType
+	}
+
+	// Add error message if present
+	if result.Error != nil {
+		record.Error = result.Error.Error()
+	}
+
+	// Record the delivery (fire and forget - don't block on metrics)
+	go func() {
+		if err := w.metricsStore.RecordDelivery(context.Background(), record); err != nil {
+			fifoLog.Warn("failed to record FIFO delivery metrics", "error", err)
+		}
+	}()
 }

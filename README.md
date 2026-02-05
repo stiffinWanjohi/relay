@@ -20,12 +20,17 @@ Relay fixes that.
 - **Durable** - Transactional outbox. If it's in the DB, it ships.
 - **Deduplicated** - Idempotency keys. Retry all you want.
 - **Resilient** - Circuit breakers + exponential backoff.
-- **Observable** - Full delivery history, queue stats.
+- **Observable** - Full delivery history, queue stats, real-time log streaming.
 - **Multi-tenant** - Fair scheduling, per-endpoint config.
 - **Event Types** - Schema catalog with JSONSchema validation.
 - **Smart Routing** - Content-based filtering with JSONPath expressions.
 - **Transformable** - JavaScript payload transformations before delivery.
 - **Ordered** - FIFO delivery with partition key support.
+- **Rate Limited** - Global and per-client rate limits with Redis.
+- **Debuggable** - Temporary endpoints for testing webhooks.
+- **Alerting** - Custom rules for failure rate, latency, queue depth alerts.
+- **Connectors** - Pre-built integrations for Slack, Discord, Teams, Email.
+- **Analytics** - Time-series metrics with breakdowns by endpoint, event type.
 
 [All features →](docs/features.md)
 
@@ -101,9 +106,7 @@ kubectl apply -k deploy/k8s/overlays/production
 ## CLI
 
 ```bash
-relay serve      # Start API server
-relay worker     # Start background worker
-relay all        # Start both (development)
+relay start      # Start server (API + workers)
 
 relay send       # Send a webhook event
 relay get <id>   # Get event details
@@ -111,7 +114,10 @@ relay list       # List events
 relay replay <id># Replay failed event
 relay stats      # Queue statistics
 relay health     # Health check
+relay debug      # Start webhook debugger session
+relay logs -f    # Stream delivery logs in real-time
 relay openapi    # View OpenAPI spec
+relay apikey     # Manage API keys
 ```
 
 ## Docs

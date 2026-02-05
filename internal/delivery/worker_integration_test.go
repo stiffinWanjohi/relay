@@ -335,7 +335,6 @@ func TestWorker_HandleSuccess_Unit(t *testing.T) {
 	worker := &Worker{
 		queue:   q,
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		
 	}
 	defer worker.circuit.Stop()
 
@@ -378,7 +377,6 @@ func TestWorker_HandleFailure_CircuitBreaker(t *testing.T) {
 		queue:   q,
 		circuit: NewCircuitBreaker(circuitConfig),
 		retry:   NewRetryPolicy(),
-		
 	}
 	defer worker.circuit.Stop()
 

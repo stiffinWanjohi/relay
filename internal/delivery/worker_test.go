@@ -48,12 +48,12 @@ func TestNewWorker(t *testing.T) {
 
 	// Can't test with nil store in real scenarios, but we can test config is applied
 	w := &Worker{
-		queue:          q,
-		store:          nil, // Would need mock store
-		sender:         NewSender(config.SigningKey),
-		circuit:        NewCircuitBreaker(config.CircuitConfig),
-		retry:          NewRetryPolicy(),
-		
+		queue:   q,
+		store:   nil, // Would need mock store
+		sender:  NewSender(config.SigningKey),
+		circuit: NewCircuitBreaker(config.CircuitConfig),
+		retry:   NewRetryPolicy(),
+
 		stopCh:         make(chan struct{}),
 		concurrency:    config.Concurrency,
 		visibilityTime: config.VisibilityTime,
@@ -73,8 +73,8 @@ func TestWorker_Stop(t *testing.T) {
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		
-		stopCh:  make(chan struct{}),
+
+		stopCh: make(chan struct{}),
 	}
 	defer w.circuit.Stop()
 
@@ -95,8 +95,8 @@ func TestWorker_Wait(t *testing.T) {
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		
-		stopCh:  make(chan struct{}),
+
+		stopCh: make(chan struct{}),
 	}
 	defer w.circuit.Stop()
 
@@ -127,8 +127,8 @@ func TestWorker_StopAndWait_Success(t *testing.T) {
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		
-		stopCh:  make(chan struct{}),
+
+		stopCh: make(chan struct{}),
 	}
 	defer w.circuit.Stop()
 
@@ -151,8 +151,8 @@ func TestWorker_StopAndWait_Timeout(t *testing.T) {
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		
-		stopCh:  make(chan struct{}),
+
+		stopCh: make(chan struct{}),
 	}
 	defer w.circuit.Stop()
 
@@ -178,7 +178,6 @@ func TestWorker_CircuitStats(t *testing.T) {
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		
 	}
 	defer w.circuit.Stop()
 
@@ -479,7 +478,7 @@ func TestWorker_WithMetrics(t *testing.T) {
 
 	w := &Worker{
 		circuit: NewCircuitBreaker(config.CircuitConfig),
-		
+
 		metrics: metrics,
 		stopCh:  make(chan struct{}),
 	}
@@ -507,8 +506,8 @@ func TestWorker_WithRateLimiter(t *testing.T) {
 	w := &Worker{
 		circuit:     NewCircuitBreaker(config.CircuitConfig),
 		rateLimiter: rateLimiter,
-		
-		stopCh:      make(chan struct{}),
+
+		stopCh: make(chan struct{}),
 	}
 	defer w.circuit.Stop()
 
@@ -532,10 +531,10 @@ func TestWorker_ProcessLoop_ContextCancellation(t *testing.T) {
 	config := DefaultWorkerConfig()
 
 	w := &Worker{
-		queue:          q,
-		circuit:        NewCircuitBreaker(config.CircuitConfig),
-		retry:          NewRetryPolicy(),
-		
+		queue:   q,
+		circuit: NewCircuitBreaker(config.CircuitConfig),
+		retry:   NewRetryPolicy(),
+
 		stopCh:         make(chan struct{}),
 		visibilityTime: config.VisibilityTime,
 	}
@@ -578,10 +577,10 @@ func TestWorker_ProcessLoop_StopSignal(t *testing.T) {
 	config := DefaultWorkerConfig()
 
 	w := &Worker{
-		queue:          q,
-		circuit:        NewCircuitBreaker(config.CircuitConfig),
-		retry:          NewRetryPolicy(),
-		
+		queue:   q,
+		circuit: NewCircuitBreaker(config.CircuitConfig),
+		retry:   NewRetryPolicy(),
+
 		stopCh:         make(chan struct{}),
 		visibilityTime: config.VisibilityTime,
 	}
@@ -630,11 +629,11 @@ func TestWorker_Start(t *testing.T) {
 	}
 
 	w := &Worker{
-		queue:          q,
-		circuit:        NewCircuitBreaker(config.CircuitConfig),
-		retry:          NewRetryPolicy(),
-		sender:         NewSender(config.SigningKey),
-		
+		queue:   q,
+		circuit: NewCircuitBreaker(config.CircuitConfig),
+		retry:   NewRetryPolicy(),
+		sender:  NewSender(config.SigningKey),
+
 		stopCh:         make(chan struct{}),
 		concurrency:    config.Concurrency,
 		visibilityTime: config.VisibilityTime,
