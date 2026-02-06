@@ -348,7 +348,8 @@ func TestWebhookDeliveryE2E(t *testing.T) {
 			if len(eventResp.Event.DeliveryAttempts) == 0 {
 				t.Error("Expected at least one delivery attempt to be recorded")
 			} else {
-				attempt := eventResp.Event.DeliveryAttempts[0]
+				// Check the last attempt (the successful one)
+				attempt := eventResp.Event.DeliveryAttempts[len(eventResp.Event.DeliveryAttempts)-1]
 				if attempt.StatusCode != 200 {
 					t.Errorf("Expected status code 200, got %d", attempt.StatusCode)
 				}
