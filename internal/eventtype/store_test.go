@@ -2,6 +2,7 @@ package eventtype
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -130,8 +131,17 @@ func TestStore_Create_WithSchema(t *testing.T) {
 	if created.SchemaVersion != "1.0" {
 		t.Errorf("expected schema version '1.0', got %s", created.SchemaVersion)
 	}
-	if string(created.Schema) != string(schema) {
-		t.Errorf("expected schema %s, got %s", string(schema), string(created.Schema))
+	var expectedJSON, actualJSON any
+	if err := json.Unmarshal(schema, &expectedJSON); err != nil {
+		t.Fatalf("failed to unmarshal expected schema: %v", err)
+	}
+	if err := json.Unmarshal(created.Schema, &actualJSON); err != nil {
+		t.Fatalf("failed to unmarshal actual schema: %v", err)
+	}
+	expectedBytes, _ := json.Marshal(expectedJSON)
+	actualBytes, _ := json.Marshal(actualJSON)
+	if string(expectedBytes) != string(actualBytes) {
+		t.Errorf("expected schema %s, got %s", string(expectedBytes), string(actualBytes))
 	}
 }
 
