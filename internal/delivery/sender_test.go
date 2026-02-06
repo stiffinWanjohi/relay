@@ -13,24 +13,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/pkg/signature"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewSender(t *testing.T) {
 	signingKey := "test-signing-key-32-chars-long!"
 	sender := NewSender(signingKey)
 
-	if sender == nil {
-		t.Fatal("NewSender returned nil")
-	}
-	if sender.client == nil {
-		t.Error("client should not be nil")
-	}
-	if sender.signer == nil {
-		t.Error("signer should not be nil")
-	}
-	if sender.signingKey != signingKey {
-		t.Errorf("signingKey = %s, want %s", sender.signingKey, signingKey)
-	}
+	require.NotNil(t, sender, "NewSender returned nil")
+	assert.NotNil(t, sender.client, "client should not be nil")
+	assert.NotNil(t, sender.signer, "signer should not be nil")
+	assert.Equal(t, signingKey, sender.signingKey)
 }
 
 func TestSender_WithClient(t *testing.T) {

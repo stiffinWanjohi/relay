@@ -51,7 +51,7 @@ type Worker struct {
 
 // NewWorker creates a new unified delivery worker.
 func NewWorker(q *queue.Queue, store *event.Store, config Config) *Worker {
-	_ = config.Validate()
+	config = config.Validate()
 
 	var deliveryLogger *logstream.DeliveryLogger
 	if config.LogStreamHub != nil {

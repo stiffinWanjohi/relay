@@ -133,7 +133,7 @@ func TestWorker_GetEndpoint_WithRealStore(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -171,7 +171,7 @@ func TestWorker_GetEndpoint_NotFound(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -199,7 +199,7 @@ func TestWorker_GetEvent_WithRealStore(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -241,7 +241,7 @@ func TestWorker_Deliver_WithRealStore(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -451,7 +451,7 @@ func TestFIFOProcessor_ProcessOneFIFO_WithRealQueue(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create test server that succeeds
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -525,7 +525,7 @@ func TestFIFOProcessor_ProcessOneFIFO_WithRetry(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create test server that fails
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -596,7 +596,7 @@ func TestFIFOProcessor_ProcessOneFIFO_WithPartitionKey(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create test server
 	requestCount := 0
@@ -668,7 +668,7 @@ func TestFIFOProcessor_HandleOrphanedFIFOMessages_EndpointDisabled(t *testing.T)
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -743,7 +743,7 @@ func TestFIFOProcessor_HandleOrphanedFIFOMessages_SwitchToStandard(t *testing.T)
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -817,7 +817,7 @@ func TestFIFOProcessor_ProcessOneFIFO_EventNotFound(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -865,7 +865,7 @@ func TestFIFOProcessor_ProcessOneFIFO_RateLimited(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -937,7 +937,7 @@ func TestFIFOProcessor_ProcessOneFIFO_CircuitOpen(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create server that always fails
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1014,7 +1014,7 @@ func TestFIFOProcessor_HandleOrphanedFIFOMessages_MoveError(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -1061,7 +1061,7 @@ func TestFIFOProcessor_MarkQueuedEventsAsFailed(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -1140,7 +1140,7 @@ func TestStandardProcessor_ProcessOne_Success(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1210,7 +1210,7 @@ func TestStandardProcessor_ProcessOne_WithPriorityQueue(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1279,7 +1279,7 @@ func TestStandardProcessor_ProcessOne_WithRetry(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create test server that fails
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1350,7 +1350,7 @@ func TestStandardProcessor_ProcessOne_EmptyQueue(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -1384,7 +1384,7 @@ func TestStandardProcessor_ProcessOne_MissingEvent(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -1428,7 +1428,7 @@ func TestStandardProcessor_ProcessOne_RateLimited(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)
@@ -1501,7 +1501,7 @@ func TestStandardProcessor_ProcessOne_CircuitOpen(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -1578,7 +1578,7 @@ func TestStandardProcessor_ProcessOne_NoEndpoint(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1639,7 +1639,7 @@ func TestStandardProcessor_ProcessOne_EndpointDeleted(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1711,7 +1711,7 @@ func TestFIFOProcessor_ProcessOneFIFO_RetryWithDelay(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create server that fails
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1793,7 +1793,7 @@ func TestStandardProcessor_ProcessOne_RetryWithDelay(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	// Create server that fails
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1876,7 +1876,7 @@ func TestFIFOProcessor_MarkQueuedEventsAsFailed_EventNotFound(t *testing.T) {
 	defer mr.Close()
 
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	store := event.NewStore(pool)
 	q := queue.NewQueue(redisClient)

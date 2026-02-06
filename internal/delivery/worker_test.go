@@ -13,6 +13,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/internal/observability"
@@ -99,9 +100,10 @@ func TestConfigValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.config.Validate()
-			if err != nil {
-				t.Errorf("Validate() returned error: %v", err)
+			validated := tt.config.Validate()
+			// Validate should return a valid config with defaults applied
+			if validated.Concurrency < 1 {
+				t.Errorf("Validate() returned invalid Concurrency: %d", validated.Concurrency)
 			}
 		})
 	}
@@ -549,15 +551,13 @@ func TestWorker_DeliverWithRateLimiting(t *testing.T) {
 
 	// First request should succeed
 	_, err := w.Deliver(context.Background(), evt, endpoint, logger)
-	if err != nil && !errors.Is(err, domain.ErrRateLimited) {
-		// Rate limit might trigger on first call due to implementation
-	}
+	// Rate limit might trigger on first call due to implementation - either outcome is acceptable
+	_ = err
 
 	// Second request should be rate limited
 	_, err = w.Deliver(context.Background(), evt, endpoint, logger)
-	if err == nil || !errors.Is(err, domain.ErrRateLimited) {
-		// May or may not be rate limited depending on timing
-	}
+	// May or may not be rate limited depending on timing - either outcome is acceptable
+	_ = err
 }
 
 func TestWorker_DeliverWithCircuitOpen(t *testing.T) {
@@ -652,66 +652,6 @@ func TestWorker_ConcurrentDeliveries(t *testing.T) {
 	}
 }
 
-// Test with real event store (mock)
-
-type workerMockEventStore struct {
-	events    map[uuid.UUID]domain.Event
-	endpoints map[uuid.UUID]domain.Endpoint
-	mu        sync.RWMutex
-}
-
-func newWorkerMockEventStore() *workerMockEventStore {
-	return &workerMockEventStore{
-		events:    make(map[uuid.UUID]domain.Event),
-		endpoints: make(map[uuid.UUID]domain.Endpoint),
-	}
-}
-
-func (m *workerMockEventStore) GetByID(ctx context.Context, id uuid.UUID) (domain.Event, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if evt, ok := m.events[id]; ok {
-		return evt, nil
-	}
-	return domain.Event{}, domain.ErrEventNotFound
-}
-
-func (m *workerMockEventStore) Update(ctx context.Context, evt domain.Event) (domain.Event, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.events[evt.ID] = evt
-	return evt, nil
-}
-
-func (m *workerMockEventStore) GetEndpointByID(ctx context.Context, id uuid.UUID) (domain.Endpoint, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if ep, ok := m.endpoints[id]; ok {
-		return ep, nil
-	}
-	return domain.Endpoint{}, domain.ErrEndpointNotFound
-}
-
-func (m *workerMockEventStore) CreateDeliveryAttempt(ctx context.Context, attempt domain.DeliveryAttempt) (domain.DeliveryAttempt, error) {
-	return attempt, nil
-}
-
-func (m *workerMockEventStore) ListFIFOEndpoints(ctx context.Context) ([]domain.Endpoint, error) {
-	return nil, nil
-}
-
-func (m *workerMockEventStore) AddEvent(evt domain.Event) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.events[evt.ID] = evt
-}
-
-func (m *workerMockEventStore) AddEndpoint(ep domain.Endpoint) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.endpoints[ep.ID] = ep
-}
-
 // Test with actual store interface
 func TestWorker_WithMockStore(t *testing.T) {
 	// This test demonstrates how to use the worker with a mock store
@@ -790,7 +730,7 @@ func TestWorker_Wait(t *testing.T) {
 func TestWorker_Deliver_RateLimited(t *testing.T) {
 	mr, client := workerSetupTestRedis(t)
 	defer mr.Close()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	q := queue.NewQueue(client)
 	config := DefaultConfig()
@@ -868,7 +808,7 @@ func TestWorker_Deliver_CircuitOpen(t *testing.T) {
 	logger := workerLog.With("test", true)
 
 	// First delivery will fail and trip the circuit
-	w.Deliver(context.Background(), evt, nil, logger)
+	_, _ = w.Deliver(context.Background(), evt, nil, logger)
 
 	// Second delivery should get circuit open error
 	_, err := w.Deliver(context.Background(), evt, nil, logger)
@@ -962,7 +902,7 @@ func TestWorker_Deliver_RetryError(t *testing.T) {
 func TestWorker_NewWorker_WithMetrics(t *testing.T) {
 	mr, client := workerSetupTestRedis(t)
 	defer mr.Close()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	q := queue.NewQueue(client)
 
@@ -972,10 +912,6 @@ func TestWorker_NewWorker_WithMetrics(t *testing.T) {
 	config.EnableFIFO = false
 
 	w := NewWorker(q, nil, config)
+	require.NotNil(t, w, "expected worker to be created")
 	defer w.circuit.Stop()
-
-	// Worker should be created with metrics
-	if w == nil {
-		t.Error("expected worker to be created")
-	}
 }

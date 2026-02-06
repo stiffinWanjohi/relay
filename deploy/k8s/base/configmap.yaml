@@ -5,7 +5,53 @@ metadata:
   labels:
     app.kubernetes.io/name: relay
 data:
+  # Server configuration
+  API_ADDR: ":8080"
   LOG_LEVEL: "info"
   LOG_FORMAT: "json"
-  SERVER_PORT: "8080"
-  METRICS_PORT: "9090"
+
+  # Worker configuration
+  WORKER_CONCURRENCY: "10"
+  WORKER_VISIBILITY_TIMEOUT: "30s"
+  WORKER_SHUTDOWN_TIMEOUT: "30s"
+
+  # Outbox processor configuration
+  OUTBOX_POLL_INTERVAL: "1s"
+  OUTBOX_BATCH_SIZE: "100"
+  OUTBOX_CLEANUP_INTERVAL: "1h"
+  OUTBOX_RETENTION_PERIOD: "24h"
+
+  # Authentication
+  AUTH_ENABLED: "true"
+  ENABLE_PLAYGROUND: "false"
+
+  # Rate limiting (0 = unlimited)
+  GLOBAL_RATE_LIMIT_RPS: "0"
+  CLIENT_RATE_LIMIT_RPS: "0"
+
+  # Observability / Metrics
+  # METRICS_PROVIDER: otel, prometheus, datadog, or empty for disabled
+  METRICS_PROVIDER: ""
+  METRICS_ENDPOINT: ""
+  SERVICE_NAME: "relay"
+  SERVICE_VERSION: "1.0.0"
+  ENVIRONMENT: "production"
+
+  # Notifications (circuit breaker alerts)
+  NOTIFICATION_ENABLED: "false"
+  NOTIFICATION_ASYNC: "true"
+  NOTIFICATION_ON_TRIP: "true"
+  NOTIFICATION_ON_RECOVER: "true"
+  # NOTIFICATION_SLACK_WEBHOOK_URL: Set in secret
+  # NOTIFICATION_SMTP_*: Set in secret
+
+  # Database connection pool
+  DATABASE_MAX_CONNS: "100"
+  DATABASE_MIN_CONNS: "10"
+  DATABASE_MAX_CONN_LIFETIME: "1h"
+  DATABASE_MAX_CONN_IDLE_TIME: "30m"
+
+  # Redis connection pool
+  REDIS_POOL_SIZE: "100"
+  REDIS_READ_TIMEOUT: "3s"
+  REDIS_WRITE_TIMEOUT: "3s"

@@ -49,8 +49,8 @@ func DefaultConfig() Config {
 	}
 }
 
-// Validate checks if the configuration is valid.
-func (c Config) Validate() error {
+// Validate checks if the configuration is valid and returns a corrected copy.
+func (c Config) Validate() Config {
 	if c.Concurrency < 1 {
 		c.Concurrency = 10
 	}
@@ -60,7 +60,7 @@ func (c Config) Validate() error {
 	if c.FIFOGracePeriod < time.Second {
 		c.FIFOGracePeriod = 30 * time.Second
 	}
-	return nil
+	return c
 }
 
 // WithConcurrency returns a copy of the config with the specified concurrency.

@@ -48,7 +48,7 @@ func TestIntegration_SenderDelivery(t *testing.T) {
 			n, _ := r.Body.Read(buf)
 			receivedBody = buf[:n]
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status": "received"}`))
+			_, _ = w.Write([]byte(`{"status": "received"}`))
 		}))
 		defer server.Close()
 
@@ -74,7 +74,7 @@ func TestIntegration_SenderDelivery(t *testing.T) {
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"error": "server error"}`))
+			_, _ = w.Write([]byte(`{"error": "server error"}`))
 		}))
 		defer server.Close()
 
@@ -171,7 +171,7 @@ func TestIntegration_CircuitBreaker(t *testing.T) {
 func TestIntegration_RateLimiting(t *testing.T) {
 	mr, client := integrationSetupTestRedis(t)
 	defer mr.Close()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	t.Run("respects endpoint rate limits", func(t *testing.T) {
 		var requestCount int32
@@ -259,7 +259,7 @@ func TestIntegration_Transformer(t *testing.T) {
 func TestIntegration_WorkerLifecycle(t *testing.T) {
 	mr, client := integrationSetupTestRedis(t)
 	defer mr.Close()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	t.Run("worker starts and stops cleanly", func(t *testing.T) {
 		q := queue.NewQueue(client)
@@ -320,7 +320,7 @@ func TestIntegration_WorkerLifecycle(t *testing.T) {
 func TestIntegration_QueueOperations(t *testing.T) {
 	mr, client := integrationSetupTestRedis(t)
 	defer mr.Close()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	t.Run("queue handles enqueue and dequeue", func(t *testing.T) {
 		q := queue.NewQueue(client)

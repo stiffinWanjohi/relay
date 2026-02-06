@@ -109,7 +109,7 @@ func TestStandardProcessor_StartStop(t *testing.T) {
 	t.Run("starts and stops cleanly", func(t *testing.T) {
 		mr, client := standardSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -146,7 +146,7 @@ func TestStandardProcessor_StartStop(t *testing.T) {
 	t.Run("stops on context cancellation", func(t *testing.T) {
 		mr, client := standardSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -186,7 +186,7 @@ func TestStandardProcessor_BackoffBehavior(t *testing.T) {
 	t.Run("applies backoff on empty queue", func(t *testing.T) {
 		mr, client := standardSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -218,7 +218,7 @@ func TestStandardProcessor_Concurrency(t *testing.T) {
 	t.Run("runs specified number of workers", func(t *testing.T) {
 		mr, client := standardSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -241,7 +241,7 @@ func TestStandardProcessor_ProcessLoop_EmptyQueue(t *testing.T) {
 	t.Run("handles empty queue gracefully", func(t *testing.T) {
 		mr, client := standardSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -268,7 +268,7 @@ func TestStandardProcessor_WithPriorityQueue(t *testing.T) {
 	t.Run("uses priority queue when enabled", func(t *testing.T) {
 		mr, client := standardSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -290,7 +290,7 @@ func TestStandardProcessor_ConcurrentSafety(t *testing.T) {
 	t.Run("multiple start/stop cycles are safe", func(t *testing.T) {
 		mr, client := standardSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()

@@ -39,7 +39,7 @@ func TestNewRecorder(t *testing.T) {
 
 		mr, client := recorderSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		store := metrics.NewStore(client)
 		logger := slog.Default()
@@ -65,7 +65,7 @@ func TestNewRecorder(t *testing.T) {
 func TestRecorder_RecordDelivery(t *testing.T) {
 	mr, client := recorderSetupTestRedis(t)
 	defer mr.Close()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := metrics.NewStore(client)
 
@@ -151,7 +151,7 @@ func TestRecorder_RecordDelivery_NilStore(t *testing.T) {
 func TestRecorder_RecordDelivery_Concurrent(t *testing.T) {
 	mr, client := recorderSetupTestRedis(t)
 	defer mr.Close()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := metrics.NewStore(client)
 	recorder := NewRecorder(nil, store, slog.Default())
@@ -190,7 +190,7 @@ func TestRecorder_RecordDelivery_Concurrent(t *testing.T) {
 func TestRecorder_RecordRateLimit(t *testing.T) {
 	mr, client := recorderSetupTestRedis(t)
 	defer mr.Close()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := metrics.NewStore(client)
 
@@ -232,7 +232,7 @@ func TestRecorder_OutcomeClassification(t *testing.T) {
 
 	mr, client := recorderSetupTestRedis(t)
 	defer mr.Close()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	store := metrics.NewStore(client)
 	recorder := NewRecorder(nil, store, slog.Default())

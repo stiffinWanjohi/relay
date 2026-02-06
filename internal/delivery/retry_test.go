@@ -14,17 +14,14 @@ import (
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
 	"github.com/stiffinWanjohi/relay/pkg/backoff"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewRetryPolicy(t *testing.T) {
 	policy := NewRetryPolicy()
-
-	if policy == nil {
-		t.Fatal("NewRetryPolicy returned nil")
-	}
-	if policy.calculator == nil {
-		t.Error("calculator should not be nil")
-	}
+	require.NotNil(t, policy, "NewRetryPolicy returned nil")
+	assert.NotNil(t, policy.calculator, "calculator should not be nil")
 }
 
 func TestRetryPolicy_WithCalculator(t *testing.T) {

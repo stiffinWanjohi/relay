@@ -26,8 +26,9 @@ func BenchmarkConfigValidate(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = config.Validate()
+		config = config.Validate()
 	}
+	_ = config
 }
 
 func BenchmarkNewWorker(b *testing.B) {

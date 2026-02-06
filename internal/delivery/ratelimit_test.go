@@ -7,6 +7,8 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func setupTestRedis(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
@@ -28,13 +30,8 @@ func TestNewRateLimiter(t *testing.T) {
 	defer func() { _ = client.Close() }()
 
 	rl := NewRateLimiter(client)
-
-	if rl == nil {
-		t.Fatal("NewRateLimiter returned nil")
-	}
-	if rl.client != client {
-		t.Error("client not set correctly")
-	}
+	require.NotNil(t, rl, "NewRateLimiter returned nil")
+	assert.Equal(t, client, rl.client, "client not set correctly")
 }
 
 func TestRateLimiter_Allow_NoLimit(t *testing.T) {

@@ -184,7 +184,7 @@ func TestFIFOProcessor_StartStop(t *testing.T) {
 
 		mr, client := fifoSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -223,7 +223,7 @@ func TestFIFOProcessor_StartStop(t *testing.T) {
 func TestFIFOProcessor_WithRealQueue(t *testing.T) {
 	mr, client := fifoSetupTestRedis(t)
 	defer mr.Close()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	q := queue.NewQueue(client)
 	config := DefaultConfig()
@@ -257,7 +257,7 @@ func TestFIFOProcessor_ProcessPartition_Errors(t *testing.T) {
 
 		mr, client := fifoSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -368,7 +368,7 @@ func TestFIFOProcessor_DiscoverAndProcessFIFOEndpoints(t *testing.T) {
 	t.Run("handles nil store gracefully", func(t *testing.T) {
 		mr, client := fifoSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -391,7 +391,7 @@ func TestFIFOProcessor_EnsureProcessorRunning(t *testing.T) {
 	t.Run("starts processor for endpoint", func(t *testing.T) {
 		mr, client := fifoSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -427,7 +427,7 @@ func TestFIFOProcessor_EnsureProcessorRunning(t *testing.T) {
 	t.Run("does not create duplicate for same partition key", func(t *testing.T) {
 		mr, client := fifoSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -468,7 +468,7 @@ func TestFIFOProcessor_EnsureProcessorRunning(t *testing.T) {
 	t.Run("respects max processors limit", func(t *testing.T) {
 		mr, client := fifoSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -508,7 +508,7 @@ func TestFIFOProcessor_ProcessPartition(t *testing.T) {
 	t.Run("returns error when store not configured", func(t *testing.T) {
 		mr, client := fifoSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -529,7 +529,7 @@ func TestFIFOProcessor_RecoverStaleFIFOMessages(t *testing.T) {
 	t.Run("recovers stale messages on start", func(t *testing.T) {
 		mr, client := fifoSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -594,7 +594,7 @@ func TestFIFOProcessor_EndpointDiscoveryLoop(t *testing.T) {
 	t.Run("stops on context cancellation", func(t *testing.T) {
 		mr, client := fifoSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
@@ -629,7 +629,7 @@ func TestFIFOProcessor_EndpointDiscoveryLoop(t *testing.T) {
 	t.Run("stops on stopCh signal", func(t *testing.T) {
 		mr, client := fifoSetupTestRedis(t)
 		defer mr.Close()
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		q := queue.NewQueue(client)
 		config := DefaultConfig()
