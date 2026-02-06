@@ -1,308 +1,264 @@
 package delivery
 
 import (
-	"net/url"
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/queue"
 )
 
-func BenchmarkExtractHost_Valid(b *testing.B) {
-	destination := "https://webhook.example.com:8080/events"
+func BenchmarkDefaultConfig(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = DefaultConfig()
+	}
+}
+
+func BenchmarkConfigValidate(b *testing.B) {
+	config := DefaultConfig()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_ = config.Validate()
+	}
+}
+
+func BenchmarkNewWorker(b *testing.B) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		b.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer func() { _ = client.Close() }()
+
+	q := queue.NewQueue(client)
+	config := DefaultConfig()
+	config.EnableStandard = false
+	config.EnableFIFO = false
 
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
-		_ = extractHost(destination)
+		w := NewWorker(q, nil, config)
+		w.circuit.Stop()
 	}
 }
 
-func BenchmarkExtractHost_Invalid(b *testing.B) {
-	destination := "not-a-valid-url"
+func BenchmarkWorker_Deliver(b *testing.B) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		b.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer func() { _ = client.Close() }()
+
+	q := queue.NewQueue(client)
+	config := DefaultConfig()
+	config.SigningKey = "test-signing-key-32-chars-long!"
+	config.EnableStandard = false
+	config.EnableFIFO = false
+
+	w := NewWorker(q, nil, config)
+	defer w.circuit.Stop()
+
+	evt := domain.Event{
+		ID:          uuid.New(),
+		Destination: server.URL,
+		Payload:     []byte(`{"test": "data"}`),
+		ClientID:    "test-client",
+	}
+
+	logger := workerLog.With("bench", true)
+	ctx := context.Background()
 
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
-		_ = extractHost(destination)
+		evt.ID = uuid.New() // New ID for each delivery
+		_, _ = w.Deliver(ctx, evt, nil, logger)
 	}
 }
 
-func BenchmarkURLParse(b *testing.B) {
-	destination := "https://webhook.example.com:8080/events/webhook?key=value"
+func BenchmarkWorker_Deliver_Parallel(b *testing.B) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		b.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer func() { _ = client.Close() }()
+
+	q := queue.NewQueue(client)
+	config := DefaultConfig()
+	config.SigningKey = "test-signing-key-32-chars-long!"
+	config.EnableStandard = false
+	config.EnableFIFO = false
+
+	w := NewWorker(q, nil, config)
+	defer w.circuit.Stop()
+
+	logger := workerLog.With("bench", true)
+	ctx := context.Background()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = url.Parse(destination)
-	}
-}
-
-func BenchmarkClassifyFailureReason_Timeout(b *testing.B) {
-	result := domain.DeliveryResult{
-		Error: &timeoutError{},
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = classifyFailureReason(result)
-	}
-}
-
-func BenchmarkClassifyFailureReason_ServerError(b *testing.B) {
-	result := domain.DeliveryResult{
-		StatusCode: 503,
-		Error:      nil,
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = classifyFailureReason(result)
-	}
-}
-
-func BenchmarkClassifyFailureReason_ClientError(b *testing.B) {
-	result := domain.DeliveryResult{
-		StatusCode: 404,
-		Error:      nil,
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = classifyFailureReason(result)
-	}
-}
-
-func BenchmarkClassifyFailureReason_ConnectionRefused(b *testing.B) {
-	result := domain.DeliveryResult{
-		Error: &connRefusedError{},
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = classifyFailureReason(result)
-	}
-}
-
-func BenchmarkClassifyFailureReason_DNSError(b *testing.B) {
-	result := domain.DeliveryResult{
-		Error: &dnsError{},
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = classifyFailureReason(result)
-	}
-}
-
-func BenchmarkClassifyFailureReason_TLSError(b *testing.B) {
-	result := domain.DeliveryResult{
-		Error: &tlsError{},
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = classifyFailureReason(result)
-	}
-}
-
-type timeoutError struct{}
-
-func (e *timeoutError) Error() string { return "context deadline exceeded (timeout)" }
-
-type connRefusedError struct{}
-
-func (e *connRefusedError) Error() string { return "dial tcp: connection refused" }
-
-type dnsError struct{}
-
-func (e *dnsError) Error() string { return "lookup webhook.example.com: no such host" }
-
-type tlsError struct{}
-
-func (e *tlsError) Error() string { return "TLS handshake failed: certificate verify failed" }
-
-func BenchmarkContains_Short(b *testing.B) {
-	s := "connection refused"
-	substr := "refused"
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = contains(s, substr)
-	}
-}
-
-func BenchmarkContains_Long(b *testing.B) {
-	s := "dial tcp 192.168.1.1:443: connect: connection refused by remote host after timeout"
-	substr := "connection refused"
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = contains(s, substr)
-	}
-}
-
-func BenchmarkContains_NotFound(b *testing.B) {
-	s := "dial tcp 192.168.1.1:443: connect: network unreachable"
-	substr := "connection refused"
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = contains(s, substr)
-	}
-}
-
-func BenchmarkDefaultWorkerConfig(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		_ = DefaultWorkerConfig()
-	}
-}
-
-func BenchmarkDefaultCircuitConfig(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		_ = DefaultCircuitConfig()
-	}
-}
-
-func BenchmarkEventMarkDelivering(b *testing.B) {
-	evt := domain.NewEvent(
-		"key-123",
-		"https://webhook.example.com",
-		[]byte(`{"test": true}`),
-		map[string]string{"Content-Type": "application/json"},
-	)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = evt.MarkDelivering()
-	}
-}
-
-func BenchmarkEventMarkDelivered(b *testing.B) {
-	evt := domain.NewEvent(
-		"key-123",
-		"https://webhook.example.com",
-		[]byte(`{"test": true}`),
-		map[string]string{"Content-Type": "application/json"},
-	).MarkDelivering()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = evt.MarkDelivered()
-	}
-}
-
-func BenchmarkEventIncrementAttempts(b *testing.B) {
-	evt := domain.NewEvent(
-		"key-123",
-		"https://webhook.example.com",
-		[]byte(`{"test": true}`),
-		map[string]string{"Content-Type": "application/json"},
-	)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = evt.IncrementAttempts()
-	}
-}
-
-func BenchmarkEventShouldRetry_True(b *testing.B) {
-	evt := domain.NewEvent(
-		"key-123",
-		"https://webhook.example.com",
-		[]byte(`{"test": true}`),
-		map[string]string{"Content-Type": "application/json"},
-	)
-	evt.Attempts = 3
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = evt.ShouldRetry()
-	}
-}
-
-func BenchmarkEventShouldRetry_False(b *testing.B) {
-	evt := domain.NewEvent(
-		"key-123",
-		"https://webhook.example.com",
-		[]byte(`{"test": true}`),
-		map[string]string{"Content-Type": "application/json"},
-	)
-	evt.Attempts = 11
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = evt.ShouldRetry()
-	}
-}
-
-func BenchmarkExtractHost_Parallel(b *testing.B) {
-	destinations := []string{
-		"https://api.example.com/webhooks",
-		"https://hooks.stripe.com/events",
-		"http://localhost:8080/callback",
-		"https://webhook.site/abc-123",
-	}
 
 	b.RunParallel(func(pb *testing.PB) {
-		i := 0
 		for pb.Next() {
-			_ = extractHost(destinations[i%len(destinations)])
-			i++
+			evt := domain.Event{
+				ID:          uuid.New(),
+				Destination: server.URL,
+				Payload:     []byte(`{"test": "data"}`),
+				ClientID:    "test-client",
+			}
+			_, _ = w.Deliver(ctx, evt, nil, logger)
 		}
 	})
 }
 
-func BenchmarkClassifyFailureReason_Parallel(b *testing.B) {
-	results := []domain.DeliveryResult{
-		{Error: &timeoutError{}},
-		{StatusCode: 503},
-		{StatusCode: 404},
-		{Error: &connRefusedError{}},
-		{Error: &dnsError{}},
+func BenchmarkWorker_CircuitStats(b *testing.B) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		b.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer func() { _ = client.Close() }()
+
+	q := queue.NewQueue(client)
+	config := DefaultConfig()
+	config.EnableStandard = false
+	config.EnableFIFO = false
+
+	w := NewWorker(q, nil, config)
+	defer w.circuit.Stop()
+
+	// Add some circuits
+	for i := 0; i < 100; i++ {
+		w.circuit.RecordFailure("https://example" + string(rune(i)) + ".com")
 	}
 
-	b.RunParallel(func(pb *testing.PB) {
-		i := 0
-		for pb.Next() {
-			_ = classifyFailureReason(results[i%len(results)])
-			i++
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_ = w.CircuitStats()
+	}
+}
+
+func BenchmarkWorker_StopAndWait(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+
+		mr, err := miniredis.Run()
+		if err != nil {
+			b.Fatalf("failed to start miniredis: %v", err)
 		}
-	})
-}
 
-func BenchmarkNewDeliveryAttemptSuccess(b *testing.B) {
-	evt := domain.NewEvent(
-		"key-123",
-		"https://webhook.example.com",
-		[]byte(`{"test": true}`),
-		nil,
-	)
+		client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+		q := queue.NewQueue(client)
+		config := DefaultConfig()
+		config.EnableStandard = false
+		config.EnableFIFO = false
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		attempt := domain.NewDeliveryAttempt(evt.ID, 1)
-		_ = attempt.WithSuccess(200, "OK", 150)
+		w := NewWorker(q, nil, config)
+
+		b.StartTimer()
+
+		_ = w.StopAndWait(time.Second)
+
+		b.StopTimer()
+		_ = client.Close()
+		mr.Close()
 	}
 }
 
-func BenchmarkNewDeliveryAttemptFailure(b *testing.B) {
-	evt := domain.NewEvent(
-		"key-123",
-		"https://webhook.example.com",
-		[]byte(`{"test": true}`),
-		nil,
-	)
+// Memory allocation benchmarks
 
+func BenchmarkNewWorker_Allocs(b *testing.B) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		b.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer func() { _ = client.Close() }()
+
+	q := queue.NewQueue(client)
+	config := DefaultConfig()
+	config.EnableStandard = false
+	config.EnableFIFO = false
+
+	b.ReportAllocs()
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
-		attempt := domain.NewDeliveryAttempt(evt.ID, 1)
-		_ = attempt.WithFailure(500, "Internal Server Error", "server error", 250)
+		w := NewWorker(q, nil, config)
+		w.circuit.Stop()
 	}
 }
 
-func BenchmarkMinFunction(b *testing.B) {
-	a := 500
-	c := 2000
+func BenchmarkWorker_Deliver_Allocs(b *testing.B) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
 
+	mr, err := miniredis.Run()
+	if err != nil {
+		b.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer func() { _ = client.Close() }()
+
+	q := queue.NewQueue(client)
+	config := DefaultConfig()
+	config.SigningKey = "test-signing-key-32-chars-long!"
+	config.EnableStandard = false
+	config.EnableFIFO = false
+
+	w := NewWorker(q, nil, config)
+	defer w.circuit.Stop()
+
+	evt := domain.Event{
+		ID:          uuid.New(),
+		Destination: server.URL,
+		Payload:     []byte(`{"test": "data"}`),
+		ClientID:    "test-client",
+	}
+
+	logger := workerLog.With("bench", true)
+	ctx := context.Background()
+
+	b.ReportAllocs()
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
-		_ = min(a*2, c)
+		evt.ID = uuid.New()
+		_, _ = w.Deliver(ctx, evt, nil, logger)
 	}
 }

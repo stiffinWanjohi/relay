@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/stiffinWanjohi/relay/internal/domain"
+	"github.com/stiffinWanjohi/relay/internal/logstream"
+	"github.com/stiffinWanjohi/relay/internal/notification"
 	"github.com/stiffinWanjohi/relay/internal/observability"
 )
 
@@ -858,5 +860,169 @@ func TestCircuitBreaker_CleanupLoop(t *testing.T) {
 
 	if count != 0 {
 		t.Error("cleanup loop should have removed the idle circuit")
+	}
+}
+
+func TestCircuitBreaker_WithNotifier(t *testing.T) {
+	cb := NewCircuitBreaker(DefaultCircuitConfig())
+	defer cb.Stop()
+
+	// Create a mock notification service
+	notifier := &notification.Service{}
+
+	result := cb.WithNotifier(notifier, true, true)
+
+	if result != cb {
+		t.Error("WithNotifier should return same instance")
+	}
+	if cb.notifier != notifier {
+		t.Error("notifier not set correctly")
+	}
+	if !cb.notifyTrip {
+		t.Error("notifyTrip should be true")
+	}
+	if !cb.notifyRecover {
+		t.Error("notifyRecover should be true")
+	}
+}
+
+func TestCircuitBreaker_WithNotifier_DisabledNotifications(t *testing.T) {
+	cb := NewCircuitBreaker(DefaultCircuitConfig())
+	defer cb.Stop()
+
+	notifier := &notification.Service{}
+
+	cb.WithNotifier(notifier, false, false)
+
+	if cb.notifyTrip {
+		t.Error("notifyTrip should be false")
+	}
+	if cb.notifyRecover {
+		t.Error("notifyRecover should be false")
+	}
+}
+
+func TestCircuitBreaker_WithDeliveryLogger(t *testing.T) {
+	cb := NewCircuitBreaker(DefaultCircuitConfig())
+	defer cb.Stop()
+
+	// Create a mock delivery logger (nil hub is fine for this test)
+	logger := logstream.NewDeliveryLogger(nil)
+
+	result := cb.WithDeliveryLogger(logger)
+
+	if result != cb {
+		t.Error("WithDeliveryLogger should return same instance")
+	}
+	if cb.deliveryLogger != logger {
+		t.Error("deliveryLogger not set correctly")
+	}
+}
+
+func TestCircuitBreaker_RecordFailure_WithDeliveryLogger(t *testing.T) {
+	config := CircuitConfig{
+		FailureThreshold: 1,
+		SuccessThreshold: 1,
+		OpenDuration:     time.Hour,
+	}
+	cb := NewCircuitBreaker(config)
+	defer cb.Stop()
+
+	// Set up delivery logger with nil hub (safe for testing)
+	logger := logstream.NewDeliveryLogger(nil)
+	cb.WithDeliveryLogger(logger)
+
+	dest := "https://example.com"
+
+	// Failure that opens circuit should log to delivery stream
+	cb.RecordFailure(dest)
+
+	if state := cb.GetState(dest); state != CircuitOpen {
+		t.Errorf("state = %v, want open", state)
+	}
+}
+
+func TestCircuitBreaker_RecordSuccess_WithDeliveryLogger(t *testing.T) {
+	config := CircuitConfig{
+		FailureThreshold: 1,
+		SuccessThreshold: 1,
+		OpenDuration:     10 * time.Millisecond,
+	}
+	cb := NewCircuitBreaker(config)
+	defer cb.Stop()
+
+	// Set up delivery logger with nil hub (safe for testing)
+	logger := logstream.NewDeliveryLogger(nil)
+	cb.WithDeliveryLogger(logger)
+
+	dest := "https://example.com"
+
+	// Open the circuit
+	cb.RecordFailure(dest)
+
+	// Wait for half-open
+	time.Sleep(20 * time.Millisecond)
+	cb.IsOpen(dest)
+
+	// Success should trigger delivery logging (state change from half-open to closed)
+	cb.RecordSuccess(dest)
+
+	// Verify state changed
+	if state := cb.GetState(dest); state != CircuitClosed {
+		t.Errorf("state = %v, want closed", state)
+	}
+}
+
+func TestCircuitBreaker_RecordFailure_WithNotifier(t *testing.T) {
+	config := CircuitConfig{
+		FailureThreshold: 1,
+		SuccessThreshold: 1,
+		OpenDuration:     time.Hour,
+	}
+	cb := NewCircuitBreaker(config)
+	defer cb.Stop()
+
+	// Set up notifier (nil service is safe for testing - it checks internally)
+	notifier := &notification.Service{}
+	cb.WithNotifier(notifier, true, true)
+
+	dest := "https://example.com"
+
+	// Failure that opens circuit should attempt notification
+	cb.RecordFailure(dest)
+
+	if state := cb.GetState(dest); state != CircuitOpen {
+		t.Errorf("state = %v, want open", state)
+	}
+}
+
+func TestCircuitBreaker_RecordSuccess_WithNotifier(t *testing.T) {
+	config := CircuitConfig{
+		FailureThreshold: 1,
+		SuccessThreshold: 1,
+		OpenDuration:     10 * time.Millisecond,
+	}
+	cb := NewCircuitBreaker(config)
+	defer cb.Stop()
+
+	// Set up notifier
+	notifier := &notification.Service{}
+	cb.WithNotifier(notifier, true, true)
+
+	dest := "https://example.com"
+
+	// Open the circuit
+	cb.RecordFailure(dest)
+
+	// Wait for half-open
+	time.Sleep(20 * time.Millisecond)
+	cb.IsOpen(dest)
+
+	// Success should attempt recovery notification
+	cb.RecordSuccess(dest)
+
+	// Verify state changed
+	if state := cb.GetState(dest); state != CircuitClosed {
+		t.Errorf("state = %v, want closed", state)
 	}
 }

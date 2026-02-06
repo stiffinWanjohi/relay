@@ -765,11 +765,31 @@ mutation {
 }
 ```
 
+**Architecture:**
+
+The FIFO delivery system uses the **FIFOProcessor**, a pluggable strategy within the unified Worker:
+
+```
+Worker
+├── StandardProcessor (parallel delivery - disabled for FIFO endpoints)
+└── FIFOProcessor (ordered delivery)
+    ├── Endpoint Discovery Loop
+    ├── Per-Endpoint/Partition Goroutines
+    └── In-Flight Delivery Tracking
+```
+
 **How it works:**
-- FIFO endpoints use separate queues per endpoint/partition
-- Only one in-flight message at a time per queue
+- **FIFOProcessor** dynamically discovers FIFO-enabled endpoints
+- Creates one goroutine per endpoint/partition for sequential processing
+- Only one in-flight message at a time per partition
 - Next message waits for ack/nack before sending
 - Partition keys enable parallelism within ordering (e.g., `$.customer_id`)
+- Shares delivery logic with StandardProcessor via `Worker.Deliver()`
+
+**Graceful Shutdown:**
+- Tracks all in-flight deliveries
+- Waits for configurable grace period (`WORKER_FIFO_GRACE_PERIOD`)
+- Ensures deliveries complete before shutdown
 
 **Management API:**
 

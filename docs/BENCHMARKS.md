@@ -170,5 +170,24 @@ go test -bench=BenchmarkQueueEnqueue -benchmem -cpuprofile=cpu.prof ./internal/q
 - `internal/delivery/circuit_bench_test.go` - Circuit breaker
 - `internal/delivery/ratelimit_bench_test.go` - Rate limiter
 - `internal/delivery/retry_bench_test.go` - Retry policy and error classification
-- `internal/delivery/scheduler_bench_test.go` - DRR fair scheduler
-- `internal/delivery/worker_bench_test.go` - Worker operations
+- `internal/delivery/worker_bench_test.go` - Unified Worker operations (Strategy Pattern)
+
+## Delivery Module Architecture
+
+The delivery module uses the **Strategy Pattern** with a unified Worker:
+
+```
+Worker (shared components)
+├── StandardProcessor - Parallel delivery benchmarks
+│   └── worker_bench_test.go - Concurrent delivery, queue operations
+├── FIFOProcessor - Ordered delivery benchmarks  
+│   └── worker_bench_test.go - Sequential delivery, partition handling
+└── Shared Components
+    ├── circuit_bench_test.go - Circuit breaker (per-destination)
+    ├── ratelimit_bench_test.go - Rate limiter (per-endpoint)
+    └── retry_bench_test.go - Retry policy, error classification
+```
+
+**Key Insight**: Both processors share the same `Worker.Deliver()` method, so core delivery benchmarks apply to both modes. The only difference is the processing loop:
+- **StandardProcessor**: N parallel goroutines, priority queues
+- **FIFOProcessor**: 1 goroutine per endpoint/partition, sequential ordering

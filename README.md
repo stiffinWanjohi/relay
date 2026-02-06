@@ -43,6 +43,22 @@ Client → API → PostgreSQL → Outbox Processor → Redis Queue → Workers �
                                                     retry + backoff
 ```
 
+### Delivery Architecture (Strategy Pattern)
+```
+┌─────────────────────────────────────────────────────┐
+│                     WORKER                          │
+│  Sender │ CircuitBreaker │ RetryPolicy │ RateLimiter│
+│                        │                            │
+│         ┌──────────────┴──────────────┐             │
+│         ▼                             ▼             │
+│  StandardProcessor          FIFOProcessor           │
+│  (parallel delivery)        (ordered delivery)      │
+└─────────────────────────────────────────────────────┘
+```
+
+- **StandardProcessor**: N concurrent workers, priority queues
+- **FIFOProcessor**: 1 worker per endpoint/partition, guaranteed ordering
+
 [Full architecture →](docs/architecture.md)
 
 ## Quick Start

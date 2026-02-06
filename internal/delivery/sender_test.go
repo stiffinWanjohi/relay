@@ -611,3 +611,110 @@ func TestSender_Send_ResponseBodyReadError(t *testing.T) {
 		t.Logf("Result: success=%v, status=%d, error=%v", result.Success, result.StatusCode, result.Error)
 	}
 }
+
+func TestSender_GetSigningKey(t *testing.T) {
+	globalKey := "global-signing-key-32-chars-long"
+	sender := NewSender(globalKey)
+
+	t.Run("returns global key when endpoint is nil", func(t *testing.T) {
+		key := sender.getSigningKey(nil)
+		if key != globalKey {
+			t.Errorf("expected global key %s, got %s", globalKey, key)
+		}
+	})
+
+	t.Run("returns global key when endpoint has no custom secret", func(t *testing.T) {
+		endpoint := &domain.Endpoint{
+			ID:            uuid.New(),
+			SigningSecret: "", // No custom secret
+		}
+		key := sender.getSigningKey(endpoint)
+		if key != globalKey {
+			t.Errorf("expected global key %s, got %s", globalKey, key)
+		}
+	})
+
+	t.Run("returns endpoint secret when endpoint has custom secret", func(t *testing.T) {
+		customSecret := "custom-endpoint-secret-32chars!"
+		endpoint := &domain.Endpoint{
+			ID:            uuid.New(),
+			SigningSecret: customSecret,
+		}
+		key := sender.getSigningKey(endpoint)
+		if key != customSecret {
+			t.Errorf("expected custom secret %s, got %s", customSecret, key)
+		}
+	})
+}
+
+func TestSender_SendWithEndpoint_CustomSigningSecret(t *testing.T) {
+	var receivedSignature string
+	var receivedTimestamp string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedSignature = r.Header.Get("X-Relay-Signature")
+		receivedTimestamp = r.Header.Get("X-Relay-Timestamp")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	globalKey := "global-signing-key-32-chars-long"
+	customSecret := "custom-endpoint-secret-32chars!"
+	sender := NewSender(globalKey)
+
+	event := domain.Event{
+		ID:          uuid.New(),
+		Destination: server.URL,
+		Payload:     []byte(`{"test": "data"}`),
+	}
+
+	endpoint := &domain.Endpoint{
+		ID:            uuid.New(),
+		SigningSecret: customSecret,
+		TimeoutMs:     5000,
+	}
+
+	result := sender.SendWithEndpoint(context.Background(), event, endpoint)
+
+	if !result.Success {
+		t.Errorf("expected success: %v", result.Error)
+	}
+
+	// Verify signature was computed (should be present)
+	if receivedSignature == "" {
+		t.Error("expected X-Relay-Signature header to be set")
+	}
+
+	// Verify timestamp was sent
+	if receivedTimestamp == "" {
+		t.Error("expected X-Relay-Timestamp header to be set")
+	}
+}
+
+func TestSender_SendWithEndpoint_UsesEndpointTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	sender := NewSender("test-signing-key-32-chars-long!")
+
+	event := domain.Event{
+		ID:          uuid.New(),
+		Destination: server.URL,
+		Payload:     []byte(`{}`),
+	}
+
+	// Endpoint with very short timeout should cause failure
+	endpoint := &domain.Endpoint{
+		ID:        uuid.New(),
+		TimeoutMs: 10, // 10ms timeout
+	}
+
+	result := sender.SendWithEndpoint(context.Background(), event, endpoint)
+
+	if result.Success {
+		t.Error("expected timeout failure")
+	}
+}

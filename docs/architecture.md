@@ -111,15 +111,53 @@ Three-queue system for reliability:
 
 Uses `BRPOPLPUSH` for atomic dequeue with visibility timeout.
 
-### Worker Pool
+### Worker Pool (Strategy Pattern)
 
-Concurrent workers that:
-1. Dequeue with 30s visibility timeout
-2. Check circuit breaker (fail fast if open)
-3. Check rate limiter (delay if exceeded)
+The delivery system uses the **Strategy Pattern** with a unified `Worker` that delegates to pluggable processors:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              WORKER                                     │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                    Shared Components                            │    │
+│  │  Sender │ CircuitBreaker │ RetryPolicy │ RateLimiter │ etc.     │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                              │                                          │
+│              ┌───────────────┴───────────────┐                          │
+│              ▼                               ▼                          │
+│  ┌─────────────────────┐         ┌─────────────────────┐                │
+│  │  StandardProcessor  │         │   FIFOProcessor     │                │
+│  │  (parallel delivery)│         │  (ordered delivery) │                │
+│  │  - N goroutines     │         │  - 1 per endpoint   │                │
+│  │  - priority queues  │         │  - partition keys   │                │
+│  └─────────────────────┘         └─────────────────────┘                │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Worker** - Unified orchestrator that:
+1. Manages shared components (sender, circuit breaker, rate limiter, etc.)
+2. Provides the core `Deliver()` method with all delivery logic
+3. Starts/stops registered processors
+
+**StandardProcessor** - Parallel delivery strategy:
+1. Runs N concurrent goroutines (configurable)
+2. Dequeues from priority queues (high/normal/low)
+3. Uses weighted fair queuing to prevent starvation
+4. Calls `Worker.Deliver()` for actual delivery
+
+**FIFOProcessor** - Ordered delivery strategy:
+1. Discovers FIFO-enabled endpoints dynamically
+2. Runs one goroutine per endpoint/partition
+3. Guarantees in-order delivery per partition
+4. Tracks in-flight deliveries for graceful shutdown
+
+**Shared Delivery Logic** (`Worker.Deliver()`):
+1. Check circuit breaker state
+2. Check rate limiter
+3. Apply payload transformation (if configured)
 4. Send HTTP POST with HMAC signature
-5. Record attempt in PostgreSQL
-6. Ack (success) or Nack with delay (failure)
+5. Record metrics and delivery attempt
+6. Handle success/failure with appropriate retry logic
 
 ### Resilience Components
 
@@ -128,7 +166,9 @@ Concurrent workers that:
 | Circuit Breaker | Per-destination | Stop hammering failing endpoints |
 | Rate Limiter | Per-endpoint | Respect endpoint rate limits |
 | Retry Policy | Per-endpoint | Configurable backoff strategy |
-| DRR Scheduler | Per-client | Fair bandwidth allocation |
+| Transformer | Per-endpoint | JavaScript payload transformation |
+| Recorder | Per-delivery | Metrics and delivery logging |
+| ResultHandler | Per-delivery | Success/failure outcome handling |
 
 ## Data Flow
 

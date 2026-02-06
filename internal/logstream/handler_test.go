@@ -221,14 +221,14 @@ func TestHandler_StreamLogs_ReceivesEntries(t *testing.T) {
 
 	// Publish an entry
 	entry := &LogEntry{
-		Timestamp:   time.Now(),
-		Level:       "info",
-		EventID:     "evt-test-123",
-		EventType:   "order.created",
-		Status:      "delivered",
-		StatusCode:  200,
-		DurationMs:  150,
-		Message:     "test delivery",
+		Timestamp:  time.Now(),
+		Level:      "info",
+		EventID:    "evt-test-123",
+		EventType:  "order.created",
+		Status:     "delivered",
+		StatusCode: 200,
+		DurationMs: 150,
+		Message:    "test delivery",
 	}
 	hub.Publish(entry)
 

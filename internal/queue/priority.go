@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -158,8 +159,7 @@ func (q *Queue) DequeueWithPriority(ctx context.Context) (*Message, error) {
 	}
 
 	// Increment starvation counter atomically
-	counter := starvationCounter
-	starvationCounter++
+	counter := atomic.AddUint64(&starvationCounter, 1) - 1
 
 	// Weighted fair queuing:
 	// - Every 20th dequeue, try low priority first (5% of traffic)

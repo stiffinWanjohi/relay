@@ -41,11 +41,30 @@ All configuration is via environment variables.
 
 ### Worker
 
+The worker uses a unified configuration with the Strategy Pattern, supporting both parallel (Standard) and ordered (FIFO) delivery modes.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WORKER_CONCURRENCY` | `10` | Concurrent delivery workers |
-| `WORKER_VISIBILITY_TIMEOUT` | `30s` | Queue message visibility |
+| `WORKER_CONCURRENCY` | `10` | Concurrent goroutines for StandardProcessor |
+| `WORKER_VISIBILITY_TIMEOUT` | `30s` | Queue message visibility timeout |
 | `WORKER_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
+| `WORKER_ENABLE_STANDARD` | `true` | Enable StandardProcessor (parallel delivery) |
+| `WORKER_ENABLE_FIFO` | `true` | Enable FIFOProcessor (ordered delivery) |
+| `WORKER_ENABLE_PRIORITY_QUEUE` | `true` | Use priority queues (high/normal/low) |
+| `WORKER_FIFO_GRACE_PERIOD` | `30s` | Grace period for in-flight FIFO deliveries on shutdown |
+
+#### Processor Modes
+
+**StandardProcessor** (parallel):
+- Runs `WORKER_CONCURRENCY` goroutines
+- Dequeues from priority queues with weighted fair queuing
+- Best for high-throughput, order-independent delivery
+
+**FIFOProcessor** (ordered):
+- Dynamically discovers FIFO-enabled endpoints
+- Runs one goroutine per endpoint/partition
+- Guarantees in-order delivery per partition key
+- Best for workflows requiring strict ordering
 
 ### Outbox
 

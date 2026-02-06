@@ -30,13 +30,13 @@ var apiLog = logging.Component("api")
 
 // ServerConfig holds server configuration.
 type ServerConfig struct {
-	EnableAuth       bool
-	EnablePlayground bool
-	EnableDocs       bool                  // Enable REST API docs (/docs)
-	MetricsHandler   http.Handler          // Optional Prometheus metrics handler
-	RateLimiter      *delivery.RateLimiter // Optional rate limiter
-	GlobalRateLimit  int                   // Global requests per second (0 = unlimited)
-	ClientRateLimit  int                   // Per-client requests per second (0 = unlimited)
+	EnableAuth        bool
+	EnablePlayground  bool
+	EnableDocs        bool                  // Enable REST API docs (/docs)
+	MetricsHandler    http.Handler          // Optional Prometheus metrics handler
+	RateLimiter       *delivery.RateLimiter // Optional rate limiter
+	GlobalRateLimit   int                   // Global requests per second (0 = unlimited)
+	ClientRateLimit   int                   // Per-client requests per second (0 = unlimited)
 	DebugService      *debug.Service        // Optional debug service for webhook debugger
 	MetricsStore      *metrics.Store        // Optional metrics store for analytics
 	LogStreamHub      *logstream.Hub        // Optional log streaming hub

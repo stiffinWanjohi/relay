@@ -3,6 +3,7 @@ package logstream
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -342,13 +343,13 @@ func TestHub_ConcurrentPublish(t *testing.T) {
 	}
 
 	// Collect entries
-	received := 0
+	var received atomic.Int32
 	done := make(chan struct{})
 	go func() {
 		for {
 			select {
 			case <-sub.Ch:
-				received++
+				received.Add(1)
 			case <-done:
 				return
 			}
@@ -360,8 +361,8 @@ func TestHub_ConcurrentPublish(t *testing.T) {
 	close(done)
 
 	// Should receive up to buffer size, potentially less due to drops
-	assert.LessOrEqual(t, received, goroutines*publishCount)
-	assert.Greater(t, received, 0)
+	assert.LessOrEqual(t, int(received.Load()), goroutines*publishCount)
+	assert.Greater(t, int(received.Load()), 0)
 
 	hub.Unsubscribe("sub-1")
 }
@@ -576,8 +577,8 @@ func TestMatchesLevel(t *testing.T) {
 		{"info", "error", false},
 		{"warn", "error", false},
 		{"error", "error", true},
-		{"unknown", "info", true},  // unknown level passes
-		{"info", "unknown", true},  // unknown filter passes
+		{"unknown", "info", true}, // unknown level passes
+		{"info", "unknown", true}, // unknown filter passes
 	}
 
 	for _, tt := range tests {
@@ -640,7 +641,7 @@ func TestFilter_EmptySliceVsNil(t *testing.T) {
 
 func BenchmarkHub_Publish(b *testing.B) {
 	hub := NewHub(1000, 10000)
-	
+
 	// Add some subscribers
 	for i := 0; i < 10; i++ {
 		sub := hub.Subscribe(string(rune('a'+i)), nil)

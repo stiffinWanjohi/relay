@@ -311,38 +311,27 @@ func runServer(svc *app.Services) {
 		}
 	}()
 
-	workerConfig := delivery.WorkerConfig{
+	// Unified delivery worker configuration (handles both standard and FIFO)
+	deliveryConfig := delivery.Config{
+		SigningKey:          cfg.Worker.SigningKey,
+		CircuitConfig:       delivery.DefaultCircuitConfig(),
+		Metrics:             svc.Metrics,
+		MetricsStore:        metricsStore,
+		LogStreamHub:        logStreamHub,
+		RateLimiter:         rateLimiter,
+		NotificationService: svc.Notification,
+		NotifyOnTrip:        cfg.Notification.NotifyOnTrip,
+		NotifyOnRecover:     cfg.Notification.NotifyOnRecover,
 		Concurrency:         cfg.Worker.Concurrency,
 		VisibilityTime:      cfg.Worker.VisibilityTimeout,
-		SigningKey:          cfg.Worker.SigningKey,
-		CircuitConfig:       delivery.DefaultCircuitConfig(),
-		Metrics:             svc.Metrics,
-		MetricsStore:        metricsStore,
-		LogStreamHub:        logStreamHub,
-		RateLimiter:         rateLimiter,
-		NotificationService: svc.Notification,
-		NotifyOnTrip:        cfg.Notification.NotifyOnTrip,
-		NotifyOnRecover:     cfg.Notification.NotifyOnRecover,
-		EnablePriorityQueue: true, // Enable priority queue processing
+		EnablePriorityQueue: true,
+		FIFOGracePeriod:     30 * time.Second,
+		EnableStandard:      true,
+		EnableFIFO:          true,
 	}
 
-	worker := delivery.NewWorker(q, store, workerConfig)
+	worker := delivery.NewWorker(q, store, deliveryConfig)
 	worker.Start(ctx)
-
-	// Start FIFO worker for ordered delivery endpoints
-	fifoWorkerConfig := delivery.FIFOWorkerConfig{
-		SigningKey:          cfg.Worker.SigningKey,
-		CircuitConfig:       delivery.DefaultCircuitConfig(),
-		Metrics:             svc.Metrics,
-		MetricsStore:        metricsStore,
-		LogStreamHub:        logStreamHub,
-		RateLimiter:         rateLimiter,
-		NotificationService: svc.Notification,
-		NotifyOnTrip:        cfg.Notification.NotifyOnTrip,
-		NotifyOnRecover:     cfg.Notification.NotifyOnRecover,
-	}
-	fifoWorker := delivery.NewFIFOWorker(q, store, fifoWorkerConfig)
-	fifoWorker.Start(ctx)
 
 	// Start alerting engine
 	alertEngine.Start(ctx)
@@ -381,7 +370,6 @@ func runServer(svc *app.Services) {
 
 	_ = httpServer.Shutdown(shutdownCtx)
 	_ = worker.StopAndWait(cfg.Worker.ShutdownTimeout)
-	_ = fifoWorker.StopAndWait(cfg.Worker.ShutdownTimeout)
 	_ = outboxProcessor.StopAndWait(cfg.API.ShutdownTimeout)
 	alertEngine.Stop()
 
