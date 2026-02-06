@@ -4,21 +4,39 @@ export type { RelayClientOptions } from './client';
 
 // Types
 export type {
+  // Event types
   Event,
   EventStatus,
   EventWithAttempts,
   EventList,
   DeliveryAttempt,
+  Priority,
+
+  // Endpoint types
   Endpoint,
   EndpointStatus,
   EndpointStats,
   EndpointWithStats,
   EndpointList,
+
+  // Queue stats
   QueueStats,
+  PriorityQueueStats,
+  FIFOQueueStats,
+  FIFOEndpointStats,
+  FIFODrainResult,
+  FIFORecoveryResult,
+
+  // Pagination
   Pagination,
+
+  // Batch operations
   BatchRetryResult,
   BatchRetryError,
+
+  // Request types
   CreateEventRequest,
+  SendEventRequest,
   ListEventsOptions,
   CreateEndpointRequest,
   UpdateEndpointRequest,
@@ -28,6 +46,33 @@ export type {
   BatchRetryByStatusRequest,
   BatchRetryByEndpointRequest,
   SecretRotationResult,
+
+  // Analytics types
+  AnalyticsTimeRange,
+  TimeGranularity,
+  AnalyticsStats,
+  TimeSeriesPoint,
+  BreakdownItem,
+  LatencyPercentiles,
+
+  // Alert types
+  AlertRule,
+  Alert,
+  AlertCondition,
+  AlertAction,
+  AlertMetric,
+  AlertOperator,
+  AlertActionType,
+  CreateAlertRuleRequest,
+  UpdateAlertRuleRequest,
+
+  // Connector types
+  Connector,
+  ConnectorType,
+  ConnectorConfig,
+  ConnectorTemplate,
+  CreateConnectorRequest,
+  UpdateConnectorRequest,
 } from './types';
 
 // Errors
