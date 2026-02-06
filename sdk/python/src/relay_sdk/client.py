@@ -824,7 +824,10 @@ class RelayClient:
         Returns:
             List of breakdown items
         """
-        path = f"/api/v1/analytics/breakdown/event-type?start={start.isoformat()}&end={end.isoformat()}"
+        path = (
+            f"/api/v1/analytics/breakdown/event-type"
+            f"?start={start.isoformat()}&end={end.isoformat()}"
+        )
         if limit:
             path += f"&limit={limit}"
         data = self._request("GET", path)
@@ -844,7 +847,10 @@ class RelayClient:
         Returns:
             List of breakdown items
         """
-        path = f"/api/v1/analytics/breakdown/endpoint?start={start.isoformat()}&end={end.isoformat()}"
+        path = (
+            f"/api/v1/analytics/breakdown/endpoint"
+            f"?start={start.isoformat()}&end={end.isoformat()}"
+        )
         if limit:
             path += f"&limit={limit}"
         data = self._request("GET", path)
