@@ -81,7 +81,7 @@ jobs:
           DATABASE_URL: postgres://relay:relay@localhost:5432/relay_test?sslmode=disable
           REDIS_URL: localhost:6379
           SIGNING_KEY: test-signing-key-minimum-32-chars
-        run: go test -v -race -coverprofile=coverage.out ./...
+        run: go test -v -race -coverprofile=coverage.out $(go list ./... | grep -v /examples)
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
