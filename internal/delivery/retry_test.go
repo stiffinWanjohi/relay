@@ -175,7 +175,7 @@ func TestRetryPolicy_NextRetryDelayForEndpoint(t *testing.T) {
 
 		// Run multiple times to verify jitter varies
 		delays := make(map[time.Duration]bool)
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			delay := policy.NextRetryDelayForEndpoint(1, endpoint)
 			delays[delay] = true
 		}

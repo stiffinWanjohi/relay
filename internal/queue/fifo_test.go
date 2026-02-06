@@ -318,7 +318,7 @@ func TestQueue_GetFIFOQueueLength(t *testing.T) {
 	endpointID := "endpoint-1"
 
 	// Enqueue several messages
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		if err := q.EnqueueFIFO(ctx, endpointID, "", uuid.New()); err != nil {
 			t.Fatalf("EnqueueFIFO failed: %v", err)
 		}
@@ -510,7 +510,7 @@ func TestQueue_GetFIFOQueueStats(t *testing.T) {
 	partitionKey := "partition-1"
 
 	// Enqueue some messages
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if err := q.EnqueueFIFO(ctx, endpointID, partitionKey, uuid.New()); err != nil {
 			t.Fatalf("EnqueueFIFO failed: %v", err)
 		}
@@ -571,7 +571,7 @@ func TestQueue_DrainFIFOQueue(t *testing.T) {
 
 	// Enqueue messages
 	eventIDs := make([]uuid.UUID, 5)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		eventIDs[i] = uuid.New()
 		if err := q.EnqueueFIFO(ctx, endpointID, "", eventIDs[i]); err != nil {
 			t.Fatalf("EnqueueFIFO failed: %v", err)
@@ -615,7 +615,7 @@ func TestQueue_MoveFIFOToStandardQueue(t *testing.T) {
 	endpointID := "endpoint-1"
 
 	// Enqueue to FIFO
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if err := q.EnqueueFIFO(ctx, endpointID, "", uuid.New()); err != nil {
 			t.Fatalf("EnqueueFIFO failed: %v", err)
 		}
@@ -737,8 +737,8 @@ func TestQueue_RecoverFIFOInFlight(t *testing.T) {
 	lockKey := FIFOLockKey(endpointID, "")
 
 	data, _ := json.Marshal(msg)
-	mr.Set(inflightKey, string(data))
-	mr.Set(lockKey, "locked")
+	_ = mr.Set(inflightKey, string(data))
+	_ = mr.Set(lockKey, "locked")
 
 	// Recover the in-flight message
 	recovered, err := q.RecoverFIFOInFlight(ctx, endpointID, "")
@@ -748,6 +748,7 @@ func TestQueue_RecoverFIFOInFlight(t *testing.T) {
 
 	if recovered == nil {
 		t.Fatal("expected recovered message, got nil")
+		return
 	}
 	if recovered.EventID != eventID {
 		t.Errorf("expected event ID %v, got %v", eventID, recovered.EventID)

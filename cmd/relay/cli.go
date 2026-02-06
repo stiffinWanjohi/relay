@@ -120,7 +120,7 @@ func cmdSend(c *Client, args []string) error {
 	var dest, payload, key string
 	var headers []string
 
-	for i := 0; i < len(args); i++ {
+	for i := range len(args) {
 		switch args[i] {
 		case "--dest", "-d":
 			if i+1 >= len(args) {
@@ -272,7 +272,7 @@ func cmdList(c *Client, args []string) error {
 	status := ""
 	limit := "20"
 
-	for i := 0; i < len(args); i++ {
+	for i := range len(args) {
 		switch args[i] {
 		case "--status", "-s":
 			if i+1 >= len(args) {

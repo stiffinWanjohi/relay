@@ -35,6 +35,7 @@ func TestNewCalculator(t *testing.T) {
 
 	if calc == nil {
 		t.Fatal("expected non-nil calculator")
+		return
 	}
 	if len(calc.schedule) != len(Schedule) {
 		t.Errorf("expected default schedule length %d, got %d", len(Schedule), len(calc.schedule))
@@ -149,7 +150,7 @@ func TestCalculator_Duration_WithJitter(t *testing.T) {
 	baseDuration := Schedule[0] // 1 second
 
 	// Run multiple times to check jitter bounds
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		duration := calc.Duration(1)
 		minAllowed := time.Duration(float64(baseDuration) * 0.9)
 		maxAllowed := time.Duration(float64(baseDuration) * 1.1)
@@ -167,7 +168,7 @@ func TestCalculator_Duration_JitterDistribution(t *testing.T) {
 
 	// Collect durations to check distribution (should be roughly uniform)
 	var above, below int
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		duration := calc.Duration(1)
 		if duration > baseDuration {
 			above++
@@ -349,21 +350,21 @@ func TestSchedule_IncreasingOrder(t *testing.T) {
 
 func BenchmarkCalculator_Duration(b *testing.B) {
 	calc := NewCalculator()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		calc.Duration(5)
 	}
 }
 
 func BenchmarkCalculator_Duration_WithJitter(b *testing.B) {
 	calc := NewCalculator().WithJitter(0.1)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		calc.Duration(5)
 	}
 }
 
 func BenchmarkCalculator_Duration_NoJitter(b *testing.B) {
 	calc := NewCalculator().WithJitter(0)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		calc.Duration(5)
 	}
 }

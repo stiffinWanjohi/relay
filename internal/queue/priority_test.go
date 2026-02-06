@@ -220,12 +220,12 @@ func TestQueue_GetPriorityStats(t *testing.T) {
 	ctx := context.Background()
 
 	// Add messages to different priority queues
-	mr.Lpush(priorityHighKey, "msg1")
-	mr.Lpush(priorityHighKey, "msg2")
-	mr.Lpush(priorityNormalKey, "msg1")
-	mr.Lpush(priorityNormalKey, "msg2")
-	mr.Lpush(priorityNormalKey, "msg3")
-	mr.Lpush(priorityLowKey, "msg1")
+	_, _ = mr.Lpush(priorityHighKey, "msg1")
+	_, _ = mr.Lpush(priorityHighKey, "msg2")
+	_, _ = mr.Lpush(priorityNormalKey, "msg1")
+	_, _ = mr.Lpush(priorityNormalKey, "msg2")
+	_, _ = mr.Lpush(priorityNormalKey, "msg3")
+	_, _ = mr.Lpush(priorityLowKey, "msg1")
 	_, _ = mr.ZAdd(delayedQueueKey, 1.0, "delayed1")
 	_, _ = mr.ZAdd(delayedQueueKey, 2.0, "delayed2")
 
@@ -311,7 +311,7 @@ func TestQueue_DequeueWithPriority_StarvationPrevention(t *testing.T) {
 	starvationCounter = 0
 
 	// Add many messages to all queues
-	for i := 0; i < 25; i++ {
+	for range 25 {
 		_ = q.EnqueueWithPriority(ctx, uuid.New(), 1) // High
 		_ = q.EnqueueWithPriority(ctx, uuid.New(), 5) // Normal
 		_ = q.EnqueueWithPriority(ctx, uuid.New(), 9) // Low
@@ -322,7 +322,7 @@ func TestQueue_DequeueWithPriority_StarvationPrevention(t *testing.T) {
 	normalCount := 0
 	lowCount := 0
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		msg, err := q.DequeueWithPriority(ctx)
 		if err != nil {
 			t.Fatalf("Dequeue %d failed: %v", i, err)

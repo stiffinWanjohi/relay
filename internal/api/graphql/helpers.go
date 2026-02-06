@@ -26,7 +26,7 @@ func validateScheduling(deliverAt *time.Time, delaySeconds *int) (*time.Time, er
 		if deliverAt.Before(time.Now()) {
 			return nil, fmt.Errorf("deliverAt must be in the future")
 		}
-		if deliverAt.Sub(time.Now()) > domain.MaxScheduleDelay {
+		if time.Until(*deliverAt) > domain.MaxScheduleDelay {
 			return nil, fmt.Errorf("deliverAt cannot be more than 30 days in the future")
 		}
 		return deliverAt, nil
@@ -124,7 +124,8 @@ func validateJSONPath(path string) error {
 	// Validate the path segments
 	i := 0
 	for i < len(remaining) {
-		if remaining[i] == '.' {
+		switch remaining[i] {
+		case '.':
 			// Dot notation: .fieldname
 			i++
 			if i >= len(remaining) {
@@ -139,7 +140,7 @@ func validateJSONPath(path string) error {
 			if i == start {
 				return fmt.Errorf("JSONPath has empty field name after '.': %s", path)
 			}
-		} else if remaining[i] == '[' {
+		case '[':
 			// Bracket notation: ['fieldname'] or [0]
 			i++
 			if i >= len(remaining) {
@@ -174,7 +175,7 @@ func validateJSONPath(path string) error {
 				return fmt.Errorf("JSONPath has unclosed bracket: %s", path)
 			}
 			i++ // Skip ]
-		} else {
+		default:
 			return fmt.Errorf("unexpected character in JSONPath at position %d: %s", i+1, path)
 		}
 	}

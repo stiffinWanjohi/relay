@@ -11,6 +11,7 @@ func TestNewSigner(t *testing.T) {
 
 	if signer == nil {
 		t.Fatal("expected non-nil signer")
+		return
 	}
 	if string(signer.key) != secret {
 		t.Error("signer key mismatch")
@@ -185,6 +186,7 @@ func TestNewVerifier(t *testing.T) {
 
 	if verifier == nil {
 		t.Fatal("expected non-nil verifier")
+		return
 	}
 	if verifier.signer == nil {
 		t.Error("expected non-nil signer")

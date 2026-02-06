@@ -58,15 +58,17 @@ func BenchmarkQueueEnqueue(b *testing.B) {
 
 	// Pre-generate UUIDs to avoid measuring UUID generation
 	ids := make([]uuid.UUID, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		ids[i] = uuid.New()
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = q.Enqueue(ctx, ids[i])
+		i++
 	}
 }
 
@@ -91,14 +93,14 @@ func BenchmarkQueueDequeue(b *testing.B) {
 	ctx := context.Background()
 
 	// Pre-populate queue
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = q.Enqueue(ctx, uuid.New())
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		msg, err := q.Dequeue(ctx)
 		if err == nil && msg != nil {
 			_ = q.Ack(ctx, msg)
@@ -114,7 +116,7 @@ func BenchmarkQueueEnqueueDequeue(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		id := uuid.New()
 		_ = q.Enqueue(ctx, id)
 		msg, err := q.Dequeue(ctx)
@@ -131,7 +133,7 @@ func BenchmarkQueueAck(b *testing.B) {
 
 	// Pre-populate and dequeue messages
 	msgs := make([]*Message, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		_ = q.Enqueue(ctx, uuid.New())
 		msgs[i], _ = q.Dequeue(ctx)
 	}
@@ -139,10 +141,12 @@ func BenchmarkQueueAck(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		if msgs[i] != nil {
 			_ = q.Ack(ctx, msgs[i])
 		}
+		i++
 	}
 }
 
@@ -153,7 +157,7 @@ func BenchmarkQueueNack(b *testing.B) {
 
 	// Pre-populate and dequeue
 	msgs := make([]*Message, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		_ = q.Enqueue(ctx, uuid.New())
 		msgs[i], _ = q.Dequeue(ctx)
 	}
@@ -161,10 +165,12 @@ func BenchmarkQueueNack(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		if msgs[i] != nil {
 			_ = q.Nack(ctx, msgs[i], 100*time.Millisecond)
 		}
+		i++
 	}
 }
 
@@ -175,7 +181,7 @@ func BenchmarkQueueNackNoDelay(b *testing.B) {
 
 	// Pre-populate and dequeue
 	msgs := make([]*Message, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		_ = q.Enqueue(ctx, uuid.New())
 		msgs[i], _ = q.Dequeue(ctx)
 	}
@@ -183,9 +189,11 @@ func BenchmarkQueueNackNoDelay(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		if msgs[i] != nil {
 			_ = q.Nack(ctx, msgs[i], 0)
 		}
+		i++
 	}
 }

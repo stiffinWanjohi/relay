@@ -60,13 +60,6 @@ func cleanupTestClient(t *testing.T, pool *pgxpool.Pool, clientID string) {
 	_, _ = pool.Exec(ctx, "DELETE FROM clients WHERE id = $1", clientID)
 }
 
-// cleanupEventType removes a test event type from the database
-func cleanupEventType(t *testing.T, pool *pgxpool.Pool, id uuid.UUID) {
-	t.Helper()
-	ctx := context.Background()
-	_, _ = pool.Exec(ctx, "DELETE FROM event_types WHERE id = $1", id)
-}
-
 func TestNewStore(t *testing.T) {
 	pool := skipIfNoDatabase(t)
 	defer pool.Close()
@@ -74,6 +67,7 @@ func TestNewStore(t *testing.T) {
 	store := NewStore(pool)
 	if store == nil {
 		t.Fatal("expected non-nil store")
+		return
 	}
 	if store.pool != pool {
 		t.Error("expected pool to be set")
@@ -298,7 +292,7 @@ func TestStore_List_Pagination(t *testing.T) {
 	ctx := context.Background()
 
 	// Create 5 event types
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		et := domain.NewEventType(clientID, "event."+string(rune('a'+i)), "Description")
 		_, err := store.Create(ctx, et)
 		if err != nil {
@@ -345,7 +339,7 @@ func TestStore_Count(t *testing.T) {
 	ctx := context.Background()
 
 	// Create event types
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		et := domain.NewEventType(clientID, "event."+string(rune('a'+i)), "Description")
 		_, err := store.Create(ctx, et)
 		if err != nil {

@@ -756,7 +756,7 @@ func ParseFIFOQueueKey(queueKey string) (endpointID, partitionKey string, ok boo
 }
 
 func indexOf(s string, c byte) int {
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if s[i] == c {
 			return i
 		}

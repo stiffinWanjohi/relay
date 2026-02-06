@@ -215,7 +215,7 @@ func TestResultHandler_HandleFailure_RecordsCircuitFailure(t *testing.T) {
 	}
 
 	// Record multiple failures to trip circuit
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		handler.HandleFailure(context.Background(), evt, nil, circuitKey, result)
 	}
 

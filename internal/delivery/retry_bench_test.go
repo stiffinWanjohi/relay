@@ -19,8 +19,10 @@ func BenchmarkRetryPolicyNextDelay(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = rp.NextRetryDelay(i%10 + 1)
+		i++
 	}
 }
 
@@ -30,8 +32,10 @@ func BenchmarkRetryPolicyShouldRetry(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = rp.ShouldRetry(i%15+1, 10)
+		i++
 	}
 }
 
@@ -47,8 +51,10 @@ func BenchmarkRetryPolicyForEndpoint(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = rp.NextRetryDelayForEndpoint(i%15+1, endpoint)
+		i++
 	}
 }
 
@@ -61,8 +67,10 @@ func BenchmarkRetryPolicyShouldRetryForEndpoint(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = rp.ShouldRetryForEndpoint(i%25+1, endpoint)
+		i++
 	}
 }
 
@@ -72,9 +80,11 @@ func BenchmarkRetryPolicyNilEndpoint(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = rp.NextRetryDelayForEndpoint(i%10+1, nil)
 		_ = rp.ShouldRetryForEndpoint(i%10+1, nil)
+		i++
 	}
 }
 
@@ -82,7 +92,7 @@ func BenchmarkRetryPolicyNilEndpoint(b *testing.B) {
 
 func BenchmarkIsRetryableError_Nil(b *testing.B) {
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = IsRetryableError(nil)
 	}
 }
@@ -91,7 +101,7 @@ func BenchmarkIsRetryableError_ContextCanceled(b *testing.B) {
 	err := context.Canceled
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = IsRetryableError(err)
 	}
 }
@@ -100,7 +110,7 @@ func BenchmarkIsRetryableError_Timeout(b *testing.B) {
 	err := context.DeadlineExceeded
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = IsRetryableError(err)
 	}
 }
@@ -113,7 +123,7 @@ func BenchmarkIsRetryableError_NetError(b *testing.B) {
 	}
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = IsRetryableError(err)
 	}
 }
@@ -126,7 +136,7 @@ func BenchmarkIsRetryableError_URLError(b *testing.B) {
 	}
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = IsRetryableError(err)
 	}
 }
@@ -137,7 +147,7 @@ func BenchmarkIsRetryableError_TLSError(b *testing.B) {
 	}
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = IsRetryableError(err)
 	}
 }
@@ -146,7 +156,7 @@ func BenchmarkIsRetryableError_StringMatch(b *testing.B) {
 	err := errors.New("connection reset by peer")
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = IsRetryableError(err)
 	}
 }
@@ -165,8 +175,10 @@ func BenchmarkIsRetryableError_MixedErrors(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = IsRetryableError(errs[i%len(errs)])
+		i++
 	}
 }
 
@@ -175,8 +187,10 @@ func BenchmarkIsRetryableStatusCode(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = IsRetryableStatusCode(codes[i%len(codes)])
+		i++
 	}
 }
 
@@ -191,8 +205,10 @@ func BenchmarkIsRetryableSyscallError(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = isRetryableSyscallError(errs[i%len(errs)])
+		i++
 	}
 }
 

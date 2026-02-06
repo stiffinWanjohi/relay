@@ -19,9 +19,11 @@ func BenchmarkQueueEnqueueForClient(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		clientID := clients[i%len(clients)]
 		_ = q.EnqueueForClient(ctx, clientID, uuid.New())
+		i++
 	}
 }
 
@@ -52,14 +54,14 @@ func BenchmarkQueueDequeueFromClient(b *testing.B) {
 	clientID := "bench-client"
 
 	// Pre-populate
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = q.EnqueueForClient(ctx, clientID, uuid.New())
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		msg, err := q.DequeueFromClient(ctx, clientID)
 		if err == nil && msg != nil {
 			_ = q.Ack(ctx, msg)
@@ -73,14 +75,14 @@ func BenchmarkQueueGetActiveClients(b *testing.B) {
 	ctx := context.Background()
 
 	// Pre-populate with clients
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		_ = q.EnqueueForClient(ctx, fmt.Sprintf("client-%d", i), uuid.New())
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = q.GetActiveClients(ctx)
 	}
 }
@@ -91,9 +93,9 @@ func BenchmarkQueueClientStats(b *testing.B) {
 	ctx := context.Background()
 
 	// Pre-populate with clients
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		clientID := fmt.Sprintf("client-%d", i)
-		for j := 0; j < 10; j++ {
+		for range 10 {
 			_ = q.EnqueueForClient(ctx, clientID, uuid.New())
 		}
 	}
@@ -101,7 +103,7 @@ func BenchmarkQueueClientStats(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = q.ClientStats(ctx)
 	}
 }
@@ -114,9 +116,9 @@ func BenchmarkQueueRoundRobinClients(b *testing.B) {
 	// Setup clients with messages
 	numClients := 5
 	clients := make([]string, numClients)
-	for i := 0; i < numClients; i++ {
+	for i := range numClients {
 		clients[i] = fmt.Sprintf("client-%d", i)
-		for j := 0; j < b.N/numClients+1; j++ {
+		for range b.N/numClients + 1 {
 			_ = q.EnqueueForClient(ctx, clients[i], uuid.New())
 		}
 	}
@@ -124,11 +126,13 @@ func BenchmarkQueueRoundRobinClients(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		clientID := clients[i%numClients]
 		msg, err := q.DequeueFromClient(ctx, clientID)
 		if err == nil && msg != nil {
 			_ = q.Ack(ctx, msg)
 		}
+		i++
 	}
 }

@@ -16,7 +16,7 @@ func BenchmarkCircuitBreakerIsOpen(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = cb.IsOpen("https://example.com/webhook")
 	}
 }
@@ -28,7 +28,7 @@ func BenchmarkCircuitBreakerRecordSuccess(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		cb.RecordSuccess("https://example.com/webhook")
 	}
 }
@@ -40,8 +40,10 @@ func BenchmarkCircuitBreakerRecordFailure(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		cb.RecordFailure(fmt.Sprintf("https://example-%d.com/webhook", i))
+		i++
 	}
 }
 
@@ -57,7 +59,8 @@ func BenchmarkCircuitBreakerMixedOperations(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		dest := destinations[i%len(destinations)]
 		_ = cb.IsOpen(dest)
 		if i%10 == 0 {
@@ -65,6 +68,7 @@ func BenchmarkCircuitBreakerMixedOperations(b *testing.B) {
 		} else {
 			cb.RecordSuccess(dest)
 		}
+		i++
 	}
 }
 
@@ -109,15 +113,16 @@ func BenchmarkCircuitBreakerContention(b *testing.B) {
 
 			b.ResetTimer()
 
-			for g := 0; g < goroutines; g++ {
+			for g := range goroutines {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					for i := 0; i < ops; i++ {
+					for range ops {
 						_ = cb.IsOpen(dest)
 						cb.RecordSuccess(dest)
 					}
 				}()
+				_ = g // suppress unused warning
 			}
 			wg.Wait()
 		})
@@ -149,8 +154,10 @@ func BenchmarkCircuitBreakerGetState(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = cb.GetState(destinations[i%len(destinations)])
+		i++
 	}
 }
 
@@ -166,7 +173,7 @@ func BenchmarkCircuitBreakerStats(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = cb.Stats()
 	}
 }

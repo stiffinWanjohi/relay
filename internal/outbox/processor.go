@@ -274,7 +274,7 @@ func (p *Processor) processEntry(ctx context.Context, entry event.OutboxEntry) e
 
 	// Check if event is scheduled for future delivery
 	if evt.IsScheduled() {
-		delay := evt.ScheduledAt.Sub(time.Now())
+		delay := time.Until(*evt.ScheduledAt)
 		if delay > 0 {
 			// Use delayed queue with priority info
 			if err := p.queue.EnqueueDelayedWithPriority(ctx, entry.EventID, evt.Priority, delay); err != nil {

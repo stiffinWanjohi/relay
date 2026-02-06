@@ -296,7 +296,7 @@ func TestHub_PublishDropsWhenBufferFull(t *testing.T) {
 	sub := hub.Subscribe("sub-1", nil)
 
 	// Fill buffer
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		hub.Publish(&LogEntry{
 			EventID: string(rune('a' + i)),
 			Message: "test",
@@ -333,7 +333,7 @@ func TestHub_ConcurrentPublish(t *testing.T) {
 		wg.Add(1)
 		go func(goroutineID int) {
 			defer wg.Done()
-			for i := 0; i < publishCount; i++ {
+			for i := range publishCount {
 				hub.Publish(&LogEntry{
 					EventID: string(rune(goroutineID*publishCount + i)),
 					Message: "concurrent test",
@@ -373,7 +373,7 @@ func TestHub_ConcurrentSubscribeUnsubscribe(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Concurrent subscribe/unsubscribe
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -389,7 +389,7 @@ func TestHub_ConcurrentSubscribeUnsubscribe(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			hub.Publish(&LogEntry{Message: "test"})
 			time.Sleep(time.Microsecond)
 		}
@@ -643,7 +643,7 @@ func BenchmarkHub_Publish(b *testing.B) {
 	hub := NewHub(1000, 10000)
 
 	// Add some subscribers
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		sub := hub.Subscribe(string(rune('a'+i)), nil)
 		go func() {
 			for range sub.Ch {
@@ -666,7 +666,7 @@ func BenchmarkHub_Publish(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		hub.Publish(entry)
 	}
 }
@@ -687,7 +687,7 @@ func BenchmarkFilter_Matches(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		filter.Matches(entry)
 	}
 }

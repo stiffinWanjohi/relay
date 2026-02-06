@@ -301,7 +301,7 @@ func TestStandardProcessor_ConcurrentSafety(t *testing.T) {
 		worker := NewWorker(q, nil, config)
 		defer worker.circuit.Stop()
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			processor := NewStandardProcessor(worker, config)
 			ctx := context.Background()
 
@@ -320,7 +320,7 @@ func TestStandardProcessor_StopIdempotent(t *testing.T) {
 		var wg sync.WaitGroup
 		var panicked int32
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()

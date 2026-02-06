@@ -40,7 +40,7 @@ func BenchmarkRateLimiterAllow(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = rl.Allow(ctx, "bench-key", 10000) // High limit to avoid blocking
 	}
 }
@@ -73,9 +73,11 @@ func BenchmarkRateLimiterMultipleKeys(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		key := keys[i%len(keys)]
 		_ = rl.Allow(ctx, key, 1000)
+		i++
 	}
 }
 
@@ -104,9 +106,11 @@ func BenchmarkRateLimiterUnderLoad(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		ep := endpoints[i%len(endpoints)]
 		_ = rl.Allow(ctx, ep.key, ep.limit)
+		i++
 	}
 }
 
@@ -123,11 +127,11 @@ func BenchmarkRateLimiterContention(b *testing.B) {
 
 			b.ResetTimer()
 
-			for g := 0; g < goroutines; g++ {
+			for range goroutines {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					for i := 0; i < ops; i++ {
+					for range ops {
 						_ = rl.Allow(ctx, "contention-key", 100000)
 					}
 				}()
@@ -150,7 +154,7 @@ func BenchmarkRateLimiterGetCurrentRate(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = rl.GetCurrentRate(ctx, "rate-check-key")
 	}
 }

@@ -15,17 +15,17 @@ func BenchmarkQueueStats(b *testing.B) {
 	ctx := context.Background()
 
 	// Add some items to each queue type
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		_ = q.Enqueue(ctx, uuid.New())
 	}
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		_ = q.EnqueueDelayed(ctx, uuid.New(), 1*time.Hour)
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = q.Stats(ctx)
 	}
 }
@@ -36,7 +36,7 @@ func BenchmarkQueueRecoverStaleMessages(b *testing.B) {
 	ctx := context.Background()
 
 	// Pre-populate processing queue with stale messages
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		_ = q.Enqueue(ctx, uuid.New())
 		msg, _ := q.Dequeue(ctx)
 		if msg != nil {
@@ -48,7 +48,7 @@ func BenchmarkQueueRecoverStaleMessages(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		// Recovery with a very short threshold so all messages are considered stale
 		_, _ = q.RecoverStaleMessages(ctx, 1*time.Nanosecond)
 	}
@@ -63,7 +63,7 @@ func BenchmarkQueueThroughput(b *testing.B) {
 	for _, workers := range []int{1, 2, 4, 8} {
 		b.Run(fmt.Sprintf("workers-%d", workers), func(b *testing.B) {
 			// Pre-populate
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = q.Enqueue(ctx, uuid.New())
 			}
 
@@ -72,7 +72,7 @@ func BenchmarkQueueThroughput(b *testing.B) {
 			done := make(chan struct{})
 			count := make(chan int, workers)
 
-			for w := 0; w < workers; w++ {
+			for range workers {
 				go func() {
 					processed := 0
 					for {
@@ -95,7 +95,7 @@ func BenchmarkQueueThroughput(b *testing.B) {
 			close(done)
 
 			total := 0
-			for w := 0; w < workers; w++ {
+			for range workers {
 				total += <-count
 			}
 		})

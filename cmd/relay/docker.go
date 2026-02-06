@@ -209,7 +209,7 @@ func startRedis(cfg *dockerConfig) error {
 // waitForPostgres waits for PostgreSQL to be ready via TCP connection.
 func waitForPostgres(ctx context.Context, cfg *dockerConfig) error {
 	addr := "localhost:" + cfg.PostgresPort
-	for i := 0; i < 30; i++ {
+	for range 30 {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -240,7 +240,7 @@ func canConnectPostgres(cfg *dockerConfig) bool {
 // waitForRedis waits for Redis to be ready via TCP connection.
 func waitForRedis(ctx context.Context, cfg *dockerConfig) error {
 	addr := "localhost:" + cfg.RedisPort
-	for i := 0; i < 30; i++ {
+	for range 30 {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

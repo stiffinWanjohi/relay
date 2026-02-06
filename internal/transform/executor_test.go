@@ -745,7 +745,7 @@ func TestGojaExecutor_Metrics(t *testing.T) {
 	ctx := context.Background()
 
 	// Execute multiple times
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_, err := executor.Execute(ctx, code, input)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -920,7 +920,7 @@ func TestGojaExecutor_ConcurrentExecution(t *testing.T) {
 	errors := make(chan error, 100)
 
 	// Run 100 concurrent transformations
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -1026,13 +1026,14 @@ func TestGojaExecutor_MemoryLimit(t *testing.T) {
 
 	// We expect either memory limit or timeout error
 	// Memory limit detection is best-effort
-	if err == nil {
+	switch err {
+	case nil:
 		t.Log("transformation completed without hitting memory limit (this is acceptable due to best-effort nature)")
-	} else if err == domain.ErrTransformationMemoryLimit {
+	case domain.ErrTransformationMemoryLimit:
 		t.Log("memory limit correctly enforced")
-	} else if err == domain.ErrTransformationTimeout {
+	case domain.ErrTransformationTimeout:
 		t.Log("operation timed out before memory limit was hit")
-	} else {
+	default:
 		t.Logf("got error: %v", err)
 	}
 }

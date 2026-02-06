@@ -913,7 +913,7 @@ func TestFIFOProcessor_ProcessOneFIFO_RateLimited(t *testing.T) {
 	require.NoError(t, err)
 
 	// Exhaust the rate limit using endpoint ID (which is the rate limit key)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		rateLimiter.Allow(ctx, endpoint.ID.String(), 1) // use up the limit
 	}
 
@@ -1477,7 +1477,7 @@ func TestStandardProcessor_ProcessOne_RateLimited(t *testing.T) {
 	require.NoError(t, err)
 
 	// Exhaust the rate limit using endpoint ID
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		rateLimiter.Allow(ctx, endpoint.ID.String(), 1) // use up the limit
 	}
 
@@ -1738,7 +1738,7 @@ func TestFIFOProcessor_ProcessOneFIFO_RetryWithDelay(t *testing.T) {
 
 	endpoint := createTestEndpoint(t, pool, clientID, server.URL, true)
 	// Update endpoint to have longer retry backoff (10 seconds)
-	_, err = pool.Exec(context.Background(), 
+	_, err = pool.Exec(context.Background(),
 		"UPDATE endpoints SET retry_backoff_ms = $1 WHERE id = $2",
 		10000, endpoint.ID)
 	require.NoError(t, err)
@@ -1900,7 +1900,7 @@ func TestFIFOProcessor_MarkQueuedEventsAsFailed_EventNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	// Enqueue non-existent event IDs to FIFO queue
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		nonExistentID := uuid.New()
 		err = q.EnqueueFIFO(ctx, endpoint.ID.String(), "", nonExistentID)
 		require.NoError(t, err)

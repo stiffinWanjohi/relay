@@ -640,7 +640,7 @@ func TestCircuitBreaker_ConcurrentAccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			cb.RecordFailure(dest)
 		}
 	}()
@@ -649,7 +649,7 @@ func TestCircuitBreaker_ConcurrentAccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			cb.RecordSuccess(dest)
 		}
 	}()
@@ -658,7 +658,7 @@ func TestCircuitBreaker_ConcurrentAccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			cb.IsOpen(dest)
 			cb.GetState(dest)
 		}
@@ -668,7 +668,7 @@ func TestCircuitBreaker_ConcurrentAccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			cb.Stats()
 		}
 	}()
@@ -677,7 +677,7 @@ func TestCircuitBreaker_ConcurrentAccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			cb.Reset(dest)
 			time.Sleep(time.Millisecond)
 		}

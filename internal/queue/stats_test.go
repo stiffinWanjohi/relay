@@ -63,14 +63,14 @@ func TestQueue_Stats_LargeNumbers(t *testing.T) {
 	ctx := context.Background()
 
 	// Add many messages
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		_, _ = mr.Lpush(mainQueueKey, "msg")
 	}
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		_, _ = mr.Lpush(processingQueueKey, "proc")
 	}
 	// Use unique members for sorted set (miniredis deduplicates by member value)
-	for i := 0; i < 25; i++ {
+	for i := range 25 {
 		_, _ = mr.ZAdd(delayedQueueKey, float64(i), fmt.Sprintf("delayed-%d", i))
 	}
 
@@ -141,7 +141,7 @@ func TestQueue_RecoverStaleMessages_AllStale(t *testing.T) {
 	ctx := context.Background()
 
 	// Add multiple stale messages
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		msg := Message{
 			ID:        uuid.New().String(),
 			EventID:   uuid.New(),
@@ -178,7 +178,7 @@ func TestQueue_RecoverStaleMessages_NoneStale(t *testing.T) {
 	ctx := context.Background()
 
 	// Add only fresh messages
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		msg := Message{
 			ID:        uuid.New().String(),
 			EventID:   uuid.New(),

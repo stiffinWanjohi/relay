@@ -16,7 +16,7 @@ import (
 )
 
 func BenchmarkDefaultConfig(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = DefaultConfig()
 	}
 }
@@ -25,7 +25,7 @@ func BenchmarkConfigValidate(b *testing.B) {
 	config := DefaultConfig()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		config = config.Validate()
 	}
 	_ = config
@@ -48,7 +48,7 @@ func BenchmarkNewWorker(b *testing.B) {
 
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		w := NewWorker(q, nil, config)
 		w.circuit.Stop()
 	}
@@ -90,7 +90,7 @@ func BenchmarkWorker_Deliver(b *testing.B) {
 
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		evt.ID = uuid.New() // New ID for each delivery
 		_, _ = w.Deliver(ctx, evt, nil, logger)
 	}
@@ -157,19 +157,19 @@ func BenchmarkWorker_CircuitStats(b *testing.B) {
 	defer w.circuit.Stop()
 
 	// Add some circuits
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		w.circuit.RecordFailure("https://example" + string(rune(i)) + ".com")
 	}
 
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = w.CircuitStats()
 	}
 }
 
 func BenchmarkWorker_StopAndWait(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		b.StopTimer()
 
 		mr, err := miniredis.Run()
@@ -215,7 +215,7 @@ func BenchmarkNewWorker_Allocs(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		w := NewWorker(q, nil, config)
 		w.circuit.Stop()
 	}
@@ -258,7 +258,7 @@ func BenchmarkWorker_Deliver_Allocs(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		evt.ID = uuid.New()
 		_, _ = w.Deliver(ctx, evt, nil, logger)
 	}

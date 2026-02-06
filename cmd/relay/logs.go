@@ -104,7 +104,7 @@ func runLogs() {
 		fmt.Fprintf(os.Stderr, "  %s failed to connect: %v\n", fail("Error:"), err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "  %s server returned %d\n", fail("Error:"), resp.StatusCode)

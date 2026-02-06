@@ -455,7 +455,7 @@ func (e *Engine) fireSlack(ctx context.Context, rule *Rule, alert Alert) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("slack webhook returned %d", resp.StatusCode)
@@ -517,7 +517,7 @@ func (e *Engine) fireWebhook(ctx context.Context, rule *Rule, alert Alert) error
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("webhook returned %d", resp.StatusCode)
@@ -562,7 +562,7 @@ func (e *Engine) firePagerDuty(ctx context.Context, rule *Rule, alert Alert) err
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("pagerduty returned %d", resp.StatusCode)
@@ -594,7 +594,7 @@ func (e *Engine) GetAlertHistory(limit int) []Alert {
 
 	// Return most recent first
 	result := make([]Alert, limit)
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		result[i] = e.alertHistory[len(e.alertHistory)-1-i]
 	}
 	return result

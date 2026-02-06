@@ -69,7 +69,7 @@ func TestQueue_Enqueue_Multiple(t *testing.T) {
 	ctx := context.Background()
 
 	// Enqueue multiple messages
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if err := q.Enqueue(ctx, uuid.New()); err != nil {
 			t.Fatalf("Enqueue %d failed: %v", i, err)
 		}
@@ -344,11 +344,11 @@ func TestQueue_ConcurrentEnqueue(t *testing.T) {
 	numGoroutines := 10
 	messagesPerGoroutine := 10
 
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < messagesPerGoroutine; j++ {
+			for range messagesPerGoroutine {
 				_ = q.Enqueue(ctx, uuid.New())
 			}
 		}()
@@ -371,7 +371,7 @@ func TestQueue_ConcurrentDequeue(t *testing.T) {
 
 	// Pre-populate
 	numMessages := 50
-	for i := 0; i < numMessages; i++ {
+	for range numMessages {
 		if err := q.Enqueue(ctx, uuid.New()); err != nil {
 			t.Fatalf("Enqueue failed: %v", err)
 		}
@@ -381,7 +381,7 @@ func TestQueue_ConcurrentDequeue(t *testing.T) {
 	numWorkers := 5
 	results := make(chan *Message, numMessages)
 
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

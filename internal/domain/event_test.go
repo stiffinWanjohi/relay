@@ -413,7 +413,7 @@ func TestEvent_ExhaustRetries(t *testing.T) {
 	evt.MaxAttempts = 3
 
 	// Exhaust all retries
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		evt = evt.IncrementAttempts()
 		evt = evt.MarkFailed(time.Now().Add(time.Second))
 	}

@@ -159,7 +159,7 @@ func TestRecorder_RecordDelivery_Concurrent(t *testing.T) {
 	const goroutines = 50
 	var wg sync.WaitGroup
 
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

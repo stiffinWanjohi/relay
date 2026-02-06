@@ -372,7 +372,7 @@ func TestFIFODeliveryE2E(t *testing.T) {
 	numEvents := 5
 	eventIDs := make([]string, numEvents)
 
-	for i := 0; i < numEvents; i++ {
+	for i := range numEvents {
 		vars := map[string]any{
 			"input": map[string]any{
 				"eventType": "order.created",
@@ -508,9 +508,9 @@ func TestFIFOPartitioningE2E(t *testing.T) {
 		}
 	`
 
-	for user := 0; user < numUsers; user++ {
+	for user := range numUsers {
 		userID := fmt.Sprintf("user-%d", user+1)
-		for seq := 0; seq < eventsPerUser; seq++ {
+		for seq := range eventsPerUser {
 			wg.Add(1)
 			go func(uid string, s int) {
 				defer wg.Done()

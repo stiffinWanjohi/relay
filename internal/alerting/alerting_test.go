@@ -353,7 +353,7 @@ func TestEngine_EnableDisableRule(t *testing.T) {
 func TestEngine_FireSlackAlert(t *testing.T) {
 	var receivedPayload map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&receivedPayload)
+		_ = json.NewDecoder(r.Body).Decode(&receivedPayload)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -398,7 +398,7 @@ func TestEngine_FireSlackAlert(t *testing.T) {
 func TestEngine_FireWebhookAlert(t *testing.T) {
 	var receivedAlert Alert
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&receivedAlert)
+		_ = json.NewDecoder(r.Body).Decode(&receivedAlert)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -477,7 +477,7 @@ func TestEngine_AlertHistory(t *testing.T) {
 	}
 
 	// Check that history is in reverse chronological order
-	for i := 0; i < len(history)-1; i++ {
+	for i := range len(history)-1 {
 		if history[i].FiredAt.Before(history[i+1].FiredAt) {
 			t.Error("expected history to be in reverse chronological order")
 		}

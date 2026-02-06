@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"text/template"
 
 	"github.com/stiffinWanjohi/relay/internal/logging"
@@ -120,9 +121,7 @@ func (c *Connector) Transform(eventType string, payload map[string]any) (map[str
 	}
 
 	// Merge payload fields into top level for easier template access
-	for k, v := range payload {
-		ctx[k] = v
-	}
+	maps.Copy(ctx, payload)
 
 	switch c.Type {
 	case ConnectorTypeSlack:
@@ -317,6 +316,6 @@ func parseColorToInt(color string) int {
 	if len(color) > 0 && color[0] == '#' {
 		color = color[1:]
 	}
-	fmt.Sscanf(color, "%x", &result)
+	_, _ = fmt.Sscanf(color, "%x", &result)
 	return result
 }

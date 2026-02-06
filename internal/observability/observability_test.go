@@ -53,6 +53,7 @@ func TestNewMetrics(t *testing.T) {
 
 	if metrics == nil {
 		t.Fatal("expected non-nil metrics")
+		return
 	}
 	if metrics.namespace != "test" {
 		t.Errorf("expected namespace 'test', got %s", metrics.namespace)
@@ -454,6 +455,7 @@ func TestNewTracer(t *testing.T) {
 
 	if tracer == nil {
 		t.Fatal("expected non-nil tracer")
+		return
 	}
 	if tracer.serviceName != "test-service" {
 		t.Errorf("expected service name 'test-service', got %s", tracer.serviceName)

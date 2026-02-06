@@ -367,6 +367,7 @@ func TestWebhookDeliveryE2E(t *testing.T) {
 	webhookReq := waitForWebhookRequest(t, tokenUUID, 10*time.Second)
 	if webhookReq == nil {
 		t.Fatal("Webhook receiver did not receive any requests")
+		return
 	}
 
 	// Verify payload
@@ -512,7 +513,7 @@ func TestConcurrentDeliveryE2E(t *testing.T) {
 		}
 	`
 
-	for i := 0; i < numEvents; i++ {
+	for i := range numEvents {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()

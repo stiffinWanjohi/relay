@@ -15,8 +15,10 @@ func BenchmarkNewEvent(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = NewEvent("idemp-key-"+string(rune(i)), "https://example.com/webhook", payload, headers)
+		i++
 	}
 }
 
@@ -27,7 +29,7 @@ func BenchmarkEventStatusTransitions(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		e := evt.MarkDelivering()
 		e = e.IncrementAttempts()
 		_ = e.MarkDelivered()
@@ -43,7 +45,7 @@ func BenchmarkEventShouldRetry(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = evt.ShouldRetry()
 	}
 }
@@ -55,9 +57,11 @@ func BenchmarkNewDeliveryAttempt(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		attempt := NewDeliveryAttempt(evt.ID, i%10+1)
 		_ = attempt.WithSuccess(200, `{"ok": true}`, 45)
+		i++
 	}
 }
 
@@ -69,7 +73,7 @@ func BenchmarkEventJSONMarshal(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = json.Marshal(evt)
 	}
 }
@@ -82,7 +86,7 @@ func BenchmarkEventJSONUnmarshal(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var e Event
 		_ = json.Unmarshal(data, &e)
 	}

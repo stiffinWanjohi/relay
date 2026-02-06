@@ -519,7 +519,7 @@ func TestHandler_StreamLogs_RapidPublish(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Rapidly publish many entries
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		hub.Publish(&LogEntry{
 			EventID: string(rune('A' + (i % 26))),
 			Status:  "delivered",
@@ -541,7 +541,7 @@ func BenchmarkHandler_StreamLogs(b *testing.B) {
 	hub := NewHub(1000, 10000)
 	handler := NewHandler(hub)
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		req := httptest.NewRequest(http.MethodGet, "/stream", nil).WithContext(ctx)
@@ -554,7 +554,7 @@ func BenchmarkHandler_StreamLogs(b *testing.B) {
 		}()
 
 		// Publish some entries
-		for j := 0; j < 10; j++ {
+		for range 10 {
 			hub.Publish(&LogEntry{
 				EventID: "bench-test",
 				Status:  "delivered",

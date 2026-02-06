@@ -290,7 +290,7 @@ func TestTransformer_Apply_ConcurrentExecution(t *testing.T) {
 	const goroutines = 100
 	results := make(chan error, goroutines)
 
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		go func(i int) {
 			event := domain.Event{
 				ID:          uuid.New(),
@@ -302,7 +302,7 @@ func TestTransformer_Apply_ConcurrentExecution(t *testing.T) {
 		}(i)
 	}
 
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		err := <-results
 		assert.NoError(t, err)
 	}

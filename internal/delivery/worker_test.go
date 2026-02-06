@@ -621,7 +621,7 @@ func TestWorker_ConcurrentDeliveries(t *testing.T) {
 
 	errors := make(chan error, numDeliveries)
 
-	for i := 0; i < numDeliveries; i++ {
+	for i := range numDeliveries {
 		go func(i int) {
 			defer wg.Done()
 

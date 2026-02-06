@@ -2,6 +2,8 @@ package event
 
 import (
 	"encoding/json"
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
@@ -14,7 +16,7 @@ func BenchmarkHeadersMarshal_Empty(b *testing.B) {
 	headers := make(map[string]string)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = json.Marshal(headers)
 	}
 }
@@ -26,7 +28,7 @@ func BenchmarkHeadersMarshal_Small(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = json.Marshal(headers)
 	}
 }
@@ -38,7 +40,7 @@ func BenchmarkHeadersMarshal_Large(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = json.Marshal(headers)
 	}
 }
@@ -48,7 +50,7 @@ func BenchmarkHeadersUnmarshal_Small(b *testing.B) {
 	var headers map[string]string
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = json.Unmarshal(data, &headers)
 	}
 }
@@ -60,7 +62,7 @@ func BenchmarkPayloadMarshal_Small(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = json.Marshal(payload)
 	}
 }
@@ -80,7 +82,7 @@ func BenchmarkPayloadMarshal_Medium(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = json.Marshal(payload)
 	}
 }
@@ -104,7 +106,7 @@ func BenchmarkPayloadMarshal_Large(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = json.Marshal(payload)
 	}
 }
@@ -116,7 +118,7 @@ func BenchmarkNewEvent(b *testing.B) {
 	headers := map[string]string{"Content-Type": "application/json"}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = domain.NewEvent(idempotencyKey, destination, payload, headers)
 	}
 }
@@ -142,13 +144,13 @@ func BenchmarkNewEventForEndpoint(b *testing.B) {
 	headers := map[string]string{"Content-Type": "application/json"}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = domain.NewEventForEndpoint(clientID, eventType, idempotencyKey, endpoint, payload, headers)
 	}
 }
 
 func BenchmarkUUIDGeneration(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = uuid.New()
 	}
 }
@@ -157,7 +159,7 @@ func BenchmarkUUIDToString(b *testing.B) {
 	id := uuid.New()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = id.String()
 	}
 }
@@ -166,7 +168,7 @@ func BenchmarkNewDeliveryAttempt(b *testing.B) {
 	eventID := uuid.New()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = domain.DeliveryAttempt{
 			ID:            uuid.New(),
 			EventID:       eventID,
@@ -184,7 +186,7 @@ func BenchmarkNewDeliveryAttemptWithError(b *testing.B) {
 	errMsg := "connection refused"
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = domain.DeliveryAttempt{
 			ID:            uuid.New(),
 			EventID:       eventID,
@@ -203,7 +205,7 @@ func BenchmarkNewEndpoint(b *testing.B) {
 	eventTypes := []string{"order.created", "order.updated", "order.cancelled"}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = domain.NewEndpoint(clientID, url, eventTypes)
 	}
 }
@@ -219,7 +221,7 @@ func BenchmarkEndpointWithCustomHeaders(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		ep := domain.NewEndpoint(clientID, url, eventTypes)
 		ep.CustomHeaders = customHeaders
 		_ = ep
@@ -230,7 +232,7 @@ func BenchmarkOutboxEntryCreation(b *testing.B) {
 	eventID := uuid.New()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = OutboxEntry{
 			ID:        uuid.New(),
 			EventID:   eventID,
@@ -240,7 +242,7 @@ func BenchmarkOutboxEntryCreation(b *testing.B) {
 }
 
 func BenchmarkIdempotencyKeyGeneration_UUID(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = uuid.New().String()
 	}
 }
@@ -250,13 +252,13 @@ func BenchmarkIdempotencyKeyGeneration_Composite(b *testing.B) {
 	endpointID := uuid.New()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = baseKey + ":" + endpointID.String()
 	}
 }
 
 func BenchmarkQueueStatsCreation(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = QueueStats{
 			Queued:     100,
 			Delivering: 10,
@@ -268,7 +270,7 @@ func BenchmarkQueueStatsCreation(b *testing.B) {
 }
 
 func BenchmarkEndpointStatsCreation(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		stats := EndpointStats{
 			TotalEvents:  1000,
 			Delivered:    950,
@@ -292,14 +294,10 @@ func BenchmarkMapMerge_Small(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		merged := make(map[string]string, len(base)+len(custom))
-		for k, v := range base {
-			merged[k] = v
-		}
-		for k, v := range custom {
-			merged[k] = v
-		}
+		maps.Copy(merged, base)
+		maps.Copy(merged, custom)
 		_ = merged
 	}
 }
@@ -315,14 +313,10 @@ func BenchmarkMapMerge_Large(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		merged := make(map[string]string, len(base)+len(custom))
-		for k, v := range base {
-			merged[k] = v
-		}
-		for k, v := range custom {
-			merged[k] = v
-		}
+		maps.Copy(merged, base)
+		maps.Copy(merged, custom)
 		_ = merged
 	}
 }
@@ -332,14 +326,8 @@ func BenchmarkSliceContains_Small(b *testing.B) {
 	target := "order.updated"
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		found := false
-		for _, et := range eventTypes {
-			if et == target {
-				found = true
-				break
-			}
-		}
+	for b.Loop() {
+		found := slices.Contains(eventTypes, target)
 		_ = found
 	}
 }
@@ -352,14 +340,8 @@ func BenchmarkSliceContains_Large(b *testing.B) {
 	target := eventTypes[40]
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		found := false
-		for _, et := range eventTypes {
-			if et == target {
-				found = true
-				break
-			}
-		}
+	for b.Loop() {
+		found := slices.Contains(eventTypes, target)
 		_ = found
 	}
 }
@@ -369,7 +351,7 @@ func BenchmarkSliceContainsWildcard(b *testing.B) {
 	target := "user.signup"
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		found := false
 		for _, et := range eventTypes {
 			if et == target || et == "*" {
@@ -420,7 +402,7 @@ func BenchmarkNullString_Empty(b *testing.B) {
 	s := ""
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = nullString(s)
 	}
 }
@@ -429,7 +411,7 @@ func BenchmarkNullString_NonEmpty(b *testing.B) {
 	s := "client-123"
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = nullString(s)
 	}
 }

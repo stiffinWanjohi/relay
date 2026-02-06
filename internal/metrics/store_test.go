@@ -24,7 +24,7 @@ func setupTestStore(t *testing.T) (*Store, func()) {
 	store := NewStore(client)
 
 	cleanup := func() {
-		client.Close()
+		_ = client.Close()
 		mr.Close()
 	}
 
@@ -121,7 +121,7 @@ func TestStore_GetFailureRate(t *testing.T) {
 	ctx := context.Background()
 
 	// Record 7 successes, 3 failures = 30% failure rate
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp:  time.Now().UTC(),
 			EventID:    "success_" + string(rune('0'+i)),
@@ -130,7 +130,7 @@ func TestStore_GetFailureRate(t *testing.T) {
 			LatencyMs:  100,
 		})
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp:  time.Now().UTC(),
 			EventID:    "failure_" + string(rune('0'+i)),
@@ -158,7 +158,7 @@ func TestStore_GetSuccessRate(t *testing.T) {
 	ctx := context.Background()
 
 	// Record 8 successes, 2 failures = 80% success rate
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp:  time.Now().UTC(),
 			EventID:    "success_" + string(rune('0'+i)),
@@ -167,7 +167,7 @@ func TestStore_GetSuccessRate(t *testing.T) {
 			LatencyMs:  100,
 		})
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp:  time.Now().UTC(),
 			EventID:    "failure_" + string(rune('0'+i)),
@@ -310,13 +310,13 @@ func TestStore_GetBreakdownByEventType(t *testing.T) {
 	ctx := context.Background()
 
 	// Record events of different types
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp: time.Now().UTC(), EventID: "order_" + string(rune('0'+i)),
 			EndpointID: "ep", EventType: "order.created", Outcome: OutcomeSuccess, LatencyMs: 100,
 		})
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp: time.Now().UTC(), EventID: "user_" + string(rune('0'+i)),
 			EndpointID: "ep", EventType: "user.created", Outcome: OutcomeSuccess, LatencyMs: 150,
@@ -352,13 +352,13 @@ func TestStore_GetBreakdownByEndpoint(t *testing.T) {
 	ctx := context.Background()
 
 	// Record deliveries to different endpoints
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp: time.Now().UTC(), EventID: "a_" + string(rune('0'+i)),
 			EndpointID: "ep_popular", Outcome: OutcomeSuccess, LatencyMs: 100,
 		})
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp: time.Now().UTC(), EventID: "b_" + string(rune('0'+i)),
 			EndpointID: "ep_quiet", Outcome: OutcomeSuccess, LatencyMs: 100,
@@ -391,7 +391,7 @@ func TestStore_GetSuccessRateTimeSeries(t *testing.T) {
 
 	// Record deliveries at different times
 	// Hour 0: 100% success
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp: now.Add(-2 * time.Hour), EventID: "h0_" + string(rune('0'+i)),
 			EndpointID: "ep", Outcome: OutcomeSuccess, LatencyMs: 100,
@@ -399,13 +399,13 @@ func TestStore_GetSuccessRateTimeSeries(t *testing.T) {
 	}
 
 	// Hour 1: 50% success
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp: now.Add(-time.Hour), EventID: "h1_s_" + string(rune('0'+i)),
 			EndpointID: "ep", Outcome: OutcomeSuccess, LatencyMs: 100,
 		})
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp: now.Add(-time.Hour), EventID: "h1_f_" + string(rune('0'+i)),
 			EndpointID: "ep", Outcome: OutcomeFailure, LatencyMs: 100,
@@ -462,13 +462,13 @@ func TestStore_GetErrorCount(t *testing.T) {
 	ctx := context.Background()
 
 	// 3 successes, 2 failures, 1 timeout = 3 errors
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp: time.Now().UTC(), EventID: "s" + string(rune('0'+i)),
 			EndpointID: "ep", Outcome: OutcomeSuccess, LatencyMs: 100,
 		})
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp: time.Now().UTC(), EventID: "f" + string(rune('0'+i)),
 			EndpointID: "ep", Outcome: OutcomeFailure, LatencyMs: 100,
@@ -495,7 +495,7 @@ func TestStore_GetDeliveryCount(t *testing.T) {
 
 	ctx := context.Background()
 
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		_ = store.RecordDelivery(ctx, DeliveryRecord{
 			Timestamp: time.Now().UTC(), EventID: "e" + string(rune('0'+i)),
 			EndpointID: "ep", Outcome: OutcomeSuccess, LatencyMs: 100,

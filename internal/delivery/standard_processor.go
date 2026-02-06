@@ -45,7 +45,7 @@ func NewStandardProcessor(w *Worker, config Config) *StandardProcessor {
 func (p *StandardProcessor) Start(ctx context.Context) {
 	standardLog.Info("starting standard processor", "concurrency", p.concurrency)
 
-	for i := 0; i < p.concurrency; i++ {
+	for i := range p.concurrency {
 		p.wg.Add(1)
 		go func(workerID int) {
 			defer p.wg.Done()

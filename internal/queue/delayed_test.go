@@ -87,7 +87,7 @@ func TestQueue_moveDelayedToMain(t *testing.T) {
 	ctx := context.Background()
 
 	// Enqueue delayed messages that are ready now
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		msg := Message{
 			ID:        uuid.New().String(),
 			EventID:   uuid.New(),
@@ -236,7 +236,7 @@ func TestQueue_RemoveFromDelayed_MultipleMessages(t *testing.T) {
 
 	// Add multiple messages
 	eventIDs := make([]uuid.UUID, 3)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		eventIDs[i] = uuid.New()
 		msg := Message{
 			ID:        uuid.New().String(),

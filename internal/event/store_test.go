@@ -84,6 +84,7 @@ func TestNewStore(t *testing.T) {
 	store := NewStore(pool)
 	if store == nil {
 		t.Fatal("expected non-nil store")
+		return
 	}
 	if store.pool != pool {
 		t.Error("expected pool to be set")
@@ -537,6 +538,7 @@ func TestStore_OutboxOperations(t *testing.T) {
 	}
 	if outboxEntry == nil {
 		t.Fatal("expected to find outbox entry")
+		return
 	}
 
 	// Mark as processed
@@ -593,6 +595,7 @@ func TestStore_MarkOutboxFailed(t *testing.T) {
 	}
 	if outboxEntry == nil {
 		t.Fatal("expected to find outbox entry")
+		return
 	}
 
 	// Mark as failed

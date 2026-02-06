@@ -14,15 +14,17 @@ func BenchmarkQueueEnqueueDelayed(b *testing.B) {
 	ctx := context.Background()
 
 	ids := make([]uuid.UUID, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		ids[i] = uuid.New()
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = q.EnqueueDelayed(ctx, ids[i], 1*time.Second)
+		i++
 	}
 }
 
@@ -47,14 +49,14 @@ func BenchmarkQueueMoveDelayedToMain(b *testing.B) {
 	ctx := context.Background()
 
 	// Pre-populate with ready delayed messages
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		_ = q.EnqueueDelayed(ctx, uuid.New(), -1*time.Second) // Already ready
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = q.moveDelayedToMain(ctx)
 	}
 }
@@ -66,7 +68,7 @@ func BenchmarkQueueRemoveFromDelayed(b *testing.B) {
 
 	// Pre-populate
 	ids := make([]uuid.UUID, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		ids[i] = uuid.New()
 		_ = q.EnqueueDelayed(ctx, ids[i], 1*time.Hour)
 	}
@@ -74,7 +76,9 @@ func BenchmarkQueueRemoveFromDelayed(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		_ = q.RemoveFromDelayed(ctx, ids[i])
+		i++
 	}
 }

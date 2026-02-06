@@ -186,7 +186,7 @@ func (e *GojaExecutor) getCompiledScript(code string) (*goja.Program, error) {
 // setupHelpers adds built-in helper functions to the VM.
 func (e *GojaExecutor) setupHelpers(vm *goja.Runtime) {
 	// Base64 encoding/decoding
-	vm.Set("base64Encode", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("base64Encode", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
 			return vm.ToValue("")
 		}
@@ -195,7 +195,7 @@ func (e *GojaExecutor) setupHelpers(vm *goja.Runtime) {
 		return vm.ToValue(encoded)
 	})
 
-	vm.Set("base64Decode", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("base64Decode", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
 			return vm.ToValue("")
 		}
@@ -208,7 +208,7 @@ func (e *GojaExecutor) setupHelpers(vm *goja.Runtime) {
 	})
 
 	// HMAC-SHA256 for signing
-	vm.Set("hmacSha256", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("hmacSha256", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 2 {
 			panic(vm.NewGoError(fmt.Errorf("hmacSha256 requires 2 arguments: message and key")))
 		}
@@ -221,7 +221,7 @@ func (e *GojaExecutor) setupHelpers(vm *goja.Runtime) {
 	})
 
 	// SHA256 hash
-	vm.Set("sha256", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("sha256", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
 			return vm.ToValue("")
 		}
@@ -231,22 +231,22 @@ func (e *GojaExecutor) setupHelpers(vm *goja.Runtime) {
 	})
 
 	// UUID generation
-	vm.Set("uuid", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("uuid", func(call goja.FunctionCall) goja.Value {
 		return vm.ToValue(uuid.New().String())
 	})
 
 	// Current timestamp (Unix milliseconds)
-	vm.Set("now", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("now", func(call goja.FunctionCall) goja.Value {
 		return vm.ToValue(time.Now().UnixMilli())
 	})
 
 	// ISO timestamp string
-	vm.Set("isoTimestamp", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("isoTimestamp", func(call goja.FunctionCall) goja.Value {
 		return vm.ToValue(time.Now().UTC().Format(time.RFC3339))
 	})
 
 	// JSON parse (safer than built-in for our use case)
-	vm.Set("parseJSON", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("parseJSON", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
 			return goja.Null()
 		}
@@ -259,7 +259,7 @@ func (e *GojaExecutor) setupHelpers(vm *goja.Runtime) {
 	})
 
 	// JSON stringify
-	vm.Set("stringify", func(call goja.FunctionCall) goja.Value {
+	_ = vm.Set("stringify", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
 			return vm.ToValue("null")
 		}
@@ -298,13 +298,13 @@ func (e *GojaExecutor) setupConsole(vm *goja.Runtime, capture *ConsoleCapture) {
 		return goja.Undefined()
 	}
 
-	console.Set("log", logFunc)
-	console.Set("info", logFunc)
-	console.Set("warn", logFunc)
-	console.Set("error", logFunc)
-	console.Set("debug", logFunc)
+	_ = console.Set("log", logFunc)
+	_ = console.Set("info", logFunc)
+	_ = console.Set("warn", logFunc)
+	_ = console.Set("error", logFunc)
+	_ = console.Set("debug", logFunc)
 
-	vm.Set("console", console)
+	_ = vm.Set("console", console)
 }
 
 // Execute runs the transformation code with the given input.
@@ -391,9 +391,9 @@ func (e *GojaExecutor) ExecuteWithLogs(ctx context.Context, code string, input d
 
 	// Convert input to JS object
 	inputObj := vm.NewObject()
-	inputObj.Set("method", input.Method)
-	inputObj.Set("url", input.URL)
-	inputObj.Set("headers", input.Headers)
+	_ = inputObj.Set("method", input.Method)
+	_ = inputObj.Set("url", input.URL)
+	_ = inputObj.Set("headers", input.Headers)
 
 	// Parse payload JSON to JS object
 	var payloadObj any
@@ -403,7 +403,7 @@ func (e *GojaExecutor) ExecuteWithLogs(ctx context.Context, code string, input d
 			return domain.TransformationResult{}, fmt.Errorf("%w: failed to parse input payload: %v", domain.ErrTransformationExecution, err)
 		}
 	}
-	inputObj.Set("payload", payloadObj)
+	_ = inputObj.Set("payload", payloadObj)
 
 	// Call the transform function
 	resultVal, err := transformFunc(goja.Undefined(), inputObj)

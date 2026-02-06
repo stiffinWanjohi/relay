@@ -21,7 +21,7 @@ func setupTestRateLimiter(t *testing.T) (*delivery.RateLimiter, func()) {
 	})
 	limiter := delivery.NewRateLimiter(client)
 	cleanup := func() {
-		client.Close()
+		_ = client.Close()
 		mr.Close()
 	}
 	return limiter, cleanup
@@ -41,7 +41,7 @@ func TestRateLimitMiddleware_NoLimits(t *testing.T) {
 	}))
 
 	// Should always pass through with no limits
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
@@ -68,13 +68,14 @@ func TestRateLimitMiddleware_GlobalLimit(t *testing.T) {
 	}))
 
 	// Send 10 requests, only 5 should succeed
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
-		if rr.Code == http.StatusOK {
+		switch rr.Code {
+		case http.StatusOK:
 			successCount++
-		} else if rr.Code == http.StatusTooManyRequests {
+		case http.StatusTooManyRequests:
 			rateLimitedCount++
 		}
 	}
@@ -101,7 +102,7 @@ func TestRateLimitMiddleware_ClientLimit(t *testing.T) {
 	}))
 
 	// Requests without client ID should pass through (no client limit applied)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
@@ -114,15 +115,16 @@ func TestRateLimitMiddleware_ClientLimit(t *testing.T) {
 	successCount := 0
 	rateLimitedCount := 0
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		ctx := auth.WithClientID(req.Context(), "test-client")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
-		if rr.Code == http.StatusOK {
+		switch rr.Code {
+		case http.StatusOK:
 			successCount++
-		} else if rr.Code == http.StatusTooManyRequests {
+		case http.StatusTooManyRequests:
 			rateLimitedCount++
 		}
 	}
@@ -152,7 +154,7 @@ func TestRateLimitMiddleware_DifferentClients(t *testing.T) {
 	clients := []string{"client-a", "client-b", "client-c"}
 	for _, clientID := range clients {
 		successCount := 0
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			ctx := auth.WithClientID(req.Context(), clientID)
 			req = req.WithContext(ctx)
@@ -183,7 +185,7 @@ func TestRateLimitMiddleware_BothLimits(t *testing.T) {
 	}))
 
 	successCount := 0
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		ctx := auth.WithClientID(req.Context(), "test-client")
 		req = req.WithContext(ctx)

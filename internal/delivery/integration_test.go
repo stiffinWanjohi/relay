@@ -110,7 +110,7 @@ func TestIntegration_CircuitBreaker(t *testing.T) {
 		circuitKey := extractHost(server.URL)
 
 		// Make enough failures to trip the circuit
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			event := domain.Event{
 				ID:          uuid.New(),
 				Destination: server.URL,
@@ -158,7 +158,7 @@ func TestIntegration_CircuitBreaker(t *testing.T) {
 		}
 
 		// Record enough successes to close
-		for i := 0; i < circuitConfig.SuccessThreshold; i++ {
+		for range circuitConfig.SuccessThreshold {
 			circuit.RecordSuccess(circuitKey)
 		}
 
@@ -190,7 +190,7 @@ func TestIntegration_RateLimiting(t *testing.T) {
 		// Send multiple requests
 		ctx := context.Background()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			event := domain.Event{
 				ID:          uuid.New(),
 				Destination: server.URL,

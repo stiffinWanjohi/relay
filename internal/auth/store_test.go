@@ -39,6 +39,7 @@ func TestNewStore(t *testing.T) {
 	store := NewStore(pool)
 	if store == nil {
 		t.Fatal("expected non-nil store")
+		return
 	}
 	if store.pool != pool {
 		t.Error("expected pool to be set")

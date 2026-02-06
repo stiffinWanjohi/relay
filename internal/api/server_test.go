@@ -87,6 +87,7 @@ func TestNewServer(t *testing.T) {
 
 	if server == nil {
 		t.Fatal("expected non-nil server")
+		return
 	}
 	if server.router == nil {
 		t.Error("expected router to be set")

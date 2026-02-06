@@ -78,6 +78,7 @@ func TestLoadConfig_Success(t *testing.T) {
 	}
 	if cfg == nil {
 		t.Fatal("expected non-nil config")
+		return
 	}
 
 	// Verify database config

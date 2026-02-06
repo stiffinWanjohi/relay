@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"maps"
 	"time"
 
 	"github.com/google/uuid"
@@ -107,12 +108,8 @@ func NewEventForEndpointWithOptions(clientID, eventType, idempotencyKey string, 
 
 	// Merge custom headers from endpoint with event headers
 	mergedHeaders := make(map[string]string)
-	for k, v := range endpoint.CustomHeaders {
-		mergedHeaders[k] = v
-	}
-	for k, v := range headers {
-		mergedHeaders[k] = v // Event headers override endpoint headers
-	}
+	maps.Copy(mergedHeaders, endpoint.CustomHeaders)
+	maps.Copy(mergedHeaders, headers) // Event headers override endpoint headers
 
 	if priority < 1 || priority > 10 {
 		priority = DefaultPriority

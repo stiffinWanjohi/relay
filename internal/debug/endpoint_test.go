@@ -17,7 +17,7 @@ func setupTestService(t *testing.T) (*Service, func()) {
 	})
 	service := NewService(client, "http://localhost:8080")
 	cleanup := func() {
-		client.Close()
+		_ = client.Close()
 		mr.Close()
 	}
 	return service, cleanup
@@ -61,6 +61,7 @@ func TestGetEndpoint(t *testing.T) {
 
 	if retrieved == nil {
 		t.Fatal("expected endpoint to be found")
+		return
 	}
 	if retrieved.ID != created.ID {
 		t.Errorf("expected ID %s, got %s", created.ID, retrieved.ID)
@@ -155,7 +156,7 @@ func TestCaptureRequest_MaxRequests(t *testing.T) {
 	}
 
 	// Capture more than MaxRequestsPerEndpoint requests
-	for i := 0; i < MaxRequestsPerEndpoint+10; i++ {
+	for i := range MaxRequestsPerEndpoint+10 {
 		req := &CapturedRequest{
 			Method: "POST",
 			Path:   "/webhook",
@@ -223,6 +224,7 @@ func TestGetRequest(t *testing.T) {
 	}
 	if retrieved == nil {
 		t.Fatal("expected request to be found")
+		return
 	}
 	if retrieved.Body != "test body" {
 		t.Errorf("expected body 'test body', got %s", retrieved.Body)

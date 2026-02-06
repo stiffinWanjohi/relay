@@ -41,7 +41,7 @@ func (rl *RateLimiter) AllowN(ctx context.Context, key string, limit int, n int)
 		return true
 	}
 
-	for i := 0; i < n; i++ {
+	for range n {
 		if !rl.Allow(ctx, key, limit) {
 			return false
 		}

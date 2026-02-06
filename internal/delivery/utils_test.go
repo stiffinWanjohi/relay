@@ -411,7 +411,7 @@ func BenchmarkExtractHost(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for _, url := range urls {
 			_ = extractHost(url)
 		}
@@ -426,7 +426,7 @@ func BenchmarkClassifyFailureReason(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for _, result := range results {
 			_ = classifyFailureReason(result)
 		}
@@ -444,7 +444,7 @@ func BenchmarkContainsSubstr(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for _, tc := range testCases {
 			_ = containsSubstr(tc.s, tc.substr)
 		}
@@ -452,13 +452,13 @@ func BenchmarkContainsSubstr(b *testing.B) {
 }
 
 func BenchmarkProcessorKey(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = processorKey("550e8400-e29b-41d4-a716-446655440000", "user-123")
 	}
 }
 
 func BenchmarkProcessorKey_NoPartition(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = processorKey("550e8400-e29b-41d4-a716-446655440000", "")
 	}
 }

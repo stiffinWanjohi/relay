@@ -133,7 +133,7 @@ func createDebugEndpoint(baseURL, apiKey string) (*debugEndpoint, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("server returned %d", resp.StatusCode)
@@ -161,7 +161,7 @@ func getDebugEndpoint(baseURL, apiKey, endpointID string) (*debugEndpoint, error
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil
@@ -194,7 +194,7 @@ func listCapturedRequests(baseURL, apiKey, endpointID string) {
 		fmt.Fprintf(os.Stderr, "  %s %v\n", fail("Error:"), err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var result struct {
 		Requests []*capturedRequest `json:"requests"`
@@ -237,7 +237,7 @@ func streamRequests(ctx context.Context, baseURL, apiKey, endpointID string) {
 		fmt.Fprintf(os.Stderr, "  %s %v\n", fail("Error:"), err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "  %s Server returned %d\n", fail("Error:"), resp.StatusCode)
